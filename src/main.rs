@@ -4,6 +4,7 @@ mod input;
 mod event;
 mod draw;
 mod ui;
+mod buffer;
 
 use std::panic;
 use crate::{
@@ -12,6 +13,7 @@ use crate::{
     event::Event,
     draw::Canvas,
     ui::MainUi,
+    buffer::Buffer,
 };
 
 const LOG_FILENAME: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
