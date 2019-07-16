@@ -7,7 +7,6 @@ use crate::display::{
 };
 
 fn rect_to_points(canvas: &impl Canvas, pos: Vec2<usize>, size: Extent2<isize>) -> (Vec2<usize>, Vec2<usize>) {
-    let offs = canvas.rect().position();
     let this_size = canvas.size();
     let size = size.map2((Vec2::from(this_size) - pos).into(), |e, sz: usize| if e < 0 {
         sz as isize + e + 1
@@ -15,10 +14,11 @@ fn rect_to_points(canvas: &impl Canvas, pos: Vec2<usize>, size: Extent2<isize>) 
         e
     } as usize);
 
-    (pos + offs, offs + pos + size)
+    (pos, pos + size)
 }
 
 pub trait Canvas: Sized {
+    fn set_cursor(&mut self, pos: Option<Vec2<usize>>);
     fn set(&mut self, pos: Vec2<usize>, cell: Cell);
     fn rect(&self) -> Rect<usize, usize>;
     fn size(&self) -> Extent2<usize>;
@@ -40,7 +40,12 @@ pub trait Canvas: Sized {
     }
 
     fn window<'a>(&'a mut self, rect: Rect<usize, usize>) -> Drawer<'a, Self> {
-        let rect = Rect::new(self.rect().x + rect.x, self.rect().y + rect.y, rect.w, rect.h);
+        let rect = Rect::new(
+            rect.x,
+            rect.y,
+            rect.w.min(self.rect().w - rect.x),
+            rect.h.min(self.rect().h - rect.y),
+        );
         Drawer { fg: self.fg(), bg: self.bg(), attr: self.attr(), rect, canvas: self }
     }
 
@@ -85,8 +90,12 @@ pub struct Drawer<'a, D: Canvas> {
 }
 
 impl<'a, D: Canvas> Canvas for Drawer<'a, D> {
+    fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
+        self.canvas.set_cursor(pos.map(|pos| self.rect().position() + pos));
+    }
+
     fn set(&mut self, pos: Vec2<usize>, cell: Cell) {
-        self.canvas.set(pos, cell);
+        self.canvas.set(self.rect().position() + pos, cell);
     }
 
     fn rect(&self) -> Rect<usize, usize> {
@@ -103,6 +112,10 @@ impl<'a, D: Canvas> Canvas for Drawer<'a, D> {
 }
 
 impl Canvas for Display {
+    fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
+        self.set_cursor(pos);
+    }
+
     fn set(&mut self, pos: Vec2<usize>, cell: Cell) {
         self.grid_mut().set(pos, cell);
     }

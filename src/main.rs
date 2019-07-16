@@ -10,10 +10,10 @@ use std::panic;
 use crate::{
     config::Config,
     display::Display,
-    event::Event,
+    event::{Dir, Event},
     draw::Canvas,
     ui::MainUi,
-    buffer::Buffer,
+    buffer::{Buffer, BufferMut, Line, SharedBufferRef},
 };
 
 const LOG_FILENAME: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
@@ -28,7 +28,7 @@ fn main() {
         log::error!("{}", info);
     }));
 
-	simple_logging::log_to_file(LOG_FILENAME, log::LevelFilter::Info)
+    simple_logging::log_to_file(LOG_FILENAME, log::LevelFilter::Info)
         .expect("Failed to enable logging");
 
     let mut display = Display::new();
@@ -44,6 +44,7 @@ fn main() {
                 log::info!("Quitting...");
                 break;
             },
+            event => ui.handle(event),
         }
     }
 }

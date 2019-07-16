@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde_derive::{Serialize, Deserialize};
 use lazy_static::lazy_static;
+//use crate::ui::Theme;
 
 const CONFIG_FILENAME: &str = concat!(env!("CARGO_PKG_NAME"), ".toml");
 
@@ -18,11 +19,14 @@ lazy_static! {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    //theme: Theme,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self {}
+        Self {
+            //theme: Theme::default()
+        }
     }
 }
 

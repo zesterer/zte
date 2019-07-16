@@ -12,9 +12,15 @@ pub use crossterm::{Color, Attribute as Attr};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Cell(pub char, pub Color, pub Color, pub Attr);
 
+impl From<char> for Cell {
+    fn from(c: char) -> Self {
+        Self(c, Color::Reset, Color::Reset, Attr::Reset)
+    }
+}
+
 impl Default for Cell {
     fn default() -> Self {
-        Self(' ', Color::Reset, Color::Reset, Attr::Reset)
+        Self::from(' ')
     }
 }
 
@@ -57,6 +63,7 @@ impl Grid {
 
 pub struct Display {
     size: Extent2<usize>,
+    cursor_pos: Option<Vec2<usize>>,
     alt_screen: AlternateScreen,
     grids: (Grid, Grid),
     term: Crossterm,
@@ -69,6 +76,7 @@ impl Display {
         let grid = Grid::new(size);
         let mut this = Self {
             size,
+            cursor_pos: None,
             alt_screen: AlternateScreen::to_alternate(true).unwrap(),
             grids: (grid.clone(), grid),
             term,
@@ -104,12 +112,8 @@ impl Display {
     }
 
     #[allow(dead_code)]
-    pub fn show_cursor(&mut self, show: bool) {
-        if show {
-            self.term.cursor().show().unwrap();
-        } else {
-            self.term.cursor().hide().unwrap();
-        }
+    pub fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
+        self.cursor_pos = pos;
     }
 
     #[allow(dead_code)]
@@ -134,6 +138,13 @@ impl Display {
         }
 
         self.grids.0 = self.grids.1.clone();
+
+        if let Some(cursor_pos) = self.cursor_pos {
+            self.term.cursor().show().unwrap();
+            self.term.cursor().goto(cursor_pos.x as u16, cursor_pos.y as u16).unwrap();
+        } else {
+            self.term.cursor().hide().unwrap();
+        }
     }
 }
 

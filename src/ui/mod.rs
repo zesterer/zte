@@ -2,22 +2,27 @@ mod theme;
 mod editor;
 mod panels;
 
-use self::{
+// Reexports
+pub use self::{
     theme::Theme,
     editor::Editor,
     panels::Panels,
 };
+
 use crate::{
     Canvas,
+    Event,
 };
 
 #[derive(Copy, Clone)]
-struct Context<'a> {
+pub struct Context<'a> {
     theme: &'a Theme,
 }
 
-trait Element {
-    fn render(&self, ctx: Context, canvas: &mut impl Canvas);
+pub trait Element {
+    fn update(&mut self, ctx: Context) {}
+    fn handle(&mut self, ctx: Context, event: Event);
+    fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool);
 }
 
 pub struct MainUi {
@@ -33,23 +38,25 @@ impl MainUi {
         }
     }
 
+    pub fn handle(&mut self, event: Event) {
+        let ctx = Context {
+            theme: &self.theme,
+        };
+
+        self.panels.handle(ctx, event);
+    }
+
     pub fn render(&self, canvas: &mut impl Canvas) {
         let ctx = Context {
             theme: &self.theme,
         };
 
-        Element::render(self, ctx, canvas);
+        self.panels.render(ctx, canvas, true);
     }
 }
 
 impl Default for MainUi {
     fn default() -> Self {
         Self::new(Theme::default())
-    }
-}
-
-impl Element for MainUi {
-    fn render(&self, ctx: Context, canvas: &mut impl Canvas) {
-        self.panels.render(ctx, canvas);
     }
 }
