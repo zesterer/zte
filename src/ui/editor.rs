@@ -19,9 +19,13 @@ pub struct Editor {
 
 impl Default for Editor {
     fn default() -> Self {
-        Self {
-            buffer: SharedBufferRef::default(),
-        }
+        Self::from(SharedBufferRef::default())
+    }
+}
+
+impl From<SharedBufferRef> for Editor {
+    fn from(buffer: SharedBufferRef) -> Self {
+        Self { buffer }
     }
 }
 
@@ -30,25 +34,20 @@ impl Element for Editor {
         match event {
             Event::Insert(c) => self.buffer.borrow_mut().insert(c),
             Event::Backspace => self.buffer.borrow_mut().backspace(),
-            Event::CursorMove(dir) => {
-                let mut buf = self.buffer.borrow_mut();
-                match dir {
-                    Dir::Left => buf.cursor_mut().pos = buf.cursor_mut().pos.saturating_sub(1),
-                    Dir::Right => buf.cursor_mut().pos = (buf.cursor().pos + 1).min(buf.len()),
-                    _ => unimplemented!(),
-                }
-            },
+            Event::Delete => self.buffer.borrow_mut().delete(),
+            Event::CursorMove(dir) => self.buffer.borrow_mut().cursor_move(dir),
             _ => {},
         }
     }
 
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
-        canvas
-            .with_bg(ctx.theme.editor_bg_color)
-            .rectangle((0, 0), (-1, -1), ' ');
+        let sz = canvas.size();
         canvas
             .with_bg(ctx.theme.frame_bg_color)
-            .frame((0, 0), (-1, -1));
+            .frame((0, 0), sz);
+        canvas
+            .with_bg(ctx.theme.editor_bg_color)
+            .rectangle((1, 1), sz.map(|e| e - 2), ' ');
 
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w - 2, canvas.size().h - 2));
 
@@ -65,7 +64,7 @@ impl Element for Editor {
         if active {
             let buf = self.buffer.borrow();
             let loc = buf.pos_loc(buf.cursor().pos, &buf.config());
-            canvas.set_cursor(Some(loc));
+            canvas.set_cursor(Some(loc).filter(|loc| loc.x < canvas.size().w && loc.y < canvas.size().h));
         }
     }
 }

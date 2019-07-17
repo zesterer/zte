@@ -51,8 +51,7 @@ impl SharedBuffer {
         self.content.insert(pos, c);
         self.cursors
             .values_mut()
-            .filter(|cursor| cursor.pos >= pos)
-            .for_each(|cursor| cursor.pos += 1);
+            .for_each(|cursor| cursor.shift_relative_to(pos, 1));
     }
 
     fn backspace(&mut self, id: &CursorId) {
@@ -61,9 +60,16 @@ impl SharedBuffer {
             self.content.remove(pos - 1);
             self.cursors
                 .values_mut()
-                .filter(|cursor| cursor.pos >= pos)
-                .for_each(|cursor| cursor.pos -= 1);
+                .for_each(|cursor| cursor.shift_relative_to(pos - 1, -1));
         }
+    }
+
+    fn delete(&mut self, id: &CursorId) {
+        let pos = self.cursor(id).pos;
+        self.content.remove(pos);
+        self.cursors
+            .values_mut()
+            .for_each(|cursor| cursor.shift_relative_to(pos, -1));
     }
 
     pub fn make_ref(this: Rc<RefCell<Self>>) -> SharedBufferRef {
@@ -112,6 +118,12 @@ impl Default for SharedBufferRef {
     }
 }
 
+impl Clone for SharedBufferRef {
+    fn clone(&self) -> Self {
+        SharedBuffer::make_ref(self.buffer.clone())
+    }
+}
+
 impl Drop for SharedBufferRef {
     fn drop(&mut self) {
         self.buffer
@@ -127,13 +139,11 @@ pub struct SharedBufferGuard<'a> {
     cursor_id: &'a CursorId,
 }
 
-impl<'a> SharedBufferGuard<'a> {
-    pub fn config(&self) -> &Config {
+impl<'a> Buffer for SharedBufferGuard<'a> {
+    fn config(&self) -> &Config {
         &self.buffer.config
     }
-}
 
-impl<'a> Buffer for SharedBufferGuard<'a> {
     fn len(&self) -> usize {
         self.buffer.content.len()
     }
@@ -158,13 +168,11 @@ pub struct SharedBufferGuardMut<'a> {
     cursor_id: &'a CursorId,
 }
 
-impl<'a> SharedBufferGuardMut<'a> {
-    pub fn config(&self) -> &Config {
+impl<'a> Buffer for SharedBufferGuardMut<'a> {
+    fn config(&self) -> &Config {
         &self.buffer.config
     }
-}
 
-impl<'a> Buffer for SharedBufferGuardMut<'a> {
     fn len(&self) -> usize {
         self.buffer.content.len()
     }
@@ -193,5 +201,9 @@ impl<'a> BufferMut for SharedBufferGuardMut<'a> {
 
     fn backspace(&mut self) {
         self.buffer.backspace(&self.cursor_id);
+    }
+
+    fn delete(&mut self) {
+        self.buffer.delete(&self.cursor_id);
     }
 }

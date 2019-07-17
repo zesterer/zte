@@ -49,8 +49,9 @@ pub trait Canvas: Sized {
         Drawer { fg: self.fg(), bg: self.bg(), attr: self.attr(), rect, canvas: self }
     }
 
-    fn rectangle(&mut self, pos: impl Into<Vec2<usize>>, size: impl Into<Extent2<isize>>, c: char) {
-        let (from, to) = rect_to_points(self, pos.into(), size.into());
+    fn rectangle(&mut self, pos: impl Into<Vec2<usize>>, size: impl Into<Extent2<usize>>, c: char) {
+        let from = pos.into();
+        let to = from + Vec2::from(size.into());
 
         let cell = Cell(c, self.fg(), self.bg(), self.attr());
         for y in from.y..to.y {
@@ -60,15 +61,16 @@ pub trait Canvas: Sized {
         }
     }
 
-    fn frame(&mut self, pos: impl Into<Vec2<usize>>, size: impl Into<Extent2<isize>>) {
-        let (from, to) = rect_to_points(self, pos.into(), size.into());
+    fn frame(&mut self, pos: impl Into<Vec2<usize>>, size: impl Into<Extent2<usize>>) {
+        let from = pos.into();
+        let to = from + Vec2::from(size.into());
 
         let (fg, bg, attr) = (self.fg(), self.bg(), self.attr());
         let cell = |c| Cell(c, fg, bg, attr);
 
         for x in from.x + 1..to.x - 1 {
             self.set(Vec2::new(x, from.y), cell('-'));
-            self.set(Vec2::new(x, to.y - 1), cell('-'));
+            self.set(Vec2::new(x, to.y - 1), cell('"'));
         }
         for y in from.y + 1..to.y - 1 {
             self.set(Vec2::new(from.x, y), cell('|'));
@@ -91,10 +93,11 @@ pub struct Drawer<'a, D: Canvas> {
 
 impl<'a, D: Canvas> Canvas for Drawer<'a, D> {
     fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
-        self.canvas.set_cursor(pos.map(|pos| self.rect().position() + pos));
+        self.canvas.set_cursor(pos.map(|pos| self.rect().position() + pos.map2(self.size().into(), |e, sz: usize| e.min(sz - 1))));
     }
 
     fn set(&mut self, pos: Vec2<usize>, cell: Cell) {
+        let pos = pos.map2(self.size().into(), |e, sz: usize| e.min(sz - 1));
         self.canvas.set(self.rect().position() + pos, cell);
     }
 

@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33"
-crossterm = "0.9"
+termion = "1.5"
 vek = "0.9"
 log = "0.4"
 simple-logging = "2.0"
@@ -17,3 +17,4 @@ lazy_static = "1.1"
 serde = "1.0"
 serde_derive = "1.0"
 config = "0.9"
+backtrace = "0.3"

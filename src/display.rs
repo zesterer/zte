@@ -1,13 +1,23 @@
+use std::io::{Write, stdout, Stdout};
 use vek::*;
-use crossterm::{
-    AlternateScreen,
-    Crossterm,
-    TerminalInput,
-    ClearType,
+use termion::{
+    screen::AlternateScreen,
+    input::MouseTerminal,
+    raw::{RawTerminal, IntoRawMode},
+    clear,
+    cursor,
+    terminal_size,
 };
 
-// Reexports
-pub use crossterm::{Color, Attribute as Attr};
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Color {
+    Reset,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Attr {
+    Reset,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Cell(pub char, pub Color, pub Color, pub Attr);
@@ -42,63 +52,69 @@ impl Grid {
         self.size
     }
 
-    fn idx_of(&self, pos: Vec2<usize>) -> usize {
-        self.size.w * pos.y + pos.x
+    fn idx_of(&self, pos: Vec2<usize>) -> Option<usize> {
+        if pos.map2(self.size.into(), |e, sz| e >= 0 && e < sz).reduce_and() {
+            Some(self.size.w * pos.y + pos.x)
+        } else {
+            None
+        }
     }
 
     pub fn get(&self, pos: impl Into<Vec2<usize>>) -> Cell {
-        self.cells
-            .get(self.idx_of(pos.into()))
-            .copied()
-            .unwrap_or(Cell::default())
+        match self.idx_of(pos.into()) {
+            Some(idx) => self.cells
+                .get(idx)
+                .copied()
+                .unwrap_or(Cell::default()),
+            None => Cell::default(),
+        }
     }
 
     pub fn set(&mut self, pos: impl Into<Vec2<usize>>, cell: Cell) {
-        let idx = self.idx_of(pos.into());
-        self.cells
-            .get_mut(idx)
-            .map(|c| *c = cell);
+        match self.idx_of(pos.into()) {
+            Some(idx) => {
+                self.cells
+                    .get_mut(idx)
+                    .map(|c| *c = cell);
+            },
+            None => {},
+        }
     }
 }
 
 pub struct Display {
     size: Extent2<usize>,
     cursor_pos: Option<Vec2<usize>>,
-    alt_screen: AlternateScreen,
     grids: (Grid, Grid),
-    term: Crossterm,
+    screen: AlternateScreen<MouseTerminal<RawTerminal<Stdout>>>,
 }
 
 impl Display {
     pub fn new() -> Self {
-        let term = Crossterm::new();
-        let size = Extent2::from(term.terminal().terminal_size()).map(|e: u16| e as usize);
+        let screen = AlternateScreen::from(MouseTerminal::from(stdout().into_raw_mode().unwrap()));
+
+        let size = Extent2::from(terminal_size().unwrap()).map(|e: u16| e as usize);
         let grid = Grid::new(size);
         let mut this = Self {
             size,
             cursor_pos: None,
-            alt_screen: AlternateScreen::to_alternate(true).unwrap(),
             grids: (grid.clone(), grid),
-            term,
+            screen,
         };
         this.init();
         this
     }
 
     fn init(&mut self) {
-        self.term.terminal().clear(ClearType::All).unwrap();
-        self.term.cursor().hide().unwrap();
+        write!(self.screen, "{}", clear::All).unwrap();
+        write!(self.screen, "{}", cursor::Hide).unwrap();
         for row in 0..self.size.h {
-            self.term.cursor().goto(0, row as u16).unwrap();
+            write!(self.screen, "{}", cursor::Goto(1, row as u16 + 1)).unwrap();
             for col in 0..self.size.w {
                 let Cell(c, fg, bg, attr) = self.grids.0.get((col, row));
-                self.term.terminal().write(crossterm::style(c).with(fg).on(bg).attr(attr)).unwrap();
+                write!(self.screen, "{}", c).unwrap();
             }
         }
-    }
-
-    pub fn input(&self) -> TerminalInput {
-        self.term.input()
     }
 
     #[allow(dead_code)]
@@ -118,7 +134,7 @@ impl Display {
 
     #[allow(dead_code)]
     pub fn render(&mut self) {
-        self.term.cursor().goto(0, 0).unwrap();
+        write!(self.screen, "{}", cursor::Goto(1, 1)).unwrap();
         let mut last_pos = Vec2::zero();
 
         for row in 0..self.size.h {
@@ -127,12 +143,13 @@ impl Display {
 
                 if front != back {
                     if last_pos != Vec2::new(col.saturating_sub(1), row) {
-                        self.term.cursor().goto(col as u16, row as u16).unwrap();
+                        write!(self.screen, "{}", cursor::Goto(col as u16 + 1, row as u16 + 1)).unwrap();
                         last_pos = Vec2::new(col, row);
                     }
 
                     let Cell(c, fg, bg, attr) = back;
-                    self.term.terminal().write(crossterm::style(c).with(fg).on(bg).attr(attr)).unwrap();
+                    //self.term.terminal().write(crossterm::style(c).with(fg).on(bg).attr(attr)).unwrap();
+                    write!(self.screen, "{}", c).unwrap();
                 }
             }
         }
@@ -140,17 +157,18 @@ impl Display {
         self.grids.0 = self.grids.1.clone();
 
         if let Some(cursor_pos) = self.cursor_pos {
-            self.term.cursor().show().unwrap();
-            self.term.cursor().goto(cursor_pos.x as u16, cursor_pos.y as u16).unwrap();
+            write!(self.screen, "{}", cursor::Show).unwrap();
+            write!(self.screen, "{}", cursor::Goto(cursor_pos.x as u16 + 1, cursor_pos.y as u16 + 1)).unwrap();
         } else {
-            self.term.cursor().hide().unwrap();
+            write!(self.screen, "{}", cursor::Hide).unwrap();
         }
+
+        self.screen.flush();
     }
 }
 
 impl Drop for Display {
     fn drop(&mut self) {
-        self.term.cursor().show().unwrap();
-        self.alt_screen.to_main().unwrap();
+        write!(self.screen, "{}", cursor::Show).unwrap();
     }
 }

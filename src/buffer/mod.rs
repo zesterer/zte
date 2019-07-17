@@ -8,6 +8,7 @@ pub use self::{
 };
 
 use vek::*;
+use crate::Dir;
 
 pub struct Line<'a> {
     chars: &'a [char],
@@ -50,7 +51,7 @@ impl<'a> Line<'a> {
             }))
             .map(|(n, (pos, c))| (0..n).map(move |_| (Some(pos), c)))
             .flatten()
-            .chain((0..).map(|_| (None, ' ')))
+            .chain(std::iter::repeat((None, ' ')))
     }
 }
 
@@ -64,6 +65,14 @@ impl<'a> From<&'a [char]> for Line<'a> {
 pub struct Cursor {
     pub pos: usize,
     pub reach: isize,
+}
+
+impl Cursor {
+    pub fn shift_relative_to(&mut self, pos: usize, dist: isize) {
+        if self.pos >= pos {
+            self.pos = (self.pos as isize + dist).max(pos as isize) as usize;
+        }
+    }
 }
 
 impl Default for Cursor {
@@ -88,6 +97,8 @@ impl Default for Config {
 }
 
 pub trait Buffer {
+    fn config(&self) -> &Config;
+
     fn len(&self) -> usize;
     fn line_count(&self) -> usize;
     fn line(&self, line: usize) -> Option<Line>;
@@ -134,7 +145,7 @@ pub trait Buffer {
         pos += match self.line(loc.y) {
             Some(line) => line
                 .glyphs(cfg)
-                .take(loc.x)
+                .skip(loc.x)
                 .next()
                 .unwrap()
                 .0
@@ -146,9 +157,25 @@ pub trait Buffer {
     }
 }
 
-pub trait BufferMut {
+pub trait BufferMut: Buffer {
     fn cursor_mut(&mut self) -> &mut Cursor;
 
     fn insert(&mut self, c: char);
     fn backspace(&mut self);
+    fn delete(&mut self);
+
+    fn cursor_move(&mut self, dir: Dir) {
+        match dir {
+            Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(1),
+            Dir::Right => self.cursor_mut().pos = (self.cursor().pos + 1).min(self.len()),
+            Dir::Up => {
+                let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
+                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(1)), self.config());
+            },
+            Dir::Down => {
+                let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
+                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + 1), self.config());
+            },
+        }
+    }
 }

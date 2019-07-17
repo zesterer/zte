@@ -8,6 +8,7 @@ use crate::{
     Canvas,
     Dir,
     Event,
+    SharedBufferRef,
 };
 
 pub enum Tile {
@@ -20,14 +21,22 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn empty(n: usize) -> Self {
-        assert!(n > 0);
+    pub fn single(tile: Tile) -> Self {
+        Self::many(vec![tile])
+    }
+
+    pub fn many(tiles: Vec<Tile>) -> Self {
+        assert!(tiles.len() > 0);
         Self {
             active_idx: 0,
-            tiles: (0..n)
-                .map(|_| Tile::Editor(Editor::default()))
-                .collect(),
+            tiles,
         }
+    }
+
+    pub fn empty(n: usize) -> Self {
+        Self::many((0..n)
+                .map(|_| Tile::Editor(Editor::default()))
+                .collect())
     }
 
     fn tile_area(&self, size: Extent2<usize>, idx: usize) -> Rect<usize, usize> {
@@ -48,6 +57,16 @@ impl Column {
             Err(())
         }
     }
+
+    pub fn close_editor(&mut self) -> bool {
+        if self.tiles.len() > 1 {
+            self.tiles.remove(self.active_idx);
+            self.active_idx = self.active_idx.saturating_sub(1);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for Column {
@@ -61,6 +80,13 @@ impl Element for Column {
         match event {
             Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx.saturating_sub(1)); },
             Event::SwitchEditor(Dir::Down) => { let _ = self.switch_to(self.active_idx.saturating_add(1)); },
+            Event::NewEditor(Dir::Up) => {
+                self.tiles.insert(self.active_idx, Tile::Editor(Editor::default()));
+            },
+            Event::NewEditor(Dir::Down) => {
+                self.tiles.insert(self.active_idx + 1, Tile::Editor(Editor::default()));
+                self.active_idx += 1;
+            },
             event => { self.active_mut().map(|tile| match tile {
                 Tile::Editor(editor) => editor.handle(ctx, event),
             }); },
@@ -85,10 +111,11 @@ pub struct Panels {
 impl Panels {
     pub fn empty(n: usize) -> Self {
         assert!(n > 0);
+        let mut buf = SharedBufferRef::default();
         Self {
             active_idx: 0,
             columns: (0..n)
-                .map(|_| Column::default())
+                .map(|_| Column::single(Tile::Editor(Editor::from(buf.clone()))))
                 .collect(),
         }
     }
@@ -111,6 +138,20 @@ impl Panels {
             Err(())
         }
     }
+
+    pub fn close_editor(&mut self) -> bool {
+        if self.active_mut().map(|col| !col.close_editor()).unwrap_or(true) {
+            if self.columns.len() > 1 {
+                self.columns.remove(self.active_idx);
+                self.active_idx = self.active_idx.saturating_sub(1);
+                true
+            } else {
+                false
+            }
+        } else {
+            true
+        }
+    }
 }
 
 impl Default for Panels {
@@ -124,11 +165,21 @@ impl Element for Panels {
         match event {
             Event::SwitchEditor(Dir::Left) => { let _ = self.switch_to(self.active_idx.saturating_sub(1)); },
             Event::SwitchEditor(Dir::Right) => { let _ = self.switch_to(self.active_idx.saturating_add(1)); },
+            Event::NewEditor(Dir::Left) => {
+                self.columns.insert(self.active_idx, Column::default());
+            },
+            Event::NewEditor(Dir::Right) => {
+                self.columns.insert(self.active_idx + 1, Column::default());
+                self.active_idx += 1;
+            },
+            Event::CloseEditor => { let _ = self.close_editor(); },
             event => { self.active_mut().map(|col| col.handle(ctx, event)); },
         }
     }
 
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+        let sz = canvas.size();
+        canvas.rectangle((0, 0), sz, '!');
         for (idx, column) in self.columns.iter().enumerate() {
             column.render(ctx, &mut canvas.window(self.column_area(canvas.size(), idx)), active && idx == self.active_idx);
         }

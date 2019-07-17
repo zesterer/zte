@@ -1,4 +1,4 @@
-use serde_derive::{Serialize, Deserialize};
+//use serde_derive::{Serialize, Deserialize};
 use crate::display::Color;
 
 #[derive(Clone, Debug)]//, Serialize, Deserialize)]
@@ -10,8 +10,8 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            editor_bg_color: Color::Red,
-            frame_bg_color: Color::Red,
+            editor_bg_color: Color::Reset,
+            frame_bg_color: Color::Reset,
         }
     }
 }

@@ -1,3 +1,5 @@
+#![feature(bind_by_move_pattern_guards)]
+
 mod config;
 mod display;
 mod input;
@@ -7,6 +9,7 @@ mod ui;
 mod buffer;
 
 use std::panic;
+use backtrace::Backtrace;
 use crate::{
     config::Config,
     display::Display,
@@ -26,6 +29,7 @@ fn main() {
 
     panic::set_hook(Box::new(move |info| {
         log::error!("{}", info);
+        log::error!("{:?}", Backtrace::new());
     }));
 
     simple_logging::log_to_file(LOG_FILENAME, log::LevelFilter::Info)
@@ -34,7 +38,7 @@ fn main() {
     let mut display = Display::new();
     let mut ui = MainUi::default();
 
-    let event_rx = input::begin_reading(display.input());
+    let event_rx = input::begin_reading();
     loop {
         ui.render(&mut display);
         display.render();

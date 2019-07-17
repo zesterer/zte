@@ -10,7 +10,10 @@ pub enum Dir {
 pub enum Event {
     Insert(char),
     Backspace,
+    Delete,
     CursorMove(Dir),
     SwitchEditor(Dir),
+    NewEditor(Dir),
+    CloseEditor,
     Quit,
 }
