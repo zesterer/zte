@@ -49,7 +49,8 @@ impl Column {
         self.tiles.get_mut(self.active_idx)
     }
 
-    pub fn switch_to(&mut self, idx: usize) -> Result<(), ()> {
+    pub fn switch_to(&mut self, idx: isize) -> Result<(), ()> {
+        let idx = idx.rem_euclid(self.tiles.len() as isize) as usize;
         if (0..self.tiles.len()).contains(&idx) {
             self.active_idx = idx;
             Ok(())
@@ -78,8 +79,8 @@ impl Default for Column {
 impl Element for Column {
     fn handle(&mut self, ctx: Context, event: Event) {
         match event {
-            Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx.saturating_sub(1)); },
-            Event::SwitchEditor(Dir::Down) => { let _ = self.switch_to(self.active_idx.saturating_add(1)); },
+            Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx as isize - 1); },
+            Event::SwitchEditor(Dir::Down) => { let _ = self.switch_to(self.active_idx as isize + 1); },
             Event::NewEditor(Dir::Up) => {
                 self.tiles.insert(self.active_idx, Tile::Editor(Editor::default()));
             },
@@ -111,7 +112,7 @@ pub struct Panels {
 impl Panels {
     pub fn empty(n: usize) -> Self {
         assert!(n > 0);
-        let mut buf = SharedBufferRef::default();
+        let buf = SharedBufferRef::default();
         Self {
             active_idx: 0,
             columns: (0..n)
@@ -130,7 +131,8 @@ impl Panels {
         self.columns.get_mut(self.active_idx)
     }
 
-    pub fn switch_to(&mut self, idx: usize) -> Result<(), ()> {
+    pub fn switch_to(&mut self, idx: isize) -> Result<(), ()> {
+        let idx = idx.rem_euclid(self.columns.len() as isize) as usize;
         if (0..self.columns.len()).contains(&idx) {
             self.active_idx = idx;
             Ok(())
@@ -163,8 +165,8 @@ impl Default for Panels {
 impl Element for Panels {
     fn handle(&mut self, ctx: Context, event: Event) {
         match event {
-            Event::SwitchEditor(Dir::Left) => { let _ = self.switch_to(self.active_idx.saturating_sub(1)); },
-            Event::SwitchEditor(Dir::Right) => { let _ = self.switch_to(self.active_idx.saturating_add(1)); },
+            Event::SwitchEditor(Dir::Left) => { let _ = self.switch_to(self.active_idx as isize - 1); },
+            Event::SwitchEditor(Dir::Right) => { let _ = self.switch_to(self.active_idx as isize + 1); },
             Event::NewEditor(Dir::Left) => {
                 self.columns.insert(self.active_idx, Column::default());
             },

@@ -10,7 +10,7 @@ impl Content {
         self
             .lines()
             .map(|line| line.len())
-            .sum()
+            .sum::<usize>().saturating_sub(1)
     }
 
     pub fn lines(&self) -> impl ExactSizeIterator<Item=Line> {
@@ -77,10 +77,11 @@ impl Content {
     }
 }
 
-impl<'a> From<&'a str> for Content {
-    fn from(s: &'a str) -> Self {
+impl<T: AsRef<str>> From<T> for Content {
+    fn from(s: T) -> Self {
         Self {
             lines: s
+                .as_ref()
                 .lines()
                 .map(|l| l.chars().collect())
                 .collect(),
@@ -90,7 +91,7 @@ impl<'a> From<&'a str> for Content {
 
 impl Default for Content {
     fn default() -> Self {
-        Self::from("")
+        Self::from("\n")
     }
 }
 

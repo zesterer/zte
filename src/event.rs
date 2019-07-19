@@ -15,5 +15,7 @@ pub enum Event {
     SwitchEditor(Dir),
     NewEditor(Dir),
     CloseEditor,
+    OpenPrompt,
+    OpenSwitcher,
     Quit,
 }

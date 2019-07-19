@@ -2,6 +2,9 @@ use std::{
     collections::HashMap,
     rc::Rc,
     cell::{RefCell, Ref, RefMut},
+    path::PathBuf,
+    fs::File,
+    io::{self, Read},
 };
 use super::{
     Line,
@@ -12,11 +15,23 @@ use super::{
     Content,
 };
 
+#[derive(Debug)]
+pub enum SharedBufferError {
+    Io(io::Error),
+}
+
+impl From<io::Error> for SharedBufferError {
+    fn from(err: io::Error) -> Self {
+        SharedBufferError::Io(err)
+    }
+}
+
 #[derive(Hash, PartialEq, Eq)]
 pub struct CursorId(usize);
 
 pub struct SharedBuffer {
     config: Config,
+    path: Option<PathBuf>,
     content: Content,
     cursor_id_counter: usize,
     cursors: HashMap<CursorId, Cursor>,
@@ -44,6 +59,16 @@ impl SharedBuffer {
 
     fn remove_cursor(&mut self, id: &CursorId) {
         self.cursors.remove(id);
+    }
+
+    fn title(&self) -> &str {
+        self.path
+            .as_ref()
+            .and_then(|path| path
+                .file_name()
+                .and_then(|s| s
+                    .to_str()))
+            .unwrap_or("untitled")
     }
 
     fn insert(&mut self, id: &CursorId, c: char) {
@@ -85,6 +110,7 @@ impl Default for SharedBuffer {
         Self {
             config: Config::default(),
             content: Content::default(),
+            path: None,
             cursor_id_counter: 0,
             cursors: HashMap::new(),
         }
@@ -97,6 +123,24 @@ pub struct SharedBufferRef {
 }
 
 impl SharedBufferRef {
+    pub fn new(s: String, path: Option<PathBuf>) -> Self {
+        Self::from(SharedBuffer {
+            content: Content::from(s),
+            path,
+            ..Default::default()
+        })
+    }
+
+    pub fn open(path: PathBuf) -> Result<Self, SharedBufferError> {
+        let mut buf = String::new();
+        File::open(&path)?.read_to_string(&mut buf)?;
+        Ok(Self::new(buf, Some(path)))
+    }
+
+    pub fn in_use(&self) -> bool {
+        Rc::strong_count(&self.buffer) == 1
+    }
+
     pub fn borrow(&self) -> SharedBufferGuard {
         SharedBufferGuard {
             buffer: self.buffer.borrow(),
@@ -112,9 +156,15 @@ impl SharedBufferRef {
     }
 }
 
+impl From<SharedBuffer> for SharedBufferRef {
+    fn from(buf: SharedBuffer) -> Self {
+        SharedBuffer::make_ref(Rc::new(RefCell::new(buf)))
+    }
+}
+
 impl Default for SharedBufferRef {
     fn default() -> Self {
-        SharedBuffer::make_ref(Rc::new(RefCell::new(SharedBuffer::default())))
+        Self::from(SharedBuffer::default())
     }
 }
 
@@ -140,6 +190,12 @@ pub struct SharedBufferGuard<'a> {
 }
 
 impl<'a> Buffer for SharedBufferGuard<'a> {
+    type Error = SharedBufferError;
+
+    fn title(&self) -> &str {
+        self.buffer.title()
+    }
+
     fn config(&self) -> &Config {
         &self.buffer.config
     }
@@ -169,6 +225,12 @@ pub struct SharedBufferGuardMut<'a> {
 }
 
 impl<'a> Buffer for SharedBufferGuardMut<'a> {
+    type Error = SharedBufferError;
+
+    fn title(&self) -> &str {
+        self.buffer.title()
+    }
+
     fn config(&self) -> &Config {
         &self.buffer.config
     }

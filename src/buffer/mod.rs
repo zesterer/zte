@@ -1,4 +1,4 @@
-mod shared;
+pub mod shared;
 mod content;
 
 // Reexports
@@ -7,6 +7,7 @@ pub use self::{
     content::Content,
 };
 
+use std::fmt::Debug;
 use vek::*;
 use crate::Dir;
 
@@ -97,7 +98,11 @@ impl Default for Config {
 }
 
 pub trait Buffer {
+    type Error: Debug;
+
     fn config(&self) -> &Config;
+
+    fn title(&self) -> &str;
 
     fn len(&self) -> usize;
     fn line_count(&self) -> usize;
@@ -140,7 +145,7 @@ pub trait Buffer {
             .lines()
             .take(loc.y)
             .map(|l| l.len())
-            .sum();
+            .sum::<usize>();
 
         pos += match self.line(loc.y) {
             Some(line) => line
@@ -153,7 +158,7 @@ pub trait Buffer {
             None => 0,
         };
 
-        pos
+        pos.min(self.len())
     }
 }
 
@@ -164,17 +169,17 @@ pub trait BufferMut: Buffer {
     fn backspace(&mut self);
     fn delete(&mut self);
 
-    fn cursor_move(&mut self, dir: Dir) {
+    fn cursor_move(&mut self, dir: Dir, n: usize) {
         match dir {
-            Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(1),
-            Dir::Right => self.cursor_mut().pos = (self.cursor().pos + 1).min(self.len()),
+            Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
+            Dir::Right => self.cursor_mut().pos = (self.cursor().pos + n).min(self.len()),
             Dir::Up => {
                 let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
-                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(1)), self.config());
+                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)), self.config());
             },
             Dir::Down => {
                 let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
-                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + 1), self.config());
+                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + n), self.config());
             },
         }
     }

@@ -53,7 +53,7 @@ impl Grid {
     }
 
     fn idx_of(&self, pos: Vec2<usize>) -> Option<usize> {
-        if pos.map2(self.size.into(), |e, sz| e >= 0 && e < sz).reduce_and() {
+        if pos.map2(self.size.into(), |e, sz| e < sz).reduce_and() {
             Some(self.size.w * pos.y + pos.x)
         } else {
             None
@@ -163,7 +163,7 @@ impl Display {
             write!(self.screen, "{}", cursor::Hide).unwrap();
         }
 
-        self.screen.flush();
+        self.screen.flush().unwrap();
     }
 }
 
