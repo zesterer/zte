@@ -30,6 +30,8 @@ impl From<SharedBufferRef> for Editor {
 }
 
 impl Element for Editor {
+    type Response = ();
+
     fn handle(&mut self, ctx: Context, event: Event) {
         match event {
             Event::Insert(c) => self.buffer.borrow_mut().insert(c),

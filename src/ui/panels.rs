@@ -77,6 +77,8 @@ impl Default for Column {
 }
 
 impl Element for Column {
+    type Response = ();
+
     fn handle(&mut self, ctx: Context, event: Event) {
         match event {
             Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx as isize - 1); },
@@ -163,6 +165,8 @@ impl Default for Panels {
 }
 
 impl Element for Panels {
+    type Response = ();
+
     fn handle(&mut self, ctx: Context, event: Event) {
         match event {
             Event::SwitchEditor(Dir::Left) => { let _ = self.switch_to(self.active_idx as isize - 1); },

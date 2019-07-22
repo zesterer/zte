@@ -1,12 +1,14 @@
 mod theme;
 mod editor;
 mod panels;
+mod switcher;
 
 // Reexports
 pub use self::{
     theme::Theme,
     editor::Editor,
     panels::Panels,
+    switcher::Switcher,
 };
 
 use crate::{
@@ -22,7 +24,9 @@ pub struct Context<'a> {
 }
 
 pub trait Element {
-    fn handle(&mut self, ctx: Context, event: Event);
+    type Response = ();
+
+    fn handle(&mut self, ctx: Context, event: Event) -> Self::Response;
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool);
 }
 
@@ -51,7 +55,8 @@ impl MainUi {
     pub fn handle(&mut self, event: Event) {
         match event {
             Event::OpenPrompt => unimplemented!(),
-            Event::OpenSwitcher => unimplemented!(),
+            Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::default())),
+            Event::Escape if self.menu.is_some() => self.menu = None,
             event => self.panels.handle(
                 Context {
                     theme: &self.theme,
@@ -69,6 +74,11 @@ impl MainUi {
         };
 
         self.panels.render(ctx, canvas, true);
+
+        match &self.menu {
+            Some(Menu::Switcher(switcher)) => switcher.render(ctx, canvas, true),
+            None => {},
+        }
     }
 }
 
@@ -78,4 +88,6 @@ impl Default for MainUi {
     }
 }
 
-pub enum Menu {}
+pub enum Menu {
+    Switcher(Switcher),
+}

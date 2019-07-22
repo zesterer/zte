@@ -32,6 +32,7 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Down) => Event::CursorMove(Dir::Down),
             InputEvent::Key(KeyEvent::Backspace) => Event::Backspace,
             InputEvent::Key(KeyEvent::Delete) => Event::Delete,
+            InputEvent::Key(KeyEvent::Esc) => Event::Escape,
             InputEvent::Key(KeyEvent::Ctrl('w')) => Event::CloseEditor,
             InputEvent::Key(KeyEvent::Ctrl('t')) => Event::NewEditor(Dir::Right),
             InputEvent::Key(KeyEvent::Ctrl('n')) => Event::NewEditor(Dir::Down),

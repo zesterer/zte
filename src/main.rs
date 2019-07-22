@@ -1,4 +1,4 @@
-#![feature(bind_by_move_pattern_guards, euclidean_division)]
+#![feature(bind_by_move_pattern_guards, euclidean_division, associated_type_defaults)]
 
 mod config;
 mod display;
