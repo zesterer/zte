@@ -53,17 +53,22 @@ impl MainUi {
     }
 
     pub fn handle(&mut self, event: Event) {
-        match event {
-            Event::OpenPrompt => unimplemented!(),
-            Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::default())),
-            Event::Escape if self.menu.is_some() => self.menu = None,
-            event => self.panels.handle(
-                Context {
-                    theme: &self.theme,
-                    state: &self.state,
-                },
-                event,
-            ),
+        match &mut self.menu {
+            Some(menu) => match event {
+                Event::Escape => self.menu = None,
+                _ => { /* TODO: Send event to menu here */ },
+            },
+            None => match event {
+                Event::OpenPrompt => unimplemented!(),
+                Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::default())),
+                event => self.panels.handle(
+                    Context {
+                        theme: &self.theme,
+                        state: &self.state,
+                    },
+                    event,
+                ),
+            }
         }
     }
 
