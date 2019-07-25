@@ -1,4 +1,7 @@
-use std::io::{Write, stdout, Stdout};
+use std::{
+    io::{Write, stdout, Stdout},
+    fmt,
+};
 use vek::*;
 use termion::{
     screen::AlternateScreen,
@@ -14,9 +17,21 @@ pub enum Color {
     Reset,
 }
 
+impl fmt::Display for Color {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        Ok(())
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Attr {
     Reset,
+}
+
+impl fmt::Display for Attr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -144,12 +159,25 @@ impl Display {
                 if front != back {
                     if last_pos != Vec2::new(col.saturating_sub(1), row) {
                         write!(self.screen, "{}", cursor::Goto(col as u16 + 1, row as u16 + 1)).unwrap();
-                        last_pos = Vec2::new(col, row);
                     }
 
+                    let Cell(c, last_fg, last_bg, last_attr) = front;
                     let Cell(c, fg, bg, attr) = back;
+
+                    if last_fg != fg {
+                        write!(self.screen, "{}", fg).unwrap();
+                    }
+                    if last_bg != bg {
+                        write!(self.screen, "{}", bg).unwrap();
+                    }
+                    if last_attr != attr {
+                        write!(self.screen, "{}", attr).unwrap();
+                    }
+
                     //self.term.terminal().write(crossterm::style(c).with(fg).on(bg).attr(attr)).unwrap();
                     write!(self.screen, "{}", c).unwrap();
+
+                    last_pos = Vec2::new(col, row);
                 }
             }
         }
