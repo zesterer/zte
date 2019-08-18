@@ -18,6 +18,7 @@ pub enum Event {
     CloseEditor,
     OpenPrompt,
     OpenSwitcher,
+    SaveBuffer,
     Escape,
     Quit,
 }

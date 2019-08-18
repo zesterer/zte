@@ -4,7 +4,7 @@ use std::{
     cell::{RefCell, Ref, RefMut},
     path::PathBuf,
     fs::File,
-    io::{self, Read},
+    io::{self, Read, Write},
 };
 use super::{
     Line,
@@ -35,6 +35,7 @@ pub struct SharedBuffer {
     content: Content,
     cursor_id_counter: usize,
     cursors: HashMap<CursorId, Cursor>,
+    unsaved: bool,
 }
 
 impl SharedBuffer {
@@ -57,6 +58,14 @@ impl SharedBuffer {
         self.cursors.get_mut(id).unwrap()
     }
 
+    fn is_unsaved(&self) -> bool {
+        self.unsaved
+    }
+
+    fn trigger_mutation(&mut self) {
+        self.unsaved = true;
+    }
+
     fn remove_cursor(&mut self, id: &CursorId) {
         self.cursors.remove(id);
     }
@@ -77,6 +86,7 @@ impl SharedBuffer {
         self.cursors
             .values_mut()
             .for_each(|cursor| cursor.shift_relative_to(pos, 1));
+        self.trigger_mutation();
     }
 
     fn backspace(&mut self, id: &CursorId) {
@@ -86,6 +96,7 @@ impl SharedBuffer {
             self.cursors
                 .values_mut()
                 .for_each(|cursor| cursor.shift_relative_to(pos - 1, -1));
+            self.trigger_mutation();
         }
     }
 
@@ -95,6 +106,19 @@ impl SharedBuffer {
         self.cursors
             .values_mut()
             .for_each(|cursor| cursor.shift_relative_to(pos, -1));
+        self.trigger_mutation();
+    }
+
+    pub fn try_save(&mut self) -> Result<(), io::Error> {
+        if let Some(path) = &self.path {
+            let mut f = File::create(path)?;
+            for c in self.content.chars() {
+                f.write(c.encode_utf8(&mut [0; 4]).as_bytes())?;
+            }
+            self.unsaved = false;
+        }
+
+        Ok(())
     }
 
     pub fn make_ref(this: Rc<RefCell<Self>>) -> SharedBufferRef {
@@ -113,6 +137,7 @@ impl Default for SharedBuffer {
             path: None,
             cursor_id_counter: 0,
             cursors: HashMap::new(),
+            unsaved: true,
         }
     }
 }
@@ -127,6 +152,7 @@ impl SharedBufferRef {
         Self::from(SharedBuffer {
             content: Content::from(s),
             path,
+            unsaved: false,
             ..Default::default()
         })
     }
@@ -192,12 +218,16 @@ pub struct SharedBufferGuard<'a> {
 impl<'a> Buffer for SharedBufferGuard<'a> {
     type Error = SharedBufferError;
 
+    fn config(&self) -> &Config {
+        &self.buffer.config
+    }
+
     fn title(&self) -> &str {
         self.buffer.title()
     }
 
-    fn config(&self) -> &Config {
-        &self.buffer.config
+    fn is_unsaved(&self) -> bool {
+        self.buffer.is_unsaved()
     }
 
     fn len(&self) -> usize {
@@ -227,12 +257,16 @@ pub struct SharedBufferGuardMut<'a> {
 impl<'a> Buffer for SharedBufferGuardMut<'a> {
     type Error = SharedBufferError;
 
+    fn config(&self) -> &Config {
+        &self.buffer.config
+    }
+
     fn title(&self) -> &str {
         self.buffer.title()
     }
 
-    fn config(&self) -> &Config {
-        &self.buffer.config
+    fn is_unsaved(&self) -> bool {
+        self.buffer.is_unsaved()
     }
 
     fn len(&self) -> usize {
@@ -267,5 +301,9 @@ impl<'a> BufferMut for SharedBufferGuardMut<'a> {
 
     fn delete(&mut self) {
         self.buffer.delete(&self.cursor_id);
+    }
+
+    fn try_save(&mut self) -> Result<(), io::Error> {
+        self.buffer.try_save()
     }
 }

@@ -17,7 +17,7 @@ use crate::{
     display::Display,
     event::{Dir, Event},
     draw::Canvas,
-    ui::MainUi,
+    ui::{MainUi, Theme},
     buffer::{Buffer, BufferMut, Line, SharedBufferRef},
     state::State,
 };
@@ -55,15 +55,13 @@ fn main() {
         .get_matches();
 
     let mut display = Display::new();
-    let mut ui = MainUi::default();
 
-    match matches.values_of("PATH") {
-        Some(paths) => {
-            let state = State::from_paths(paths.map(|path| path.to_string().into())).0;
-            ui = ui.with_state(state);
-        },
-        None => {},
-    }
+    let state = match matches.values_of("PATH") {
+        Some(paths) => State::from_paths(paths.map(|path| path.to_string().into())).0,
+        None => State::default(),
+    };
+
+    let mut ui = MainUi::new(Theme::default(), state);
 
     let event_rx = input::begin_reading();
     loop {

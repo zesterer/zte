@@ -40,6 +40,7 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Ctrl('n')) => Event::NewEditor(Dir::Down),
             InputEvent::Key(KeyEvent::Ctrl('p')) => Event::OpenPrompt,
             InputEvent::Key(KeyEvent::Ctrl('o')) => Event::OpenSwitcher,
+            InputEvent::Key(KeyEvent::Ctrl('s')) => Event::SaveBuffer,
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 51, 68] => Event::SwitchEditor(Dir::Left),
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 51, 67] => Event::SwitchEditor(Dir::Right),
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 51, 65] => Event::SwitchEditor(Dir::Up),

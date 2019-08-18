@@ -45,7 +45,7 @@ impl State {
         (this, errors)
     }
 
-    pub fn recent(&self) -> &[SharedBufferRef] {
+    pub fn buffers(&self) -> &[SharedBufferRef] {
         &self.recent
     }
 }

@@ -26,6 +26,16 @@ impl Content {
             .next()
     }
 
+    pub fn chars(&self) -> impl Iterator<Item=char> + '_ {
+        self.lines
+            .iter()
+            .map(|line| line
+                .iter()
+                .copied()
+                .chain(Some('\n')))
+            .flatten()
+    }
+
     pub fn pos_to_rank_line(&self, mut pos: usize) -> Vec2<usize> {
         let mut row = 0;
         for line in self.lines() {

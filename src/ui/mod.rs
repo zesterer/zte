@@ -7,7 +7,7 @@ mod switcher;
 pub use self::{
     theme::Theme,
     editor::Editor,
-    panels::Panels,
+    panels::{Panels, Tile},
     switcher::Switcher,
 };
 
@@ -40,17 +40,24 @@ pub struct MainUi {
 
 impl MainUi {
     pub fn new(theme: Theme, state: State) -> Self {
+        let panels = match state.buffers().len() {
+            0 => Panels::empty(1),
+            _ => state
+                .buffers()
+                .iter()
+                .rev()
+                .fold(Panels::empty(0), |mut panels, buffer| {
+                    panels.insert_column(0, Tile::from(buffer.clone()));
+                    panels
+                }),
+        };
+
         Self {
             theme,
             state,
-            panels: Panels::empty(3),
+            panels,
             menu: None,
         }
-    }
-
-    pub fn with_state(mut self, state: State) -> Self {
-        self.state = state;
-        self
     }
 
     pub fn handle(&mut self, event: Event) {

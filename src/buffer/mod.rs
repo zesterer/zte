@@ -7,7 +7,10 @@ pub use self::{
     content::Content,
 };
 
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    io,
+};
 use vek::*;
 use crate::Dir;
 
@@ -103,6 +106,7 @@ pub trait Buffer {
     fn config(&self) -> &Config;
 
     fn title(&self) -> &str;
+    fn is_unsaved(&self) -> bool;
 
     fn len(&self) -> usize;
     fn line_count(&self) -> usize;
@@ -169,17 +173,27 @@ pub trait BufferMut: Buffer {
     fn backspace(&mut self);
     fn delete(&mut self);
 
+    fn try_save(&mut self) -> Result<(), io::Error>;
+
     fn cursor_move(&mut self, dir: Dir, n: usize) {
         match dir {
             Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
             Dir::Right => self.cursor_mut().pos = (self.cursor().pos + n).min(self.len()),
             Dir::Up => {
                 let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
-                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)), self.config());
+                if cursor_loc.y == 0 {
+                    self.cursor_mut().pos = 0;
+                } else {
+                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)), self.config());
+                }
             },
             Dir::Down => {
                 let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
-                self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + n), self.config());
+                if cursor_loc.y == self.line_count() {
+                    self.cursor_mut().pos = self.len() + 1;
+                } else {
+                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + n), self.config());
+                }
             },
         }
     }

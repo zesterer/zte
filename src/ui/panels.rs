@@ -15,6 +15,14 @@ pub enum Tile {
     Editor(Editor),
 }
 
+impl<T> From<T> for Tile
+    where Editor: From<T>
+{
+    fn from(t: T) -> Self {
+        Tile::Editor(t.into())
+    }
+}
+
 pub struct Column {
     active_idx: usize,
     tiles: Vec<Tile>,
@@ -122,7 +130,6 @@ pub struct Panels {
 
 impl Panels {
     pub fn empty(n: usize) -> Self {
-        assert!(n > 0);
         let buf = SharedBufferRef::default();
         Self {
             active_idx: 0,
@@ -130,6 +137,10 @@ impl Panels {
                 .map(|_| Column::single(Tile::Editor(Editor::from(buf.clone()))))
                 .collect(),
         }
+    }
+
+    pub fn insert_column(&mut self, idx: usize, tile: Tile) {
+        self.columns.insert(idx, Column::single(tile));
     }
 
     fn column_area(&self, size: Extent2<usize>, idx: usize) -> Rect<usize, usize> {

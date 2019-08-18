@@ -47,6 +47,7 @@ impl Element for Editor {
             Event::Delete => self.buffer.borrow_mut().delete(),
             Event::CursorMove(dir) => self.buffer.borrow_mut().cursor_move(dir, 1),
             Event::PageMove(dir) => self.buffer.borrow_mut().cursor_move(dir, PAGE_LENGTH),
+            Event::SaveBuffer => self.buffer.borrow_mut().try_save().unwrap(),
             _ => {},
         }
     }
@@ -85,7 +86,7 @@ impl Element for Editor {
         canvas.set(Vec2::new(sz.w - 1, sz.h - 1), '\''.into());
 
         // Title
-        let title = format!("[{}]", buf.title());
+        let title = format!("[{}{}]", if buf.is_unsaved() { "*" } else { "" }, buf.title());
         for (i, c) in title.chars()
             .enumerate()
         {
