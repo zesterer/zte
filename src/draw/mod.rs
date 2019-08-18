@@ -1,8 +1,12 @@
+// Reexports
+pub use crate::display::{
+    Color,
+    Attr,
+};
+
 use vek::*;
 use crate::display::{
     Cell,
-    Color,
-    Attr,
     Display,
 };
 
@@ -18,14 +22,27 @@ fn rect_to_points(canvas: &impl Canvas, pos: Vec2<usize>, size: Extent2<isize>) 
 }
 
 pub trait Canvas: Sized {
-    fn set_cursor(&mut self, pos: Option<Vec2<usize>>);
-    fn set(&mut self, pos: Vec2<usize>, cell: Cell);
+    fn set_cursor_raw(&mut self, pos: Option<Vec2<usize>>);
+    fn set_raw(&mut self, pos: Vec2<usize>, cell: Cell);
     fn rect(&self) -> Rect<usize, usize>;
     fn size(&self) -> Extent2<usize>;
 
     fn fg(&self) -> Color;
     fn bg(&self) -> Color;
     fn attr(&self) -> Attr;
+
+    fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
+        self.set_cursor_raw(pos.map(|pos| self.rect().position() + pos));
+    }
+
+    fn set(&mut self, pos: Vec2<usize>, cell: Cell) {
+        let pos = pos.map2(self.size().into(), |e, sz: usize| e.min(sz.saturating_sub(1)));
+        self.set_raw(self.rect().position() + pos, cell);
+    }
+
+    fn write_char(&mut self, pos: Vec2<usize>, c: char) {
+        self.set(pos, Cell(c, self.fg(), self.bg(), self.attr()));
+    }
 
     fn with_fg<'a>(&'a mut self, fg: Color) -> Drawer<'a, Self> {
         Drawer { fg, bg: self.bg(), attr: self.attr(), rect: self.rect(), canvas: self }
@@ -41,8 +58,8 @@ pub trait Canvas: Sized {
 
     fn window<'a>(&'a mut self, rect: Rect<usize, usize>) -> Drawer<'a, Self> {
         let rect = Rect::new(
-            rect.x,
-            rect.y,
+            self.rect().position().x + rect.x,
+            self.rect().position().y + rect.y,
             rect.w.min(self.rect().w - rect.x),
             rect.h.min(self.rect().h - rect.y),
         );
@@ -71,13 +88,12 @@ pub struct Drawer<'a, D: Canvas> {
 }
 
 impl<'a, D: Canvas> Canvas for Drawer<'a, D> {
-    fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
-        self.canvas.set_cursor(pos.map(|pos| self.rect().position() + pos.map2(self.size().into(), |e, sz: usize| e.min(sz.saturating_sub(1)))));
+    fn set_cursor_raw(&mut self, pos: Option<Vec2<usize>>) {
+        self.canvas.set_cursor_raw(pos);
     }
 
-    fn set(&mut self, pos: Vec2<usize>, cell: Cell) {
-        let pos = pos.map2(self.size().into(), |e, sz: usize| e.min(sz.saturating_sub(1)));
-        self.canvas.set(self.rect().position() + pos, cell);
+    fn set_raw(&mut self, pos: Vec2<usize>, cell: Cell) {
+        self.canvas.set_raw(pos, cell);
     }
 
     fn rect(&self) -> Rect<usize, usize> {
@@ -94,11 +110,11 @@ impl<'a, D: Canvas> Canvas for Drawer<'a, D> {
 }
 
 impl Canvas for Display {
-    fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
+    fn set_cursor_raw(&mut self, pos: Option<Vec2<usize>>) {
         self.set_cursor(pos);
     }
 
-    fn set(&mut self, pos: Vec2<usize>, cell: Cell) {
+    fn set_raw(&mut self, pos: Vec2<usize>, cell: Cell) {
         self.grid_mut().set(pos, cell);
     }
 

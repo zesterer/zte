@@ -9,16 +9,35 @@ use termion::{
     raw::{RawTerminal, IntoRawMode},
     clear,
     cursor,
+    color,
     terminal_size,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Color {
+    Rgb(Rgb<u8>),
     Reset,
 }
 
-impl fmt::Display for Color {
+struct Fg<T>(T);
+struct Bg<T>(T);
+
+impl fmt::Display for Fg<Color> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Color::Rgb(rgb) => write!(f, "{}", color::Rgb(rgb.r, rgb.g, rgb.b).fg_string())?,
+            Color::Reset => write!(f, "{}", color::Reset.fg_str())?,
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Bg<Color> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Color::Rgb(rgb) => write!(f, "{}", color::Rgb(rgb.r, rgb.g, rgb.b).bg_string())?,
+            Color::Reset => write!(f, "{}", color::Reset.bg_str())?,
+        }
         Ok(())
     }
 }
@@ -161,22 +180,8 @@ impl Display {
                         write!(self.screen, "{}", cursor::Goto(col as u16 + 1, row as u16 + 1)).unwrap();
                     }
 
-                    let Cell(c, last_fg, last_bg, last_attr) = front;
                     let Cell(c, fg, bg, attr) = back;
-
-                    if last_fg != fg {
-                        write!(self.screen, "{}", fg).unwrap();
-                    }
-                    if last_bg != bg {
-                        write!(self.screen, "{}", bg).unwrap();
-                    }
-                    if last_attr != attr {
-                        write!(self.screen, "{}", attr).unwrap();
-                    }
-
-                    //self.term.terminal().write(crossterm::style(c).with(fg).on(bg).attr(attr)).unwrap();
-                    write!(self.screen, "{}", c).unwrap();
-
+                    write!(self.screen, "{}{}{}{}", Fg(fg), Bg(bg), attr, c).unwrap();
                     last_pos = Vec2::new(col, row);
                 }
             }

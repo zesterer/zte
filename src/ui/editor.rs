@@ -1,6 +1,6 @@
 use vek::*;
 use crate::{
-    Canvas,
+    draw::*,
     SharedBufferRef,
     Buffer,
     BufferMut,
@@ -96,8 +96,10 @@ impl Element for Editor {
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 
         for row in 0..canvas.size().h {
-            let (line, margin) = match buf.line(row + self.loc.y) {
-                Some(line) => (line, format!("{:>4} ", row + self.loc.y)),
+            let buf_row = row + self.loc.y;
+
+            let (line, margin) = match buf.line(buf_row) {
+                Some(line) => (line, format!("{:>4} ", buf_row)),
                 None => (Line::empty(), "     ".to_string()),
             };
 
@@ -106,7 +108,10 @@ impl Element for Editor {
                 .chars()
                 .enumerate()
             {
-                canvas.set(Vec2::new(col, row), c.into());
+                canvas
+                    .with_fg(ctx.theme.line_number_color)
+                    .with_bg(ctx.theme.margin_color)
+                    .write_char(Vec2::new(col, row), c);
             }
 
             // Text
@@ -116,7 +121,10 @@ impl Element for Editor {
                 .enumerate()
                 .take(canvas.size().w.saturating_sub(MARGIN_WIDTH))
             {
-                canvas.set(Vec2::new(MARGIN_WIDTH + col, row), c.into());
+                let buf_col = col + self.loc.x;
+
+                canvas
+                    .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
             }
         }
 
