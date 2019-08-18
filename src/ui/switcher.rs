@@ -28,6 +28,10 @@ impl Element for Switcher {
         }
     }
 
+    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+        // Nothing yet
+    }
+
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
         let sz = canvas.size();
         let mut canvas = canvas.window(Rect::new(

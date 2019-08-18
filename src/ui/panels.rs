@@ -96,6 +96,15 @@ impl Element for Column {
         }
     }
 
+    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+        for idx in 0..self.tiles.len() {
+            let tile_area = self.tile_area(canvas.size(), idx);
+            match &mut self.tiles[idx] {
+                Tile::Editor(editor) => editor.update(ctx, &mut canvas.window(tile_area), active && idx == self.active_idx),
+            }
+        }
+    }
+
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
         for (idx, tile) in self.tiles.iter().enumerate() {
             let tile_area = self.tile_area(canvas.size(), idx);
@@ -180,6 +189,13 @@ impl Element for Panels {
             },
             Event::CloseEditor => { let _ = self.close_editor(); },
             event => { self.active_mut().map(|col| col.handle(ctx, event)); },
+        }
+    }
+
+    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+        for idx in 0..self.columns.len() {
+            let column_area = self.column_area(canvas.size(), idx);
+            self.columns[idx].update(ctx, &mut canvas.window(column_area), active && idx == self.active_idx);
         }
     }
 

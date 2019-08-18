@@ -13,7 +13,12 @@ use super::{
     Element,
 };
 
+const MARGIN_WIDTH: usize = 5;
+const CURSOR_SPACE: Vec2<usize> = Vec2 { x: 4, y: 4 };
+const PAGE_LENGTH: usize = 24;
+
 pub struct Editor {
+    loc: Vec2<usize>,
     buffer: SharedBufferRef,
 }
 
@@ -25,7 +30,10 @@ impl Default for Editor {
 
 impl From<SharedBufferRef> for Editor {
     fn from(buffer: SharedBufferRef) -> Self {
-        Self { buffer }
+        Self {
+            loc: Vec2::zero(),
+            buffer,
+        }
     }
 }
 
@@ -38,8 +46,24 @@ impl Element for Editor {
             Event::Backspace => self.buffer.borrow_mut().backspace(),
             Event::Delete => self.buffer.borrow_mut().delete(),
             Event::CursorMove(dir) => self.buffer.borrow_mut().cursor_move(dir, 1),
+            Event::PageMove(dir) => self.buffer.borrow_mut().cursor_move(dir, PAGE_LENGTH),
             _ => {},
         }
+    }
+
+    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+        let canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
+
+        let buf = self.buffer.borrow();
+
+        let cursor_loc = buf.pos_loc(buf.cursor().pos, buf.config());
+
+        self.loc.x = self.loc.x
+            .min(cursor_loc.x.saturating_sub(CURSOR_SPACE.x))
+            .max(cursor_loc.x.saturating_sub(canvas.size().w - MARGIN_WIDTH - CURSOR_SPACE.x));
+        self.loc.y = self.loc.y
+            .min(cursor_loc.y.saturating_sub(CURSOR_SPACE.y))
+            .max(cursor_loc.y.saturating_sub(canvas.size().h - CURSOR_SPACE.y));
     }
 
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
@@ -70,11 +94,9 @@ impl Element for Editor {
 
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 
-        const MARGIN_WIDTH: usize = 5;
-
         for row in 0..canvas.size().h {
-            let (line, margin) = match buf.line(row) {
-                Some(line) => (line, format!("{:>4} ", row)),
+            let (line, margin) = match buf.line(row + self.loc.y) {
+                Some(line) => (line, format!("{:>4} ", row + self.loc.y)),
                 None => (Line::empty(), "     ".to_string()),
             };
 
@@ -89,6 +111,7 @@ impl Element for Editor {
             // Text
             for (col, (_, c)) in line
                 .glyphs(&buf.config())
+                .skip(self.loc.x)
                 .enumerate()
                 .take(canvas.size().w.saturating_sub(MARGIN_WIDTH))
             {
@@ -97,8 +120,9 @@ impl Element for Editor {
         }
 
         if active {
-            let loc = buf.pos_loc(buf.cursor().pos, &buf.config()) + Vec2::unit_x() * MARGIN_WIDTH;
-            canvas.set_cursor(Some(loc).filter(|loc| loc.x < canvas.size().w && loc.y < canvas.size().h));
+            let cursor_loc = buf.pos_loc(buf.cursor().pos, &buf.config());
+            let cursor_screen_loc = cursor_loc.map2(self.loc, |e, loc| e.saturating_sub(loc)) + Vec2::unit_x() * MARGIN_WIDTH;
+            canvas.set_cursor(Some(cursor_screen_loc).filter(|loc| loc.x < canvas.size().w && loc.y < canvas.size().h));
         }
     }
 }

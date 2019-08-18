@@ -27,6 +27,7 @@ pub trait Element {
     type Response = ();
 
     fn handle(&mut self, ctx: Context, event: Event) -> Self::Response;
+    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool);
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool);
 }
 
@@ -69,6 +70,20 @@ impl MainUi {
                     event,
                 ),
             }
+        }
+    }
+
+    pub fn update(&mut self, canvas: &mut impl Canvas) {
+        let ctx = Context {
+            theme: &self.theme,
+            state: &self.state,
+        };
+
+        self.panels.update(ctx, canvas, true);
+
+        match &mut self.menu {
+            Some(Menu::Switcher(switcher)) => switcher.update(ctx, canvas, true),
+            None => {},
         }
     }
 

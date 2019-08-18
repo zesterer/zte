@@ -12,6 +12,7 @@ pub enum Event {
     Backspace,
     Delete,
     CursorMove(Dir),
+    PageMove(Dir),
     SwitchEditor(Dir),
     NewEditor(Dir),
     CloseEditor,

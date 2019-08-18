@@ -1,4 +1,4 @@
-#![feature(bind_by_move_pattern_guards, euclidean_division, associated_type_defaults)]
+#![feature(bind_by_move_pattern_guards, associated_type_defaults)]
 
 mod config;
 mod display;
@@ -67,6 +67,7 @@ fn main() {
 
     let event_rx = input::begin_reading();
     loop {
+        ui.update(&mut display);
         ui.render(&mut display);
         display.render();
 
