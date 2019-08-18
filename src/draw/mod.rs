@@ -60,8 +60,8 @@ pub trait Canvas: Sized {
         let rect = Rect::new(
             self.rect().position().x + rect.x,
             self.rect().position().y + rect.y,
-            rect.w.min(self.rect().w - rect.x),
-            rect.h.min(self.rect().h - rect.y),
+            rect.w.min(self.rect().w.saturating_sub(rect.x)),
+            rect.h.min(self.rect().h.saturating_sub(rect.y)),
         );
         Drawer { fg: self.fg(), bg: self.bg(), attr: self.attr(), rect, canvas: self }
     }

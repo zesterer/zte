@@ -61,10 +61,10 @@ impl Element for Editor {
 
         self.loc.x = self.loc.x
             .min(cursor_loc.x.saturating_sub(CURSOR_SPACE.x))
-            .max(cursor_loc.x.saturating_sub(canvas.size().w - MARGIN_WIDTH - CURSOR_SPACE.x));
+            .max(cursor_loc.x.saturating_sub(canvas.size().w.saturating_sub(MARGIN_WIDTH + CURSOR_SPACE.x)));
         self.loc.y = self.loc.y
             .min(cursor_loc.y.saturating_sub(CURSOR_SPACE.y))
-            .max(cursor_loc.y.saturating_sub(canvas.size().h - CURSOR_SPACE.y));
+            .max(cursor_loc.y.saturating_sub(canvas.size().h.saturating_sub(CURSOR_SPACE.y)));
     }
 
     fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
@@ -72,18 +72,18 @@ impl Element for Editor {
         let buf = self.buffer.borrow();
 
         // Frame
-        for i in 1..sz.w - 1 {
+        for i in 1..sz.w.saturating_sub(1) {
             canvas.set(Vec2::new(i, 0), '-'.into());
-            canvas.set(Vec2::new(i, sz.h - 1), '-'.into());
+            canvas.set(Vec2::new(i, sz.h.saturating_sub(1)), '-'.into());
         }
-        for j in 1..sz.h - 1 {
+        for j in 1..sz.h.saturating_sub(1) {
             canvas.set(Vec2::new(0, j), '|'.into());
-            canvas.set(Vec2::new(sz.w - 1, j), '|'.into());
+            canvas.set(Vec2::new(sz.w.saturating_sub(1), j), '|'.into());
         }
         canvas.set(Vec2::new(0, 0), '.'.into());
-        canvas.set(Vec2::new(sz.w - 1, 0), '.'.into());
-        canvas.set(Vec2::new(0, sz.h - 1), '\''.into());
-        canvas.set(Vec2::new(sz.w - 1, sz.h - 1), '\''.into());
+        canvas.set(Vec2::new(sz.w.saturating_sub(1), 0), '.'.into());
+        canvas.set(Vec2::new(0, sz.h.saturating_sub(1)), '\''.into());
+        canvas.set(Vec2::new(sz.w.saturating_sub(1), sz.h.saturating_sub(1)), '\''.into());
 
         // Title
         let title = format!("[{}{}]", if buf.is_unsaved() { "*" } else { "" }, buf.title());
