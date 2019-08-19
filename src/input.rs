@@ -44,6 +44,9 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Ctrl('p')) => Event::OpenPrompt,
             InputEvent::Key(KeyEvent::Ctrl('o')) => Event::OpenSwitcher,
             InputEvent::Key(KeyEvent::Ctrl('s')) => Event::SaveBuffer,
+            InputEvent::Key(KeyEvent::Ctrl('x')) => Event::Cut,
+            InputEvent::Key(KeyEvent::Ctrl('c')) => Event::Copy,
+            InputEvent::Key(KeyEvent::Ctrl('v')) => Event::Paste,
 
             InputEvent::Key(KeyEvent::Alt('h')) => Event::SwitchEditor(Dir::Left),
             InputEvent::Key(KeyEvent::Alt('k')) => Event::SwitchEditor(Dir::Right),

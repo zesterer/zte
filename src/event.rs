@@ -19,6 +19,9 @@ pub enum Event {
     OpenPrompt,
     OpenSwitcher,
     SaveBuffer,
+    Cut,
+    Copy,
+    Paste,
     Escape,
     Quit,
 }

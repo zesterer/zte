@@ -1,4 +1,5 @@
 use vek::*;
+use clipboard::{ClipboardContext, ClipboardProvider};
 use crate::{
     draw::*,
     SharedBufferRef,
@@ -7,6 +8,7 @@ use crate::{
     Line,
     Event,
     Dir,
+    buffer::highlight::Highlights,
 };
 use super::{
     Context,
@@ -48,6 +50,10 @@ impl Element for Editor {
             Event::CursorMove(dir) => self.buffer.borrow_mut().cursor_move(dir, 1),
             Event::PageMove(dir) => self.buffer.borrow_mut().cursor_move(dir, PAGE_LENGTH),
             Event::SaveBuffer => self.buffer.borrow_mut().try_save().unwrap(),
+            Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
+                Ok(s) => self.buffer.borrow_mut().insert_str(&s),
+                Err(_) => {},
+            },
             _ => {},
         }
     }
@@ -95,8 +101,11 @@ impl Element for Editor {
 
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 
+        let highlights = Highlights::from(buf.get_string());
+
         for row in 0..canvas.size().h {
             let buf_row = row + self.loc.y;
+            let buf_row_pos = buf.loc_pos(Vec2::new(0, buf_row), &buf.config());
 
             let (line, margin) = match buf.line(buf_row) {
                 Some(line) => (line, format!("{:>4} ", buf_row + 1)),
@@ -115,15 +124,17 @@ impl Element for Editor {
             }
 
             // Text
-            for (col, (_, c)) in line
+            for (col, (line_pos, c)) in line
                 .glyphs(&buf.config())
                 .skip(self.loc.x)
                 .enumerate()
                 .take(canvas.size().w.saturating_sub(MARGIN_WIDTH))
             {
                 let buf_col = col + self.loc.x;
+                let buf_pos = buf_row_pos + line_pos.unwrap_or(0);
 
                 canvas
+                    .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
                     .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
             }
         }

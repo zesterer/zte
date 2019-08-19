@@ -1,5 +1,6 @@
 pub mod shared;
-mod content;
+pub mod content;
+pub mod highlight;
 
 // Reexports
 pub use self::{
@@ -119,6 +120,12 @@ pub trait Buffer {
             .scan(0, move |_, l| self.line(l)))
     }
 
+    fn get_string(&self) -> String {
+        let mut s = String::new();
+        self.lines().for_each(|line| s.extend(line.chars()));
+        s
+    }
+
     fn pos_loc(&self, mut pos: usize, cfg: &Config) -> Vec2<usize> {
         let mut row = 0;
         for line in self.lines() {
@@ -145,10 +152,8 @@ pub trait Buffer {
     }
 
     fn loc_pos(&self, loc: Vec2<usize>, cfg: &Config) -> usize {
-        let mut pos = self
-            .lines()
-            .take(loc.y)
-            .map(|l| l.len())
+        let mut pos = (0..loc.y)
+            .map(|l| self.line(l).map(|l| l.len()).unwrap_or(0))
             .sum::<usize>();
 
         pos += match self.line(loc.y) {
@@ -174,6 +179,12 @@ pub trait BufferMut: Buffer {
     fn delete(&mut self);
 
     fn try_save(&mut self) -> Result<(), io::Error>;
+
+    fn insert_str(&mut self, s: &str) {
+        for c in s.chars() {
+            self.insert(c);
+        }
+    }
 
     fn cursor_move(&mut self, dir: Dir, n: usize) {
         match dir {
