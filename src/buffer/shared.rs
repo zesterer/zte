@@ -148,18 +148,24 @@ pub struct SharedBufferRef {
 }
 
 impl SharedBufferRef {
-    pub fn new(s: String, path: Option<PathBuf>) -> Self {
+    pub fn new(s: Option<String>, path: Option<PathBuf>) -> Self {
         Self::from(SharedBuffer {
-            content: Content::from(s),
+            unsaved: s.is_none(),
+            content: Content::from(s.unwrap_or(String::new())),
             path,
-            unsaved: false,
             ..Default::default()
         })
     }
 
     pub fn open(path: PathBuf) -> Result<Self, SharedBufferError> {
-        let mut buf = String::new();
-        File::open(&path)?.read_to_string(&mut buf)?;
+        let buf = if let Ok(mut file) = File::open(&path) {
+            let mut buf = String::new();
+            file.read_to_string(&mut buf)?;
+            Some(buf)
+        } else {
+            None
+        };
+
         Ok(Self::new(buf, Some(path)))
     }
 

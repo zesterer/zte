@@ -99,7 +99,7 @@ impl Element for Editor {
             let buf_row = row + self.loc.y;
 
             let (line, margin) = match buf.line(buf_row) {
-                Some(line) => (line, format!("{:>4} ", buf_row)),
+                Some(line) => (line, format!("{:>4} ", buf_row + 1)),
                 None => (Line::empty(), "     ".to_string()),
             };
 
