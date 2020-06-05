@@ -2,9 +2,8 @@ use vek::*;
 use clipboard::{ClipboardContext, ClipboardProvider};
 use crate::{
     draw::*,
-    SharedBufferRef,
-    Buffer,
-    BufferMut,
+    BufferId,
+    BufferHandle,
     Line,
     Event,
     Dir,
@@ -21,17 +20,11 @@ const PAGE_LENGTH: usize = 24;
 
 pub struct Editor {
     loc: Vec2<usize>,
-    buffer: SharedBufferRef,
+    buffer: BufferHandle,
 }
 
-impl Default for Editor {
-    fn default() -> Self {
-        Self::from(SharedBufferRef::default())
-    }
-}
-
-impl From<SharedBufferRef> for Editor {
-    fn from(buffer: SharedBufferRef) -> Self {
+impl From<BufferHandle> for Editor {
+    fn from(buffer: BufferHandle) -> Self {
         Self {
             loc: Vec2::zero(),
             buffer,
@@ -39,29 +32,49 @@ impl From<SharedBufferRef> for Editor {
     }
 }
 
+impl Editor {
+    pub fn empty(ctx: &mut Context) -> Self {
+        let buffer = ctx.state.new_empty_buffer();
+        Self::from(ctx.state.new_handle(buffer).unwrap())
+    }
+}
+
 impl Element for Editor {
     type Response = ();
 
-    fn handle(&mut self, ctx: Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) {
+        let mut buf = ctx.state
+            .get_buffer(self.buffer)
+            .unwrap();
+
         match event {
-            Event::Insert(c) => self.buffer.borrow_mut().insert(c),
-            Event::Backspace => self.buffer.borrow_mut().backspace(),
-            Event::Delete => self.buffer.borrow_mut().delete(),
-            Event::CursorMove(dir) => self.buffer.borrow_mut().cursor_move(dir, 1),
-            Event::PageMove(dir) => self.buffer.borrow_mut().cursor_move(dir, PAGE_LENGTH),
-            Event::SaveBuffer => self.buffer.borrow_mut().try_save().unwrap(),
+            Event::Insert(c) => buf.insert(c),
+            Event::Backspace => buf.backspace(),
+            Event::Delete => buf.delete(),
+            Event::CursorMove(dir) => buf.cursor_move(dir, 1),
+            Event::PageMove(dir) => buf.cursor_move(dir, PAGE_LENGTH),
+            Event::SaveBuffer => buf.try_save().unwrap(),
             Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
-                Ok(s) => self.buffer.borrow_mut().insert_str(&s),
+                Ok(s) => buf.insert_str(&s),
                 Err(_) => {},
             },
+            Event::DuplicateLine => buf.duplicate_line(),
+            Event::SwitchBuffer(buffer) => self.buffer = buffer,
             _ => {},
         }
     }
 
-    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+    fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 
-        let buf = self.buffer.borrow();
+        // Update the most recent buffer with this one
+        if active {
+            ctx.state.set_recent_buffer(self.buffer);
+        }
+
+        let buf = ctx.state
+            .get_buffer(self.buffer)
+            .unwrap();
 
         let cursor_loc = buf.pos_loc(buf.cursor().pos, buf.config());
 
@@ -73,31 +86,34 @@ impl Element for Editor {
             .max(cursor_loc.y.saturating_sub(canvas.size().h.saturating_sub(CURSOR_SPACE.y)));
     }
 
-    fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+    fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let sz = canvas.size();
-        let buf = self.buffer.borrow();
+        let buf = ctx.state
+            .get_buffer(self.buffer)
+            .unwrap();
 
         // Frame
+        let mut frame_canvas = canvas.with_fg(Color::Rgb(if active {
+            Rgb::broadcast(255)
+        } else {
+            Rgb::broadcast(100)
+        }));
         for i in 1..sz.w.saturating_sub(1) {
-            canvas.set(Vec2::new(i, 0), '-'.into());
-            canvas.set(Vec2::new(i, sz.h.saturating_sub(1)), '-'.into());
+            frame_canvas.write_char(Vec2::new(i, 0), '-');
+            frame_canvas.write_char(Vec2::new(i, sz.h.saturating_sub(1)), '-');
         }
         for j in 1..sz.h.saturating_sub(1) {
-            canvas.set(Vec2::new(0, j), '|'.into());
-            canvas.set(Vec2::new(sz.w.saturating_sub(1), j), '|'.into());
+            frame_canvas.write_char(Vec2::new(0, j), '|'.into());
+            frame_canvas.write_char(Vec2::new(sz.w.saturating_sub(1), j), '|');
         }
-        canvas.set(Vec2::new(0, 0), '.'.into());
-        canvas.set(Vec2::new(sz.w.saturating_sub(1), 0), '.'.into());
-        canvas.set(Vec2::new(0, sz.h.saturating_sub(1)), '\''.into());
-        canvas.set(Vec2::new(sz.w.saturating_sub(1), sz.h.saturating_sub(1)), '\''.into());
+        frame_canvas.write_char(Vec2::new(0, 0), '.'.into());
+        frame_canvas.write_char(Vec2::new(sz.w.saturating_sub(1), 0), '.');
+        frame_canvas.write_char(Vec2::new(0, sz.h.saturating_sub(1)), '\'');
+        frame_canvas.write_char(Vec2::new(sz.w.saturating_sub(1), sz.h.saturating_sub(1)), '\'');
 
         // Title
         let title = format!("[{}{}]", if buf.is_unsaved() { "*" } else { "" }, buf.title());
-        for (i, c) in title.chars()
-            .enumerate()
-        {
-            canvas.set(Vec2::new((sz.w.saturating_sub(title.len())) / 2 + i, 0), c.into());
-        }
+        canvas.write_str(Vec2::new((sz.w.saturating_sub(title.len())) / 2, 0), &title);
 
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 

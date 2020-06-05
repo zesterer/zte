@@ -44,6 +44,12 @@ pub trait Canvas: Sized {
         self.set(pos, Cell(c, self.fg(), self.bg(), self.attr()));
     }
 
+    fn write_str(&mut self, pos: Vec2<usize>, s: &str) {
+        for (i, c) in s.chars().enumerate() {
+            self.write_char(pos + Vec2::new(i, 0), c);
+        }
+    }
+
     fn with_fg<'a>(&'a mut self, fg: Color) -> Drawer<'a, Self> {
         Drawer { fg, bg: self.bg(), attr: self.attr(), rect: self.rect(), canvas: self }
     }

@@ -5,15 +5,19 @@ use std::{
     path::PathBuf,
     fs::File,
     io::{self, Read, Write},
+    cmp::PartialEq,
 };
+use crate::Dir;
+use vek::*;
 use super::{
     Line,
     Config,
     Cursor,
-    Buffer,
-    BufferMut,
     Content,
 };
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct BufferId(pub usize);
 
 #[derive(Debug)]
 pub enum SharedBufferError {
@@ -21,12 +25,12 @@ pub enum SharedBufferError {
 }
 
 impl From<io::Error> for SharedBufferError {
-    fn from(err: io::Error) -> Self {
+    fn from(err: io::Error) ->  Self {
         SharedBufferError::Io(err)
     }
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CursorId(usize);
 
 pub struct SharedBuffer {
@@ -44,18 +48,12 @@ impl SharedBuffer {
         self.cursor_id_counter
     }
 
-    fn insert_cursor(&mut self, cursor: Cursor) -> CursorId {
-        let id = self.new_id();
-        self.cursors.insert(CursorId(id), cursor);
-        CursorId(id)
+    pub fn cursor(&self, id: CursorId) -> &Cursor {
+        self.cursors.get(&id).unwrap()
     }
 
-    fn cursor(&self, id: &CursorId) -> &Cursor {
-        self.cursors.get(id).unwrap()
-    }
-
-    fn cursor_mut(&mut self, id: &CursorId) -> &mut Cursor {
-        self.cursors.get_mut(id).unwrap()
+    pub fn cursor_mut(&mut self, id: CursorId) -> &mut Cursor {
+        self.cursors.get_mut(&id).unwrap()
     }
 
     fn is_unsaved(&self) -> bool {
@@ -70,7 +68,7 @@ impl SharedBuffer {
         self.cursors.remove(id);
     }
 
-    fn title(&self) -> &str {
+    pub fn title(&self) -> &str {
         self.path
             .as_ref()
             .and_then(|path| path
@@ -80,7 +78,7 @@ impl SharedBuffer {
             .unwrap_or("untitled")
     }
 
-    fn insert(&mut self, id: &CursorId, c: char) {
+    fn insert(&mut self, id: CursorId, c: char) {
         let pos = self.cursor(id).pos;
         self.content.insert(pos, c);
         self.cursors
@@ -89,7 +87,11 @@ impl SharedBuffer {
         self.trigger_mutation();
     }
 
-    fn backspace(&mut self, id: &CursorId) {
+    fn insert_line(&mut self, line: usize, s: &str) {
+        self.content.insert_line(line, s);
+    }
+
+    fn backspace(&mut self, id: CursorId) {
         let pos = self.cursor(id).pos;
         if pos > 0 {
             self.content.remove(pos - 1);
@@ -100,13 +102,19 @@ impl SharedBuffer {
         }
     }
 
-    fn delete(&mut self, id: &CursorId) {
+    fn delete(&mut self, id: CursorId) {
         let pos = self.cursor(id).pos;
         self.content.remove(pos);
         self.cursors
             .values_mut()
             .for_each(|cursor| cursor.shift_relative_to(pos, -1));
         self.trigger_mutation();
+    }
+
+    pub fn insert_cursor(&mut self, cursor: Cursor) -> CursorId {
+        let id = self.new_id();
+        self.cursors.insert(CursorId(id), cursor);
+        CursorId(id)
     }
 
     pub fn try_save(&mut self) -> Result<(), io::Error> {
@@ -121,11 +129,21 @@ impl SharedBuffer {
         Ok(())
     }
 
-    pub fn make_ref(this: Rc<RefCell<Self>>) -> SharedBufferRef {
-        SharedBufferRef {
-            buffer: this.clone(),
-            cursor_id: this.borrow_mut().insert_cursor(Cursor::default())
-        }
+    pub fn open(path: PathBuf) -> Result<Self, SharedBufferError> {
+        let content = if let Ok(mut file) = File::open(&path) {
+            let mut buf = String::new();
+            file.read_to_string(&mut buf)?;
+            Content::from(buf)
+        } else {
+            Content::default()
+        };
+
+        Ok(Self {
+            path: Some(path),
+            content,
+            unsaved: false,
+            ..Self::default()
+        })
     }
 }
 
@@ -142,174 +160,159 @@ impl Default for SharedBuffer {
     }
 }
 
-pub struct SharedBufferRef {
-    buffer: Rc<RefCell<SharedBuffer>>,
-    cursor_id: CursorId,
+#[derive(Copy, Clone, Debug)]
+pub struct BufferHandle {
+    pub buffer_id: BufferId,
+    pub cursor_id: CursorId,
 }
 
-impl SharedBufferRef {
-    pub fn new(s: Option<String>, path: Option<PathBuf>) -> Self {
-        Self::from(SharedBuffer {
-            unsaved: s.is_none(),
-            content: Content::from(s.unwrap_or(String::new())),
-            path,
-            ..Default::default()
-        })
-    }
-
-    pub fn open(path: PathBuf) -> Result<Self, SharedBufferError> {
-        let buf = if let Ok(mut file) = File::open(&path) {
-            let mut buf = String::new();
-            file.read_to_string(&mut buf)?;
-            Some(buf)
-        } else {
-            None
-        };
-
-        Ok(Self::new(buf, Some(path)))
-    }
-
-    pub fn in_use(&self) -> bool {
-        Rc::strong_count(&self.buffer) == 1
-    }
-
-    pub fn borrow(&self) -> SharedBufferGuard {
-        SharedBufferGuard {
-            buffer: self.buffer.borrow(),
-            cursor_id: &self.cursor_id,
-        }
-    }
-
-    pub fn borrow_mut(&mut self) -> SharedBufferGuardMut {
-        SharedBufferGuardMut {
-            buffer: self.buffer.borrow_mut(),
-            cursor_id: &self.cursor_id,
-        }
-    }
+pub struct BufferGuard<'a> {
+    pub buffer: &'a mut SharedBuffer,
+    pub cursor_id: CursorId,
 }
 
-impl From<SharedBuffer> for SharedBufferRef {
-    fn from(buf: SharedBuffer) -> Self {
-        SharedBuffer::make_ref(Rc::new(RefCell::new(buf)))
-    }
-}
-
-impl Default for SharedBufferRef {
-    fn default() -> Self {
-        Self::from(SharedBuffer::default())
-    }
-}
-
-impl Clone for SharedBufferRef {
-    fn clone(&self) -> Self {
-        SharedBuffer::make_ref(self.buffer.clone())
-    }
-}
-
-impl Drop for SharedBufferRef {
-    fn drop(&mut self) {
-        self.buffer
-            .borrow_mut()
-            .remove_cursor(&self.cursor_id);
-    }
-}
-
-// SharedBufferGuard
-
-pub struct SharedBufferGuard<'a> {
-    buffer: Ref<'a, SharedBuffer>,
-    cursor_id: &'a CursorId,
-}
-
-impl<'a> Buffer for SharedBufferGuard<'a> {
-    type Error = SharedBufferError;
-
-    fn config(&self) -> &Config {
+impl<'a> BufferGuard<'a> {
+    pub fn config(&self) -> &Config {
         &self.buffer.config
     }
 
-    fn title(&self) -> &str {
+    pub fn title(&self) -> &str {
         self.buffer.title()
     }
 
-    fn is_unsaved(&self) -> bool {
+    pub fn is_unsaved(&self) -> bool {
         self.buffer.is_unsaved()
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.buffer.content.len()
     }
 
-    fn line_count(&self) -> usize {
+    pub fn line_count(&self) -> usize {
         self.buffer.content.lines().len()
     }
 
-    fn line(&self, line: usize) -> Option<Line> {
+    pub fn line(&self, line: usize) -> Option<Line> {
         self.buffer.content.line(line)
     }
 
-    fn cursor(&self) -> &Cursor {
+    pub fn cursor(&self) -> &Cursor {
         self.buffer.cursor(self.cursor_id)
     }
-}
 
-// SharedBufferGuardMut
-
-pub struct SharedBufferGuardMut<'a> {
-    buffer: RefMut<'a, SharedBuffer>,
-    cursor_id: &'a CursorId,
-}
-
-impl<'a> Buffer for SharedBufferGuardMut<'a> {
-    type Error = SharedBufferError;
-
-    fn config(&self) -> &Config {
-        &self.buffer.config
-    }
-
-    fn title(&self) -> &str {
-        self.buffer.title()
-    }
-
-    fn is_unsaved(&self) -> bool {
-        self.buffer.is_unsaved()
-    }
-
-    fn len(&self) -> usize {
-        self.buffer.content.len()
-    }
-
-    fn line_count(&self) -> usize {
-        self.buffer.content.lines().len()
-    }
-
-    fn line(&self, line: usize) -> Option<Line> {
-        self.buffer.content.line(line)
-    }
-
-    fn cursor(&self) -> &Cursor {
-        self.buffer.cursor(self.cursor_id)
-    }
-}
-
-impl<'a> BufferMut for SharedBufferGuardMut<'a> {
-    fn cursor_mut(&mut self) -> &mut Cursor {
+    pub fn cursor_mut(&mut self) -> &mut Cursor {
         self.buffer.cursor_mut(self.cursor_id)
     }
 
-    fn insert(&mut self, c: char) {
-        self.buffer.insert(&self.cursor_id, c);
+    pub fn insert(&mut self, c: char) {
+        self.buffer.insert(self.cursor_id, c);
     }
 
-    fn backspace(&mut self) {
-        self.buffer.backspace(&self.cursor_id);
+    pub fn insert_line(&mut self, line: usize, s: &str) {
+        self.buffer.insert_line(line, s);
     }
 
-    fn delete(&mut self) {
-        self.buffer.delete(&self.cursor_id);
+    pub fn backspace(&mut self) {
+        self.buffer.backspace(self.cursor_id);
     }
 
-    fn try_save(&mut self) -> Result<(), io::Error> {
+    pub fn delete(&mut self) {
+        self.buffer.delete(self.cursor_id);
+    }
+
+    pub fn try_save(&mut self) -> Result<(), io::Error> {
         self.buffer.try_save()
+    }
+
+    pub fn lines(&self) -> Box<dyn Iterator<Item=Line> + '_> {
+        Box::new((0..self.line_count())
+            .scan(0, move |_, l| self.line(l)))
+    }
+
+    pub fn get_string(&self) -> String {
+        let mut s = String::new();
+        self.lines().for_each(|line| s.extend(line.chars()));
+        s
+    }
+
+    pub fn pos_loc(&self, mut pos: usize, cfg: &Config) -> Vec2<usize> {
+        let mut row = 0;
+        for line in self.lines() {
+            if pos >= line.len() {
+                row += 1;
+                pos -= line.len();
+            } else {
+                break;
+            }
+        }
+
+        let mut col = 0;
+        match self.line(row) {
+            Some(line) => for (p, _) in line.glyphs(cfg) {
+                match p {
+                    Some(p) if p == pos => break,
+                    Some(_) => col += 1,
+                    None => break,
+                }
+            },
+            None => {},
+        }
+        Vec2::new(col, row)
+    }
+
+    pub fn loc_pos(&self, loc: Vec2<usize>, cfg: &Config) -> usize {
+        let mut pos = (0..loc.y)
+            .map(|l| self.line(l).map(|l| l.len()).unwrap_or(0))
+            .sum::<usize>();
+
+        pos += match self.line(loc.y) {
+            Some(line) => line
+                .glyphs(cfg)
+                .skip(loc.x)
+                .next()
+                .unwrap()
+                .0
+                .unwrap_or(line.len() - 1),
+            None => 0,
+        };
+
+        pos.min(self.len())
+    }
+
+    pub fn duplicate_line(&mut self) {
+        let row = self.pos_loc(self.cursor().pos, self.config()).y;
+        if let Some(line) = self.line(row) {
+            let s = line.get_string();
+            self.insert_line(row + 1, &s);
+        }
+    }
+
+    pub fn insert_str(&mut self, s: &str) {
+        for c in s.chars() {
+            self.insert(c);
+        }
+    }
+
+    pub fn cursor_move(&mut self, dir: Dir, n: usize) {
+        match dir {
+            Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
+            Dir::Right => self.cursor_mut().pos = (self.cursor().pos + n).min(self.len()),
+            Dir::Up => {
+                let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
+                if cursor_loc.y == 0 {
+                    self.cursor_mut().pos = 0;
+                } else {
+                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)), self.config());
+                }
+            },
+            Dir::Down => {
+                let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
+                if cursor_loc.y == self.line_count() {
+                    self.cursor_mut().pos = self.len() + 1;
+                } else {
+                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + n), self.config());
+                }
+            },
+        }
     }
 }

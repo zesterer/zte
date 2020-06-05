@@ -1,4 +1,4 @@
-#![feature(bind_by_move_pattern_guards, associated_type_defaults)]
+#![feature(associated_type_defaults, or_patterns)]
 
 mod config;
 mod display;
@@ -9,7 +9,7 @@ mod ui;
 mod buffer;
 mod state;
 
-use std::panic;
+use std::{panic, env};
 use backtrace::Backtrace;
 use clap::{App, Arg};
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
     event::{Dir, Event},
     draw::Canvas,
     ui::{MainUi, Theme},
-    buffer::{Buffer, BufferMut, Line, SharedBufferRef},
+    buffer::{BufferId, BufferHandle, Line, Cursor},
     state::State,
 };
 
@@ -32,8 +32,17 @@ fn setup() -> Config {
     }));
 
     // Enable logging
-    simple_logging::log_to_file(LOG_FILENAME, log::LevelFilter::Info)
-        .expect("Failed to enable logging");
+    if let Ok(fname) = env::var("ZTE_LOG") {
+        simple_logging::log_to_file(
+            if fname.len() == 0 {
+                &fname
+            } else {
+                LOG_FILENAME
+            },
+            log::LevelFilter::Info,
+        )
+            .expect("Failed to enable logging");
+    }
 
     // Load config
     Config::load().unwrap_or_else(|err| {

@@ -1,3 +1,5 @@
+use crate::BufferHandle;
+
 #[derive(Copy, Clone, Debug)]
 pub enum Dir {
     Left,
@@ -18,10 +20,15 @@ pub enum Event {
     CloseEditor,
     OpenPrompt,
     OpenSwitcher,
+    OpenOpener,
+    CloseMenu,
+    SwitchBuffer(BufferHandle),
     SaveBuffer,
+    Select,
     Cut,
     Copy,
     Paste,
+    DuplicateLine,
     Escape,
     Quit,
 }

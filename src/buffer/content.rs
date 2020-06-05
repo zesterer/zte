@@ -65,6 +65,10 @@ impl Content {
         }
     }
 
+    pub fn insert_line(&mut self, line: usize, s: &str) {
+        self.lines.insert(line, s.chars().collect());
+    }
+
     pub fn remove(&mut self, pos: usize) {
         let (rank, line) = self.pos_to_rank_line(pos).into_tuple();
 

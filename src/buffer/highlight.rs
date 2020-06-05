@@ -1,5 +1,4 @@
 use std::ops::Range;
-use super::Buffer;
 
 pub struct Highlights {
     regions: Vec<(Range<usize>, Region)>,

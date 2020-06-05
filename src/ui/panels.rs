@@ -8,19 +8,10 @@ use crate::{
     Canvas,
     Dir,
     Event,
-    SharedBufferRef,
 };
 
 pub enum Tile {
     Editor(Editor),
-}
-
-impl<T> From<T> for Tile
-    where Editor: From<T>
-{
-    fn from(t: T) -> Self {
-        Tile::Editor(t.into())
-    }
 }
 
 pub struct Column {
@@ -41,10 +32,12 @@ impl Column {
         }
     }
 
-    pub fn empty(n: usize) -> Self {
-        Self::many((0..n)
-                .map(|_| Tile::Editor(Editor::default()))
-                .collect())
+    pub fn active_idx(&self) -> usize {
+        self.active_idx
+    }
+
+    pub fn len(&self) -> usize {
+        self.tiles.len()
     }
 
     fn tile_area(&self, size: Extent2<usize>, idx: usize) -> Rect<usize, usize> {
@@ -78,24 +71,18 @@ impl Column {
     }
 }
 
-impl Default for Column {
-    fn default() -> Self {
-        Self::empty(1)
-    }
-}
-
 impl Element for Column {
     type Response = ();
 
-    fn handle(&mut self, ctx: Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) {
         match event {
             Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx as isize - 1); },
             Event::SwitchEditor(Dir::Down) => { let _ = self.switch_to(self.active_idx as isize + 1); },
             Event::NewEditor(Dir::Up) => {
-                self.tiles.insert(self.active_idx, Tile::Editor(Editor::default()));
+                self.tiles.insert(self.active_idx, Tile::Editor(Editor::empty(ctx)));
             },
             Event::NewEditor(Dir::Down) => {
-                self.tiles.insert(self.active_idx + 1, Tile::Editor(Editor::default()));
+                self.tiles.insert(self.active_idx + 1, Tile::Editor(Editor::empty(ctx)));
                 self.active_idx += 1;
             },
             event => { self.active_mut().map(|tile| match tile {
@@ -104,7 +91,7 @@ impl Element for Column {
         }
     }
 
-    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+    fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         for idx in 0..self.tiles.len() {
             let tile_area = self.tile_area(canvas.size(), idx);
             match &mut self.tiles[idx] {
@@ -113,7 +100,7 @@ impl Element for Column {
         }
     }
 
-    fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+    fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         for (idx, tile) in self.tiles.iter().enumerate() {
             let tile_area = self.tile_area(canvas.size(), idx);
             match tile {
@@ -129,12 +116,11 @@ pub struct Panels {
 }
 
 impl Panels {
-    pub fn empty(n: usize) -> Self {
-        let buf = SharedBufferRef::default();
+    pub fn empty(ctx: &mut Context, n: usize) -> Self {
         Self {
             active_idx: 0,
             columns: (0..n)
-                .map(|_| Column::single(Tile::Editor(Editor::from(buf.clone()))))
+                .map(|_| Column::single(Tile::Editor(Editor::empty(ctx))))
                 .collect(),
         }
     }
@@ -154,9 +140,19 @@ impl Panels {
     }
 
     pub fn switch_to(&mut self, idx: isize) -> Result<(), ()> {
+        let vertical = self
+            .active_mut()
+            .map(|col| col.active_idx() as f32 / col.len() as f32)
+            .unwrap_or(0.0);
+
         let idx = idx.rem_euclid(self.columns.len() as isize) as usize;
         if (0..self.columns.len()).contains(&idx) {
             self.active_idx = idx;
+            // Try to choose a tile that's got approximately the same vertical location as the last one
+            self
+                .active_mut()
+                .map(|col| col.switch_to((vertical * (col.len() as f32 + 0.5)).floor() as isize))
+                .transpose()?;
             Ok(())
         } else {
             Err(())
@@ -178,24 +174,18 @@ impl Panels {
     }
 }
 
-impl Default for Panels {
-    fn default() -> Self {
-        Self::empty(1)
-    }
-}
-
 impl Element for Panels {
     type Response = ();
 
-    fn handle(&mut self, ctx: Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) {
         match event {
             Event::SwitchEditor(Dir::Left) => { let _ = self.switch_to(self.active_idx as isize - 1); },
             Event::SwitchEditor(Dir::Right) => { let _ = self.switch_to(self.active_idx as isize + 1); },
             Event::NewEditor(Dir::Left) => {
-                self.columns.insert(self.active_idx, Column::default());
+                self.columns.insert(self.active_idx, Column::single(Tile::Editor(Editor::empty(ctx))));
             },
             Event::NewEditor(Dir::Right) => {
-                self.columns.insert(self.active_idx + 1, Column::default());
+                self.columns.insert(self.active_idx + 1, Column::single(Tile::Editor(Editor::empty(ctx))));
                 self.active_idx += 1;
             },
             Event::CloseEditor => { let _ = self.close_editor(); },
@@ -203,14 +193,14 @@ impl Element for Panels {
         }
     }
 
-    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+    fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         for idx in 0..self.columns.len() {
             let column_area = self.column_area(canvas.size(), idx);
             self.columns[idx].update(ctx, &mut canvas.window(column_area), active && idx == self.active_idx);
         }
     }
 
-    fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool) {
+    fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let sz = canvas.size();
         canvas.rectangle((0, 0), sz, '!');
         for (idx, column) in self.columns.iter().enumerate() {

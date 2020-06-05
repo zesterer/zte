@@ -11,50 +11,67 @@ pub use self::{
     switcher::Switcher,
 };
 
+use std::collections::VecDeque;
 use crate::{
     Canvas,
     Event,
     State,
+    buffer::BufferId,
 };
 
-#[derive(Copy, Clone)]
-pub struct Context<'a> {
-    theme: &'a Theme,
-    state: &'a State,
+pub struct Context {
+    theme: Theme,
+    state: State,
+    active_buffer: BufferId,
+    secondary_events: VecDeque<Event>,
 }
 
 pub trait Element {
     type Response = ();
 
-    fn handle(&mut self, ctx: Context, event: Event) -> Self::Response;
-    fn update(&mut self, ctx: Context, canvas: &mut impl Canvas, active: bool);
-    fn render(&self, ctx: Context, canvas: &mut impl Canvas, active: bool);
+    fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response;
+    fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool);
+    fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool);
 }
 
 pub struct MainUi {
-    theme: Theme,
-    state: State,
+    ctx: Context,
     panels: Panels,
     menu: Option<Menu>,
 }
 
 impl MainUi {
     pub fn new(theme: Theme, state: State) -> Self {
-        let panels = match state.buffers().len() {
-            0 => Panels::empty(1),
-            _ => state
-                .buffers()
-                .iter()
-                .rev()
-                .fold(Panels::empty(0), |mut panels, buffer| {
-                    panels.insert_column(0, Tile::from(buffer.clone()));
-                    panels
-                }),
-        };
-
-        Self {
+        let mut ctx = Context {
             theme,
             state,
+            active_buffer: BufferId(0), // Gets replaced later
+            secondary_events: VecDeque::new(),
+        };
+
+        let buffer_count = ctx.state.buffers().len();
+        let panels = match buffer_count {
+            0 => Panels::empty(&mut ctx, 1),
+            _ => {
+                let mut panels = Panels::empty(&mut ctx, 0);
+
+                for buffer in ctx.state
+                    .buffers()
+                    .collect::<Vec<_>>()
+                {
+                    panels.insert_column(0, Tile::Editor(Editor::from(ctx.state
+                        .new_handle(buffer)
+                        .unwrap())));
+                }
+
+                panels
+            },
+        };
+
+        assert!(ctx.state.buffers().len() != 0);
+
+        Self {
+            ctx,
             panels,
             menu: None,
         }
@@ -63,47 +80,37 @@ impl MainUi {
     pub fn handle(&mut self, event: Event) {
         match &mut self.menu {
             Some(menu) => match event {
-                Event::Escape => self.menu = None,
-                _ => { /* TODO: Send event to menu here */ },
+                Event::Escape | Event::CloseMenu => self.menu = None,
+                event => match menu {
+                    Menu::Switcher(switcher) => switcher.handle(&mut self.ctx, event),
+                },
             },
             None => match event {
                 Event::OpenPrompt => unimplemented!(),
-                Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::default())),
-                event => self.panels.handle(
-                    Context {
-                        theme: &self.theme,
-                        state: &self.state,
-                    },
-                    event,
-                ),
+                Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::new(&mut self.ctx))),
+                event => self.panels.handle(&mut self.ctx, event),
             }
+        }
+
+        if let Some(e) = self.ctx.secondary_events.pop_front() {
+            self.handle(e);
         }
     }
 
     pub fn update(&mut self, canvas: &mut impl Canvas) {
-        let ctx = Context {
-            theme: &self.theme,
-            state: &self.state,
-        };
-
-        self.panels.update(ctx, canvas, true);
+        self.panels.update(&mut self.ctx, canvas, true);
 
         match &mut self.menu {
-            Some(Menu::Switcher(switcher)) => switcher.update(ctx, canvas, true),
+            Some(Menu::Switcher(switcher)) => switcher.update(&mut self.ctx, canvas, true),
             None => {},
         }
     }
 
-    pub fn render(&self, canvas: &mut impl Canvas) {
-        let ctx = Context {
-            theme: &self.theme,
-            state: &self.state,
-        };
-
-        self.panels.render(ctx, canvas, true);
+    pub fn render(&mut self, canvas: &mut impl Canvas) {
+        self.panels.render(&mut self.ctx, canvas, true);
 
         match &self.menu {
-            Some(Menu::Switcher(switcher)) => switcher.render(ctx, canvas, true),
+            Some(Menu::Switcher(switcher)) => switcher.render(&mut self.ctx, canvas, true),
             None => {},
         }
     }
