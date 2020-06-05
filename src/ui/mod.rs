@@ -2,6 +2,8 @@ mod theme;
 mod editor;
 mod panels;
 mod switcher;
+mod opener;
+mod prompt;
 
 // Reexports
 pub use self::{
@@ -9,6 +11,8 @@ pub use self::{
     editor::Editor,
     panels::{Panels, Tile},
     switcher::Switcher,
+    opener::Opener,
+    prompt::Prompt,
 };
 
 use std::collections::VecDeque;
@@ -83,11 +87,13 @@ impl MainUi {
                 Event::Escape | Event::CloseMenu => self.menu = None,
                 event => match menu {
                     Menu::Switcher(switcher) => switcher.handle(&mut self.ctx, event),
+                    Menu::Opener(opener) => opener.handle(&mut self.ctx, event),
                 },
             },
             None => match event {
                 Event::OpenPrompt => unimplemented!(),
                 Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::new(&mut self.ctx))),
+                Event::OpenOpener => self.menu = Some(Menu::Opener(Opener::new(&mut self.ctx))),
                 event => self.panels.handle(&mut self.ctx, event),
             }
         }
@@ -102,6 +108,7 @@ impl MainUi {
 
         match &mut self.menu {
             Some(Menu::Switcher(switcher)) => switcher.update(&mut self.ctx, canvas, true),
+            Some(Menu::Opener(opener)) => opener.update(&mut self.ctx, canvas, true),
             None => {},
         }
     }
@@ -111,6 +118,7 @@ impl MainUi {
 
         match &self.menu {
             Some(Menu::Switcher(switcher)) => switcher.render(&mut self.ctx, canvas, true),
+            Some(Menu::Opener(opener)) => opener.render(&mut self.ctx, canvas, true),
             None => {},
         }
     }
@@ -124,4 +132,5 @@ impl Default for MainUi {
 
 pub enum Menu {
     Switcher(Switcher),
+    Opener(Opener),
 }

@@ -50,6 +50,17 @@ impl State {
         (this, errors)
     }
 
+    pub fn open_file(&mut self, path: PathBuf) -> Result<BufferHandle, SharedBufferError> {
+        let full_path = path.canonicalize().unwrap();
+        self
+            .buffers
+            .iter()
+            .find(|(_, buf)| buf.path.as_ref().map(|p| p == &full_path).unwrap_or(false))
+            .map(|(id, _)| Ok(*id))
+            .unwrap_or_else(|| Ok(self.insert_buffer(SharedBuffer::open(path)?)))
+            .map(|buf| self.new_handle(buf).unwrap())
+    }
+
     pub fn new_handle(&mut self, buffer_id: BufferId) -> Option<BufferHandle> {
         let cursor_id = self.buffers
             .get_mut(&buffer_id)?
@@ -77,7 +88,7 @@ impl State {
         })
     }
 
-    pub fn insert_buffer(&mut self, mut buf: SharedBuffer) -> BufferId {
+    pub fn insert_buffer(&mut self, buf: SharedBuffer) -> BufferId {
         self.id_counter += 1;
         let id = BufferId(self.id_counter);
         self.buffers.insert(id, buf);

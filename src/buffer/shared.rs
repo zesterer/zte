@@ -7,8 +7,9 @@ use std::{
     io::{self, Read, Write},
     cmp::PartialEq,
 };
-use crate::Dir;
+use clipboard::{ClipboardContext, ClipboardProvider};
 use vek::*;
+use crate::{Dir, Event};
 use super::{
     Line,
     Config,
@@ -35,8 +36,8 @@ pub struct CursorId(usize);
 
 pub struct SharedBuffer {
     config: Config,
-    path: Option<PathBuf>,
-    content: Content,
+    pub path: Option<PathBuf>,
+    pub content: Content,
     cursor_id_counter: usize,
     cursors: HashMap<CursorId, Cursor>,
     unsaved: bool,
@@ -139,7 +140,7 @@ impl SharedBuffer {
         };
 
         Ok(Self {
-            path: Some(path),
+            path: Some(path.canonicalize().unwrap()),
             content,
             unsaved: false,
             ..Self::default()
@@ -174,6 +175,9 @@ pub struct BufferGuard<'a> {
 impl<'a> BufferGuard<'a> {
     pub fn config(&self) -> &Config {
         &self.buffer.config
+    }
+    pub fn content(&self) -> &Content {
+        &self.buffer.content
     }
 
     pub fn title(&self) -> &str {
@@ -293,6 +297,10 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
+    pub fn cursor_set(&mut self, loc: Vec2<usize>) {
+        self.cursor_mut().pos = self.loc_pos(loc, self.config());
+    }
+
     pub fn cursor_move(&mut self, dir: Dir, n: usize) {
         match dir {
             Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
@@ -310,9 +318,23 @@ impl<'a> BufferGuard<'a> {
                 if cursor_loc.y == self.line_count() {
                     self.cursor_mut().pos = self.len() + 1;
                 } else {
-                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y + n), self.config());
+                    self.cursor_set(Vec2::new(cursor_loc.x, cursor_loc.y + n));
                 }
             },
+        }
+    }
+
+    pub fn handle(&mut self, event: Event) {
+        match event {
+            Event::Insert(c) => self.insert(c),
+            Event::Backspace => self.backspace(),
+            Event::Delete => self.delete(),
+            Event::CursorMove(dir) => self.cursor_move(dir, 1),
+            Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
+                Ok(s) => self.insert_str(&s),
+                Err(_) => {},
+            },
+            _ => {},
         }
     }
 }

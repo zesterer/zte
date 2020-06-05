@@ -27,7 +27,7 @@ impl Element for Switcher {
         match event {
             Event::CursorMove(Dir::Up) => self.selected_idx = (self.selected_idx + recent_count.saturating_sub(1)) % recent_count,
             Event::CursorMove(Dir::Down) => self.selected_idx = (self.selected_idx + 1) % recent_count,
-            Event::Select => {
+            Event::Insert('\n') => {
                 ctx.secondary_events.push_back(Event::CloseMenu);
                 ctx.secondary_events.push_back(Event::SwitchBuffer({
                     let old_handle = ctx.state

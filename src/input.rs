@@ -24,7 +24,6 @@ pub fn begin_reading() -> Receiver<Event> {
 
     thread::spawn(move || for event in stdin().events() {
         let events = match event.unwrap() {
-            InputEvent::Key(KeyEvent::Char('\n')) => vec![Event::Insert('\n'), Event::Select],
             InputEvent::Key(KeyEvent::Char(c)) => vec![Event::Insert(c)],
 
             InputEvent::Key(KeyEvent::Left) => vec![Event::CursorMove(Dir::Left)],

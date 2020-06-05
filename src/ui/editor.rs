@@ -1,5 +1,4 @@
 use vek::*;
-use clipboard::{ClipboardContext, ClipboardProvider};
 use crate::{
     draw::*,
     BufferId,
@@ -48,19 +47,12 @@ impl Element for Editor {
             .unwrap();
 
         match event {
-            Event::Insert(c) => buf.insert(c),
-            Event::Backspace => buf.backspace(),
-            Event::Delete => buf.delete(),
-            Event::CursorMove(dir) => buf.cursor_move(dir, 1),
-            Event::PageMove(dir) => buf.cursor_move(dir, PAGE_LENGTH),
             Event::SaveBuffer => buf.try_save().unwrap(),
-            Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
-                Ok(s) => buf.insert_str(&s),
-                Err(_) => {},
-            },
             Event::DuplicateLine => buf.duplicate_line(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
-            _ => {},
+            Event::PageMove(dir) => buf.cursor_move(dir, PAGE_LENGTH),
+            Event::OpenFile(path) => self.buffer = ctx.state.open_file(path).unwrap(),
+            event => buf.handle(event),
         }
     }
 

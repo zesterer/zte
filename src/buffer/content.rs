@@ -91,6 +91,12 @@ impl Content {
     }
 }
 
+impl ToString for Content {
+    fn to_string(&self) -> String {
+        self.chars().collect()
+    }
+}
+
 impl<T: AsRef<str>> From<T> for Content {
     fn from(s: T) -> Self {
         Self {

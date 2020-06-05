@@ -18,7 +18,7 @@ use crate::{
     event::{Dir, Event},
     draw::Canvas,
     ui::{MainUi, Theme},
-    buffer::{BufferId, BufferHandle, Line, Cursor},
+    buffer::{BufferId, BufferHandle, Line, Cursor, CursorId},
     state::State,
 };
 

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use crate::BufferHandle;
 
 #[derive(Copy, Clone, Debug)]
@@ -21,10 +22,10 @@ pub enum Event {
     OpenPrompt,
     OpenSwitcher,
     OpenOpener,
+    OpenFile(PathBuf),
     CloseMenu,
     SwitchBuffer(BufferHandle),
     SaveBuffer,
-    Select,
     Cut,
     Copy,
     Paste,
