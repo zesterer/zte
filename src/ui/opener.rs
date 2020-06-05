@@ -25,7 +25,7 @@ impl Opener {
     pub fn new(ctx: &mut Context) -> Self {
         let mut this = Self {
             prompt: Prompt::default(),
-            path: PathBuf::default(),
+            path: std::env::current_dir().unwrap_or_default(),
             listings: None,
         };
 
@@ -60,9 +60,11 @@ impl Element for Opener {
                 if let Some((selected_idx, listings)) = &mut self.listings {
                     if listings.len() > 0 {
                         let entry = &listings[*selected_idx];
-                        self.path.push(format!("{}", entry.file_name().to_str().unwrap()));
+                        let is_file = entry.file_type().map(|ft| ft.is_file()).unwrap_or(false);
 
-                        if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                        self.path.push(entry.file_name().to_str().unwrap());
+
+                        if is_file {
                             ctx.secondary_events.push_back(Event::CloseMenu);
                             ctx.secondary_events.push_back(Event::OpenFile(self.path.clone()));
                         }
@@ -129,14 +131,23 @@ impl Element for Opener {
         let title = format!("[Open File]");
         canvas.write_str(Vec2::new((sz.w.saturating_sub(title.len())) / 2, 0), &title);
 
+        const DIR_COLOR: Color = Color::Rgb(Rgb::new(100, 100, 255));
+
         // Prompt
-        let mut canvas = canvas.window(Rect::new(
-            1,
-            1,
-            canvas.size().w - 2,
-            canvas.size().h - 2,
-        ));
-        self.prompt.render(ctx, &mut canvas, active);
+        let mut path_text = format!("{}", self.path.display());
+        if path_text.chars().nth(path_text.len() - 1).map(|c| c != '/').unwrap_or(false) {
+            path_text.push('/');
+        }
+        let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w - 2, canvas.size().h - 2));
+        // Render most of path
+        canvas.with_fg(DIR_COLOR).write_str(Vec2::zero(), &path_text);
+        // Render prompt (last path element)
+        self.prompt.render(ctx, &mut canvas.window(Rect::new(
+            path_text.len(),
+            0,
+            canvas.size().w,
+            canvas.size().h,
+        )), active);
 
         // File listings
         let mut canvas = canvas.window(Rect::new(
@@ -156,11 +167,11 @@ impl Element for Opener {
                 if entry.file_type().map(|ft| ft.is_file()).unwrap_or(true) {
                     canvas
                         .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
-                        .write_str(Vec2::new(1, i), entry.file_name().to_str().unwrap_or("!!!"));
+                        .write_str(Vec2::new(2, i), entry.file_name().to_str().unwrap_or("!!!"));
                 } else {
                     canvas
-                        .with_fg(Color::Rgb(Rgb::new(255, 200, 0)))
-                        .write_str(Vec2::new(1, i), &format!("{}/", entry.file_name().to_str().unwrap_or("!!!")));
+                        .with_fg(DIR_COLOR)
+                        .write_str(Vec2::new(2, i), &format!("{}/", entry.file_name().to_str().unwrap_or("!!!")));
                 }
             }
         } else {

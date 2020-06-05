@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
-    rc::Rc,
-    cell::{RefCell, Ref, RefMut},
+    sync::Arc,
     path::PathBuf,
     fs::File,
     io::{self, Read, Write},
@@ -161,10 +160,11 @@ impl Default for SharedBuffer {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct BufferHandle {
     pub buffer_id: BufferId,
     pub cursor_id: CursorId,
+    pub rc: Arc<()>,
 }
 
 pub struct BufferGuard<'a> {

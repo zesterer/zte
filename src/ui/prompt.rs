@@ -79,7 +79,7 @@ impl Element for Prompt {
     fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let sz = canvas.size();
         canvas.rectangle(Vec2::zero(), sz, ' '.into());
-        for (i, c) in self.buffer.content.chars().enumerate().take(canvas.size().w) {
+        for (i, c) in self.get_text().chars().enumerate().take(canvas.size().w) {
             canvas.write_char(Vec2::new(i, 0), c);
         }
 

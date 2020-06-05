@@ -43,7 +43,7 @@ impl Element for Editor {
 
     fn handle(&mut self, ctx: &mut Context, event: Event) {
         let mut buf = ctx.state
-            .get_buffer(self.buffer)
+            .get_buffer(&self.buffer)
             .unwrap();
 
         match event {
@@ -51,7 +51,10 @@ impl Element for Editor {
             Event::DuplicateLine => buf.duplicate_line(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
             Event::PageMove(dir) => buf.cursor_move(dir, PAGE_LENGTH),
-            Event::OpenFile(path) => self.buffer = ctx.state.open_file(path).unwrap(),
+            Event::OpenFile(path) => match ctx.state.open_file(path) {
+                Ok(buf) => self.buffer = buf,
+                Err(err) => log::warn!("When opening file: {:?}", err),
+            },
             event => buf.handle(event),
         }
     }
@@ -61,11 +64,11 @@ impl Element for Editor {
 
         // Update the most recent buffer with this one
         if active {
-            ctx.state.set_recent_buffer(self.buffer);
+            ctx.state.set_recent_buffer(self.buffer.clone());
         }
 
         let buf = ctx.state
-            .get_buffer(self.buffer)
+            .get_buffer(&self.buffer)
             .unwrap();
 
         let cursor_loc = buf.pos_loc(buf.cursor().pos, buf.config());
@@ -81,7 +84,7 @@ impl Element for Editor {
     fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let sz = canvas.size();
         let buf = ctx.state
-            .get_buffer(self.buffer)
+            .get_buffer(&self.buffer)
             .unwrap();
 
         // Frame

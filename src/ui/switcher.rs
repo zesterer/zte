@@ -33,8 +33,9 @@ impl Element for Switcher {
                     let old_handle = ctx.state
                         .recent_buffers()
                         .nth(self.selected_idx)
-                        .unwrap();
-                    ctx.state.clone_handle(old_handle).unwrap()
+                        .unwrap()
+                        .clone();
+                    ctx.state.duplicate_handle(&old_handle).unwrap()
                 }));
             },
             _ => {},
@@ -81,7 +82,7 @@ impl Element for Switcher {
             canvas.size().h - 2,
         ));
 
-        let handles = ctx.state.recent_buffers().collect::<Vec<_>>();
+        let handles = ctx.state.recent_buffers().cloned().collect::<Vec<_>>();
         for (i, handle) in handles.iter().enumerate().take(canvas.size().h) {
             if i == self.selected_idx {
                 canvas.write_char(Vec2::new(0, i), '>');
