@@ -41,8 +41,10 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Ctrl('w')) => vec![Event::CloseBuffer],
             InputEvent::Key(KeyEvent::Alt('w')) => vec![Event::CloseEditor],
 
-            InputEvent::Key(KeyEvent::Ctrl('t')) => vec![Event::NewEditor(Dir::Right)],
-            InputEvent::Key(KeyEvent::Ctrl('n')) => vec![Event::NewEditor(Dir::Down)],
+            InputEvent::Key(KeyEvent::Alt('a')) => vec![Event::NewEditor(Dir::Left)],
+            InputEvent::Key(KeyEvent::Alt('d')) => vec![Event::NewEditor(Dir::Right)],
+            InputEvent::Key(KeyEvent::Alt('w')) => vec![Event::NewEditor(Dir::Up)],
+            InputEvent::Key(KeyEvent::Alt('s')) => vec![Event::NewEditor(Dir::Down)],
 
             InputEvent::Key(KeyEvent::Ctrl('p')) => vec![Event::NewTerminal(Dir::Right)],
 
@@ -54,12 +56,12 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Ctrl('x')) => vec![Event::Cut],
             InputEvent::Key(KeyEvent::Ctrl('c')) => vec![Event::Copy],
             InputEvent::Key(KeyEvent::Ctrl('v')) => vec![Event::Paste],
-            InputEvent::Key(KeyEvent::Ctrl(' ')) => vec![Event::DuplicateLine],
+            InputEvent::Key(KeyEvent::Ctrl('d')) => vec![Event::DuplicateLine],
 
-            InputEvent::Key(KeyEvent::Ctrl('j') | KeyEvent::Alt('a')) => vec![Event::SwitchEditor(Dir::Left)],
-            InputEvent::Key(KeyEvent::Ctrl('l') | KeyEvent::Alt('d')) => vec![Event::SwitchEditor(Dir::Right)],
-            InputEvent::Key(KeyEvent::Ctrl('i') | KeyEvent::Alt('w')) => vec![Event::SwitchEditor(Dir::Up)],
-            InputEvent::Key(KeyEvent::Ctrl('k') | KeyEvent::Alt('s')) => vec![Event::SwitchEditor(Dir::Down)],
+            InputEvent::Key(KeyEvent::Ctrl('j')) => vec![Event::SwitchEditor(Dir::Left)],
+            InputEvent::Key(KeyEvent::Ctrl('l')) => vec![Event::SwitchEditor(Dir::Right)],
+            InputEvent::Key(KeyEvent::Ctrl('i')) => vec![Event::SwitchEditor(Dir::Up)],
+            InputEvent::Key(KeyEvent::Ctrl('k')) => vec![Event::SwitchEditor(Dir::Down)],
 
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 51, 68] => vec![Event::SwitchEditor(Dir::Left)],
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 51, 67] => vec![Event::SwitchEditor(Dir::Right)],
