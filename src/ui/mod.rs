@@ -1,5 +1,6 @@
 mod theme;
 mod editor;
+mod terminal;
 mod panels;
 mod switcher;
 mod opener;
@@ -9,6 +10,7 @@ mod prompt;
 pub use self::{
     theme::Theme,
     editor::Editor,
+    terminal::Terminal,
     panels::{Panels, Tile},
     switcher::Switcher,
     opener::Opener,

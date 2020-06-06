@@ -1,6 +1,6 @@
 use std::{
     path::PathBuf,
-    fs::{DirEntry, read_dir},
+    fs::DirEntry,
 };
 use vek::*;
 use crate::{
@@ -25,7 +25,14 @@ impl Opener {
     pub fn new(ctx: &mut Context) -> Self {
         let mut this = Self {
             prompt: Prompt::default(),
-            path: std::env::current_dir().unwrap_or_default(),
+            path: ctx.state
+                .get_shared_buffer(ctx.active_buffer)
+                .and_then(|buf| buf.path
+                    .as_ref()
+                    .and_then(|p| p.parent())
+                    .map(|p| p.to_owned()))
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_default(),
             listings: None,
         };
 
@@ -36,11 +43,15 @@ impl Opener {
 
     pub fn update_listings(&mut self) {
         let file_filter = self.prompt.get_text();
-        self.listings = match read_dir(&self.path) {
-            Ok(dir) => Some((0, dir
-                .filter_map(|entry| entry.ok())
-                .filter(|entry| entry.file_name().to_str().unwrap().starts_with(&file_filter))
-                .collect())),
+        self.listings = match self.path.read_dir() {
+            Ok(dir) => {
+                let mut entries = dir
+                    .filter_map(|entry| entry.ok())
+                    .filter(|entry| entry.file_name().to_str().unwrap().starts_with(&file_filter))
+                    .collect::<Vec<_>>();
+                entries.sort_by_key(|e| e.file_name().to_str().map(|s| s.to_string()));
+                Some((0, entries))
+            },
             Err(_) => None,
         };
     }

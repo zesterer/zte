@@ -2,6 +2,7 @@ use vek::*;
 use super::{
     Element,
     Editor,
+    Terminal,
     Context,
 };
 use crate::{
@@ -12,6 +13,7 @@ use crate::{
 
 pub enum Tile {
     Editor(Editor),
+    Terminal(Terminal),
 }
 
 pub struct Column {
@@ -79,14 +81,22 @@ impl Element for Column {
             Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx as isize - 1); },
             Event::SwitchEditor(Dir::Down) => { let _ = self.switch_to(self.active_idx as isize + 1); },
             Event::NewEditor(Dir::Up) => {
-                self.tiles.insert(self.active_idx, Tile::Editor(Editor::empty(ctx)));
+                self.tiles.insert(self.active_idx, Tile::Editor(Editor::recent(ctx)));
             },
             Event::NewEditor(Dir::Down) => {
-                self.tiles.insert(self.active_idx + 1, Tile::Editor(Editor::empty(ctx)));
+                self.tiles.insert(self.active_idx + 1, Tile::Editor(Editor::recent(ctx)));
+                self.active_idx += 1;
+            },
+            Event::NewTerminal(Dir::Up) => {
+                self.tiles.insert(self.active_idx, Tile::Terminal(Terminal::default()));
+            },
+            Event::NewTerminal(Dir::Down) => {
+                self.tiles.insert(self.active_idx + 1, Tile::Terminal(Terminal::default()));
                 self.active_idx += 1;
             },
             event => { self.active_mut().map(|tile| match tile {
                 Tile::Editor(editor) => editor.handle(ctx, event),
+                Tile::Terminal(terminal) => terminal.handle(ctx, event),
             }); },
         }
     }
@@ -96,6 +106,7 @@ impl Element for Column {
             let tile_area = self.tile_area(canvas.size(), idx);
             match &mut self.tiles[idx] {
                 Tile::Editor(editor) => editor.update(ctx, &mut canvas.window(tile_area), active && idx == self.active_idx),
+                Tile::Terminal(terminal) => terminal.update(ctx, &mut canvas.window(tile_area), active && idx == self.active_idx),
             }
         }
     }
@@ -105,6 +116,7 @@ impl Element for Column {
             let tile_area = self.tile_area(canvas.size(), idx);
             match tile {
                 Tile::Editor(editor) => editor.render(ctx, &mut canvas.window(tile_area), active && idx == self.active_idx),
+                Tile::Terminal(terminal) => terminal.render(ctx, &mut canvas.window(tile_area), active && idx == self.active_idx),
             }
         }
     }
@@ -182,10 +194,17 @@ impl Element for Panels {
             Event::SwitchEditor(Dir::Left) => { let _ = self.switch_to(self.active_idx as isize - 1); },
             Event::SwitchEditor(Dir::Right) => { let _ = self.switch_to(self.active_idx as isize + 1); },
             Event::NewEditor(Dir::Left) => {
-                self.columns.insert(self.active_idx, Column::single(Tile::Editor(Editor::empty(ctx))));
+                self.columns.insert(self.active_idx, Column::single(Tile::Editor(Editor::recent(ctx))));
             },
             Event::NewEditor(Dir::Right) => {
-                self.columns.insert(self.active_idx + 1, Column::single(Tile::Editor(Editor::empty(ctx))));
+                self.columns.insert(self.active_idx + 1, Column::single(Tile::Editor(Editor::recent(ctx))));
+                self.active_idx += 1;
+            },
+            Event::NewTerminal(Dir::Left) => {
+                self.columns.insert(self.active_idx, Column::single(Tile::Terminal(Terminal::default())));
+            },
+            Event::NewTerminal(Dir::Right) => {
+                self.columns.insert(self.active_idx + 1, Column::single(Tile::Terminal(Terminal::default())));
                 self.active_idx += 1;
             },
             Event::CloseEditor => { let _ = self.close_editor(); },

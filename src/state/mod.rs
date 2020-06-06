@@ -125,4 +125,13 @@ impl State {
         self.recent.retain(|h| h.buffer_id != handle.buffer_id);
         self.recent.push(handle);
     }
+
+    pub fn close_buffer(&mut self, id: BufferId) {
+        if let Some((_, rc)) = self.buffers.get(&id) {
+            if Arc::strong_count(rc) == 2 { // Recent item, and this one
+                self.buffers.remove(&id);
+                self.recent.retain(|h| h.buffer_id != id);
+            }
+        }
+    }
 }

@@ -38,10 +38,13 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::PageDown) => vec![Event::PageMove(Dir::Down)],
 
             InputEvent::Key(KeyEvent::Ctrl('q')) => vec![Event::Quit],
-            InputEvent::Key(KeyEvent::Ctrl('w')) => vec![Event::CloseEditor],
+            InputEvent::Key(KeyEvent::Ctrl('w')) => vec![Event::CloseBuffer],
+            InputEvent::Key(KeyEvent::Alt('w')) => vec![Event::CloseEditor],
 
             InputEvent::Key(KeyEvent::Ctrl('t')) => vec![Event::NewEditor(Dir::Right)],
             InputEvent::Key(KeyEvent::Ctrl('n')) => vec![Event::NewEditor(Dir::Down)],
+
+            InputEvent::Key(KeyEvent::Ctrl('p')) => vec![Event::NewTerminal(Dir::Right)],
 
             InputEvent::Key(KeyEvent::Ctrl('p')) => vec![Event::OpenPrompt],
             InputEvent::Key(KeyEvent::Ctrl('b')) => vec![Event::OpenSwitcher],

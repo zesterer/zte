@@ -36,6 +36,16 @@ impl Editor {
         let buffer = ctx.state.new_empty_buffer();
         Self::from(ctx.state.new_handle(buffer).unwrap())
     }
+
+    pub fn recent(ctx: &mut Context) -> Self {
+        let recent_buf = ctx.state
+            .recent_buffers()
+            .next()
+            .cloned();
+        recent_buf
+            .map(|b| Self::from(ctx.state.duplicate_handle(&b).unwrap()))
+            .unwrap_or_else(|| Self::empty(ctx))
+    }
 }
 
 impl Element for Editor {
@@ -47,6 +57,17 @@ impl Element for Editor {
             .unwrap();
 
         match event {
+            Event::CloseBuffer => {
+                let buf = ctx.state
+                    .recent_buffers()
+                    .find(|buf| buf.buffer_id != self.buffer.buffer_id)
+                    .cloned();
+                if let Some(buf) = buf {
+                    let old_buffer = self.buffer.buffer_id;
+                    self.buffer = buf;
+                    ctx.state.close_buffer(old_buffer);
+                }
+            },
             Event::SaveBuffer => buf.try_save().unwrap(),
             Event::DuplicateLine => buf.duplicate_line(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
@@ -65,6 +86,7 @@ impl Element for Editor {
         // Update the most recent buffer with this one
         if active {
             ctx.state.set_recent_buffer(self.buffer.clone());
+            ctx.active_buffer = self.buffer.buffer_id;
         }
 
         let buf = ctx.state
