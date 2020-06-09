@@ -15,11 +15,12 @@ use super::{
 
 const MARGIN_WIDTH: usize = 5;
 const CURSOR_SPACE: Vec2<usize> = Vec2 { x: 4, y: 4 };
-const PAGE_LENGTH: usize = 24;
+const PAGE_HEIGHT: usize = 24;
 
 pub struct Editor {
     loc: Vec2<usize>,
     buffer: BufferHandle,
+    page_height: usize,
 }
 
 impl From<BufferHandle> for Editor {
@@ -27,6 +28,7 @@ impl From<BufferHandle> for Editor {
         Self {
             loc: Vec2::zero(),
             buffer,
+            page_height: PAGE_HEIGHT,
         }
     }
 }
@@ -71,7 +73,7 @@ impl Element for Editor {
             Event::SaveBuffer => buf.try_save().unwrap(),
             Event::DuplicateLine => buf.duplicate_line(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
-            Event::PageMove(dir) => buf.cursor_move(dir, PAGE_LENGTH),
+            Event::PageMove(dir) => buf.cursor_move(dir, self.page_height),
             Event::Undo => buf.undo(),
             Event::Redo => buf.redo(),
             Event::OpenFile(path) => match ctx.state.open_file(path) {
@@ -84,6 +86,8 @@ impl Element for Editor {
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
+
+        self.page_height = canvas.size().h;
 
         // Update the most recent buffer with this one
         if active {

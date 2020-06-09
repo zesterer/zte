@@ -402,12 +402,71 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
+    pub fn cursor_jump(&mut self, dir: Dir) {
+        let get_next_char = |this: &Self| match dir {
+            Dir::Left => this.content().char_at(this.cursor().pos.saturating_sub(1)),
+            Dir::Right => this.content().char_at(this.cursor().pos),
+            _ => unimplemented!(),
+        };
+
+        #[derive(Copy, Clone, PartialEq)]
+        enum CharKind {
+            AlphaNum,
+            Other,
+        }
+
+        impl CharKind {
+            fn from_char(c: char) -> Option<Self> {
+                if c.is_whitespace() {
+                    None
+                } else if c.is_alphanumeric() {
+                    Some(CharKind::AlphaNum)
+                } else {
+                    Some(CharKind::Other)
+                }
+            }
+        }
+
+        let mut kind = match get_next_char(self) {
+            Some(c) => CharKind::from_char(c),
+            None => return,
+        };
+
+        self.cursor_move(dir, 1);
+
+        if let Dir::Left | Dir::Right = dir {
+            // Consume any whitespace before
+            while get_next_char(self).map(char::is_whitespace).unwrap_or(false)
+                && self.cursor().pos > 0
+                && self.cursor().pos < self.len()
+            {
+                self.cursor_move(dir, 1);
+            }
+
+            while get_next_char(self).map(CharKind::from_char) == Some(kind)
+                && self.cursor().pos > 0
+                && self.cursor().pos < self.len()
+            {
+                self.cursor_move(dir, 1);
+            }
+
+            // Consume any whitespace after
+            while get_next_char(self).map(char::is_whitespace).unwrap_or(false)
+                && self.cursor().pos > 0
+                && self.cursor().pos < self.len()
+            {
+                self.cursor_move(dir, 1);
+            }
+        }
+    }
+
     pub fn handle(&mut self, event: Event) {
         match event {
             Event::Insert(c) => self.insert(c),
             Event::Backspace => self.backspace(),
             Event::Delete => self.delete(),
             Event::CursorMove(dir) => self.cursor_move(dir, 1),
+            Event::CursorJump(dir) => self.cursor_jump(dir),
             Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
                 Ok(s) => self.insert_str(&s),
                 Err(_) => {},

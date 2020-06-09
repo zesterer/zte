@@ -17,6 +17,7 @@ pub enum Event {
     Undo,
     Redo,
     CursorMove(Dir),
+    CursorJump(Dir),
     PageMove(Dir),
     SwitchEditor(Dir),
     NewEditor(Dir),

@@ -37,6 +37,11 @@ impl Content {
             .flatten()
     }
 
+    pub fn char_at(&self, pos: usize) -> Option<char> {
+        let (rank, line) = self.pos_to_rank_line(pos).into_tuple();
+        self.line(line)?.chars().nth(rank)
+    }
+
     pub fn pos_to_rank_line(&self, mut pos: usize) -> Vec2<usize> {
         let mut row = 0;
         for line in self.lines() {

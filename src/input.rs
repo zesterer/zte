@@ -31,6 +31,11 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Up) => vec![Event::CursorMove(Dir::Up)],
             InputEvent::Key(KeyEvent::Down) => vec![Event::CursorMove(Dir::Down)],
 
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 68] => vec![Event::CursorJump(Dir::Left)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 67] => vec![Event::CursorJump(Dir::Right)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 65] => vec![Event::CursorJump(Dir::Up)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 66] => vec![Event::CursorJump(Dir::Down)],
+
             // Buffer editing
 
             InputEvent::Key(KeyEvent::Char(c)) => vec![Event::Insert(c)],
