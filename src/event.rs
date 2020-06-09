@@ -14,6 +14,8 @@ pub enum Event {
     Insert(char),
     Backspace,
     Delete,
+    Undo,
+    Redo,
     CursorMove(Dir),
     PageMove(Dir),
     SwitchEditor(Dir),

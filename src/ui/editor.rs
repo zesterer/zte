@@ -72,6 +72,8 @@ impl Element for Editor {
             Event::DuplicateLine => buf.duplicate_line(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
             Event::PageMove(dir) => buf.cursor_move(dir, PAGE_LENGTH),
+            Event::Undo => buf.undo(),
+            Event::Redo => buf.redo(),
             Event::OpenFile(path) => match ctx.state.open_file(path) {
                 Ok(buf) => self.buffer = buf,
                 Err(err) => log::warn!("When opening file: {:?}", err),

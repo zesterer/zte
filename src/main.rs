@@ -78,12 +78,9 @@ fn main() {
         ui.render(&mut display);
         display.render();
 
-        match event_rx.recv().unwrap() {
-            Event::Quit => {
-                log::info!("Quitting...");
-                break;
-            },
-            event => ui.handle(event),
+        if ui.handle(event_rx.recv().unwrap()) {
+            log::info!("Quitting...");
+            break;
         }
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::Arc,
     path::PathBuf,
     fs::File,
@@ -33,27 +33,69 @@ impl From<io::Error> for SharedBufferError {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CursorId(usize);
 
+#[derive(Clone)]
+struct State {
+    pub content: Content,
+    cursors: HashMap<CursorId, Cursor>,
+}
+
+impl State {
+    // Make this state align with another according to undo/redo rules (i.e: preserving cursor
+    // positions where possible)
+    fn align_with(&mut self, other: Self) {
+        self.content = other.content;
+        for (id, c) in other.cursors.into_iter() {
+            self.cursors.insert(id, c);
+        }
+    }
+}
+
+const MAX_UNDO_STATES: usize = 256;
+
 pub struct SharedBuffer {
+    state: State,
+    past_states: VecDeque<State>,
+    future_states: Vec<State>,
     config: Config,
     pub path: Option<PathBuf>,
-    pub content: Content,
     cursor_id_counter: usize,
-    cursors: HashMap<CursorId, Cursor>,
     unsaved: bool,
 }
 
 impl SharedBuffer {
+    fn pre_edit(&mut self) {
+        self.past_states.push_front(self.state.clone());
+        while self.past_states.len() > MAX_UNDO_STATES {
+            self.past_states.pop_back();
+        }
+        self.future_states.clear();
+    }
+
+    fn undo(&mut self) {
+        if let Some(s) = self.past_states.pop_front() {
+            self.future_states.push(self.state.clone());
+            self.state.align_with(s);
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(s) = self.future_states.pop() {
+            self.past_states.push_front(self.state.clone());
+            self.state.align_with(s);
+        }
+    }
+
     fn new_id(&mut self) -> usize {
         self.cursor_id_counter += 1;
         self.cursor_id_counter
     }
 
     pub fn cursor(&self, id: CursorId) -> &Cursor {
-        self.cursors.get(&id).unwrap()
+        self.state.cursors.get(&id).unwrap()
     }
 
     pub fn cursor_mut(&mut self, id: CursorId) -> &mut Cursor {
-        self.cursors.get_mut(&id).unwrap()
+        self.state.cursors.get_mut(&id).unwrap()
     }
 
     fn is_unsaved(&self) -> bool {
@@ -65,7 +107,7 @@ impl SharedBuffer {
     }
 
     fn remove_cursor(&mut self, id: &CursorId) {
-        self.cursors.remove(id);
+        self.state.cursors.remove(id);
     }
 
     pub fn title(&self) -> &str {
@@ -79,23 +121,32 @@ impl SharedBuffer {
     }
 
     fn insert(&mut self, id: CursorId, c: char) {
-        let pos = self.cursor(id).pos;
-        self.content.insert(pos, c);
-        self.cursors
+        self.insert_at(self.cursor(id).pos, c);
+    }
+
+    pub fn insert_at(&mut self, pos: usize, c: char) {
+        self.pre_edit();
+
+        self.state.content.insert(pos, c);
+        self.state.cursors
             .values_mut()
             .for_each(|cursor| cursor.shift_relative_to(pos, 1));
         self.trigger_mutation();
     }
 
     fn insert_line(&mut self, line: usize, s: &str) {
-        self.content.insert_line(line, s);
+        self.pre_edit();
+
+        self.state.content.insert_line(line, s);
     }
 
     fn backspace(&mut self, id: CursorId) {
+        self.pre_edit();
+
         let pos = self.cursor(id).pos;
         if pos > 0 {
-            self.content.remove(pos - 1);
-            self.cursors
+            self.state.content.remove(pos - 1);
+            self.state.cursors
                 .values_mut()
                 .for_each(|cursor| cursor.shift_relative_to(pos - 1, -1));
             self.trigger_mutation();
@@ -103,24 +154,32 @@ impl SharedBuffer {
     }
 
     fn delete(&mut self, id: CursorId) {
+        self.pre_edit();
+
         let pos = self.cursor(id).pos;
-        self.content.remove(pos);
-        self.cursors
+        self.state.content.remove(pos);
+        self.state.cursors
             .values_mut()
             .for_each(|cursor| cursor.shift_relative_to(pos, -1));
         self.trigger_mutation();
     }
 
+    pub fn content(&self) -> &Content {
+        &self.state.content
+    }
+
     pub fn insert_cursor(&mut self, cursor: Cursor) -> CursorId {
         let id = self.new_id();
-        self.cursors.insert(CursorId(id), cursor);
+        self.state.cursors.insert(CursorId(id), cursor);
         CursorId(id)
     }
 
     pub fn try_save(&mut self) -> Result<(), io::Error> {
+        self.pre_edit();
+
         if let Some(path) = &self.path {
             let mut f = File::create(path)?;
-            for c in self.content.chars() {
+            for c in self.content().chars() {
                 f.write(c.encode_utf8(&mut [0; 4]).as_bytes())?;
             }
             self.unsaved = false;
@@ -140,7 +199,10 @@ impl SharedBuffer {
 
         Ok(Self {
             path: Some(path.canonicalize().unwrap()),
-            content,
+            state: State {
+                content,
+                cursors: HashMap::new(),
+            },
             unsaved: false,
             ..Self::default()
         })
@@ -151,10 +213,14 @@ impl Default for SharedBuffer {
     fn default() -> Self {
         Self {
             config: Config::default(),
-            content: Content::default(),
+            state: State {
+                content: Content::default(),
+                cursors: HashMap::new(),
+            },
+            past_states: VecDeque::new(),
+            future_states: Vec::new(),
             path: None,
             cursor_id_counter: 0,
-            cursors: HashMap::new(),
             unsaved: true,
         }
     }
@@ -177,7 +243,7 @@ impl<'a> BufferGuard<'a> {
         &self.buffer.config
     }
     pub fn content(&self) -> &Content {
-        &self.buffer.content
+        self.buffer.content()
     }
 
     pub fn title(&self) -> &str {
@@ -189,15 +255,15 @@ impl<'a> BufferGuard<'a> {
     }
 
     pub fn len(&self) -> usize {
-        self.buffer.content.len()
+        self.buffer.content().len()
     }
 
     pub fn line_count(&self) -> usize {
-        self.buffer.content.lines().len()
+        self.buffer.content().lines().len()
     }
 
     pub fn line(&self, line: usize) -> Option<Line> {
-        self.buffer.content.line(line)
+        self.buffer.content().line(line)
     }
 
     pub fn cursor(&self) -> &Cursor {
@@ -208,8 +274,20 @@ impl<'a> BufferGuard<'a> {
         self.buffer.cursor_mut(self.cursor_id)
     }
 
+    pub fn undo(&mut self) {
+        self.buffer.undo();
+    }
+
+    pub fn redo(&mut self) {
+        self.buffer.redo();
+    }
+
     pub fn insert(&mut self, c: char) {
         self.buffer.insert(self.cursor_id, c);
+    }
+
+    pub fn insert_at(&mut self, pos: usize, c: char) {
+        self.buffer.insert_at(pos, c);
     }
 
     pub fn insert_line(&mut self, line: usize, s: &str) {

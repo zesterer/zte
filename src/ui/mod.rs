@@ -83,7 +83,7 @@ impl MainUi {
         }
     }
 
-    pub fn handle(&mut self, event: Event) {
+    pub fn handle(&mut self, event: Event) -> bool {
         match &mut self.menu {
             Some(menu) => match event {
                 Event::Escape | Event::CloseMenu => self.menu = None,
@@ -93,6 +93,7 @@ impl MainUi {
                 },
             },
             None => match event {
+                Event::Escape => return true,
                 Event::OpenPrompt => unimplemented!(),
                 Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::new(&mut self.ctx))),
                 Event::OpenOpener => self.menu = Some(Menu::Opener(Opener::new(&mut self.ctx))),
@@ -103,6 +104,8 @@ impl MainUi {
         if let Some(e) = self.ctx.secondary_events.pop_front() {
             self.handle(e);
         }
+
+        false
     }
 
     pub fn update(&mut self, canvas: &mut impl Canvas) {

@@ -40,7 +40,7 @@ impl Prompt {
     pub fn get_text(&self) -> String {
         let line = self
             .buffer
-            .content
+            .content()
             .line(0)
             .unwrap();
         line.chars().take(line.len() - 1).collect::<String>()
@@ -49,13 +49,13 @@ impl Prompt {
     pub fn append(&mut self, s: &str) {
         let line_len = self
             .buffer
-            .content
+            .content()
             .line(0)
             .unwrap()
             .len() - 1;
 
         for (i, c) in s.chars().enumerate() {
-            self.buffer.content.insert(line_len + i, c);
+            self.buffer.insert_at(line_len + i, c);
         }
 
         self.buf_mut().cursor_set(Vec2::new(line_len + s.len(), 0));

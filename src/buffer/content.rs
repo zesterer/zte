@@ -1,6 +1,7 @@
 use vek::*;
 use super::Line;
 
+#[derive(Clone)]
 pub struct Content {
     lines: Vec<Vec<char>>,
 }
