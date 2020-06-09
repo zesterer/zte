@@ -104,3 +104,21 @@ impl Default for Config {
         }
     }
 }
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum CharKind {
+    AlphaNum,
+    Other,
+}
+
+impl CharKind {
+    pub fn from_char(c: char) -> Option<Self> {
+        if c != '\n' && c.is_whitespace() {
+            None
+        } else if c.is_alphanumeric() {
+            Some(CharKind::AlphaNum)
+        } else {
+            Some(CharKind::Other)
+        }
+    }
+}

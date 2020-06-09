@@ -40,6 +40,7 @@ pub fn begin_reading() -> Receiver<Event> {
 
             InputEvent::Key(KeyEvent::Char(c)) => vec![Event::Insert(c)],
             InputEvent::Key(KeyEvent::Backspace) => vec![Event::Backspace],
+            InputEvent::Unsupported(event) if event == &[27, 91, 51, 59, 53, 126] => vec![Event::BackspaceWord],
             InputEvent::Key(KeyEvent::Delete) => vec![Event::Delete],
             InputEvent::Key(KeyEvent::Ctrl('z')) => vec![Event::Undo],
             InputEvent::Key(KeyEvent::Ctrl('y')) => vec![Event::Redo],

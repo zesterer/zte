@@ -14,6 +14,7 @@ use super::{
     Config,
     Cursor,
     Content,
+    CharKind,
 };
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -125,8 +126,6 @@ impl SharedBuffer {
     }
 
     pub fn insert_at(&mut self, pos: usize, c: char) {
-        self.pre_edit();
-
         self.state.content.insert(pos, c);
         self.state.cursors
             .values_mut()
@@ -135,14 +134,10 @@ impl SharedBuffer {
     }
 
     fn insert_line(&mut self, line: usize, s: &str) {
-        self.pre_edit();
-
         self.state.content.insert_line(line, s);
     }
 
     fn backspace(&mut self, id: CursorId) {
-        self.pre_edit();
-
         let pos = self.cursor(id).pos;
         if pos > 0 {
             self.state.content.remove(pos - 1);
@@ -154,8 +149,6 @@ impl SharedBuffer {
     }
 
     fn delete(&mut self, id: CursorId) {
-        self.pre_edit();
-
         let pos = self.cursor(id).pos;
         self.state.content.remove(pos);
         self.state.cursors
@@ -175,8 +168,6 @@ impl SharedBuffer {
     }
 
     pub fn try_save(&mut self) -> Result<(), io::Error> {
-        self.pre_edit();
-
         if let Some(path) = &self.path {
             let mut f = File::create(path)?;
             for c in self.content().chars() {
@@ -402,71 +393,78 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
-    pub fn cursor_jump(&mut self, dir: Dir) {
-        let get_next_char = |this: &Self| match dir {
-            Dir::Left => this.content().char_at(this.cursor().pos.saturating_sub(1)),
-            Dir::Right => this.content().char_at(this.cursor().pos),
+    fn get_next_char(&self, dir: Dir) -> Option<char> {
+        match dir {
+            Dir::Left => self.content().char_at(self.cursor().pos.saturating_sub(1)),
+            Dir::Right => self.content().char_at(self.cursor().pos),
             _ => unimplemented!(),
-        };
-
-        #[derive(Copy, Clone, PartialEq)]
-        enum CharKind {
-            AlphaNum,
-            Other,
         }
+    }
 
-        impl CharKind {
-            fn from_char(c: char) -> Option<Self> {
-                if c.is_whitespace() {
-                    None
-                } else if c.is_alphanumeric() {
-                    Some(CharKind::AlphaNum)
-                } else {
-                    Some(CharKind::Other)
+    pub fn cursor_jump(&mut self, dir: Dir) {
+        //self.cursor_move(dir, 1);
+
+        if let Dir::Left | Dir::Right = dir {
+            // Consume any whitespace before
+            while matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
+                let old_pos = self.cursor().pos;
+                self.cursor_move(dir, 1);
+                if self.cursor().pos == old_pos {
+                    break;
+                }
+            }
+
+            let kind = match self.get_next_char(dir) {
+                Some(c) => CharKind::from_char(c),
+                None => return,
+            };
+
+            while self.get_next_char(dir).map(CharKind::from_char) == Some(kind) {
+                let old_pos = self.cursor().pos;
+                self.cursor_move(dir, 1);
+                if self.cursor().pos == old_pos {
+                    break;
                 }
             }
         }
+    }
 
-        let mut kind = match get_next_char(self) {
+    pub fn backspace_word(&mut self) {
+        // Consume any whitespace before
+        while self.get_next_char(Dir::Left).map(|c| c != '\n' && c.is_whitespace()).unwrap_or(false)
+            && self.cursor().pos > 0
+        {
+            self.backspace();
+        }
+
+        let kind = match self.get_next_char(Dir::Left) {
             Some(c) => CharKind::from_char(c),
             None => return,
         };
 
-        self.cursor_move(dir, 1);
-
-        if let Dir::Left | Dir::Right = dir {
-            // Consume any whitespace before
-            while get_next_char(self).map(char::is_whitespace).unwrap_or(false)
-                && self.cursor().pos > 0
-                && self.cursor().pos < self.len()
-            {
-                self.cursor_move(dir, 1);
-            }
-
-            while get_next_char(self).map(CharKind::from_char) == Some(kind)
-                && self.cursor().pos > 0
-                && self.cursor().pos < self.len()
-            {
-                self.cursor_move(dir, 1);
-            }
-
-            // Consume any whitespace after
-            while get_next_char(self).map(char::is_whitespace).unwrap_or(false)
-                && self.cursor().pos > 0
-                && self.cursor().pos < self.len()
-            {
-                self.cursor_move(dir, 1);
-            }
+        while self.get_next_char(Dir::Left).map(CharKind::from_char) == Some(kind)
+            && self.cursor().pos > 0
+        {
+            self.backspace();
         }
     }
 
     pub fn handle(&mut self, event: Event) {
         match event {
+            // Do not mutate
+            Event::CursorMove(dir) => return self.cursor_move(dir, 1),
+            Event::CursorJump(dir) => return self.cursor_jump(dir),
+            _ => {},
+        }
+
+        self.buffer.pre_edit();
+
+        match event {
+            // Mutate
             Event::Insert(c) => self.insert(c),
             Event::Backspace => self.backspace(),
+            Event::BackspaceWord => self.backspace_word(),
             Event::Delete => self.delete(),
-            Event::CursorMove(dir) => self.cursor_move(dir, 1),
-            Event::CursorJump(dir) => self.cursor_jump(dir),
             Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
                 Ok(s) => self.insert_str(&s),
                 Err(_) => {},
