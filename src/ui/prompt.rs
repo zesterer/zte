@@ -1,6 +1,7 @@
 use vek::*;
 use crate::{
     Canvas,
+    Color,
     Event,
     Dir,
     buffer::shared::{SharedBuffer, BufferGuard},
@@ -15,6 +16,7 @@ use super::{
 pub struct Prompt {
     buffer: SharedBuffer,
     cursor_id: CursorId,
+    fg_color: Color,
 }
 
 impl Default for Prompt {
@@ -25,6 +27,7 @@ impl Default for Prompt {
         Self {
             buffer,
             cursor_id,
+            fg_color: Color::Reset,
         }
     }
 }
@@ -60,6 +63,10 @@ impl Prompt {
 
         self.buf_mut().cursor_set(Vec2::new(line_len + s.len(), 0));
     }
+
+    pub fn set_fg_color(&mut self, color: Color) {
+        self.fg_color = color;
+    }
 }
 
 impl Element for Prompt {
@@ -80,7 +87,9 @@ impl Element for Prompt {
         let sz = canvas.size();
         canvas.rectangle(Vec2::zero(), sz, ' '.into());
         for (i, c) in self.get_text().chars().enumerate().take(canvas.size().w) {
-            canvas.write_char(Vec2::new(i, 0), c);
+            canvas
+                .with_fg(self.fg_color)
+                .write_char(Vec2::new(i, 0), c);
         }
 
         if active {

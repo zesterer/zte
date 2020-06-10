@@ -14,7 +14,7 @@ use backtrace::Backtrace;
 use clap::{App, Arg};
 use crate::{
     config::Config,
-    display::Display,
+    display::{Display, Color},
     event::{Dir, Event},
     draw::Canvas,
     ui::{MainUi, Theme},

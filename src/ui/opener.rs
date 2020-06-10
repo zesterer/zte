@@ -69,7 +69,7 @@ impl Element for Opener {
             },
             Event::Insert(c @ ('\n' | '\t')) => {
                 if let Some((selected_idx, listings)) = &mut self.listings {
-                    if listings.len() > 0 {
+                    if *selected_idx < listings.len() {
                         let entry = &listings[*selected_idx];
                         let is_file = entry.file_type().map(|ft| ft.is_file()).unwrap_or(false);
 
@@ -91,16 +91,12 @@ impl Element for Opener {
             },
             Event::CursorMove(Dir::Up, _) => {
                 self.listings.as_mut().map(|(selected_idx, listings)| {
-                    if listings.len() > 0 {
-                        *selected_idx = (*selected_idx + listings.len().saturating_sub(1)) % listings.len();
-                    }
+                    *selected_idx = (*selected_idx + listings.len()) % (listings.len() + 1);
                 });
             },
             Event::CursorMove(Dir::Down, _) => {
                 self.listings.as_mut().map(|(selected_idx, listings)| {
-                    if listings.len() > 0 {
-                        *selected_idx = (*selected_idx + 1) % listings.len();
-                    }
+                    *selected_idx = (*selected_idx + 1) % (listings.len() + 1);
                 });
             },
             Event::Backspace if self.prompt.get_text().len() == 0 => {
@@ -115,6 +111,12 @@ impl Element for Opener {
     }
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
+        self.prompt.set_fg_color(if self.listings.as_ref().map(|(_, entries)| entries.is_empty()).unwrap_or(true) {
+            Color::Rgb(Rgb::new(150, 255, 0))
+        } else {
+            Color::Reset
+        });
+
         self.prompt.update(ctx, canvas, active);
     }
 
@@ -173,20 +175,32 @@ impl Element for Opener {
         ));
 
         if let Some((selected_idx, listings)) = &self.listings {
-            for (i, entry) in listings.iter().enumerate().take(canvas.size().h) {
+            for (i, entry) in listings
+                .iter()
+                .map(Some)
+                .chain(std::iter::once(None))
+                .enumerate()
+                .take(canvas.size().h)
+            {
                 canvas.write_str(Vec2::new(0, i), if i == *selected_idx {
                     ">  "
                 } else {
                     "   "
                 });
-                if entry.file_type().map(|ft| ft.is_file()).unwrap_or(true) {
-                    canvas
-                        .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
-                        .write_str(Vec2::new(2, i), entry.file_name().to_str().unwrap_or("!!!"));
+                if let Some(entry) = entry {
+                    if entry.file_type().map(|ft| ft.is_file()).unwrap_or(true) {
+                        canvas
+                            .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
+                            .write_str(Vec2::new(2, i), entry.file_name().to_str().unwrap_or("!!!"));
+                    } else {
+                        canvas
+                            .with_fg(DIR_COLOR)
+                            .write_str(Vec2::new(2, i), &format!("{}/", entry.file_name().to_str().unwrap_or("!!!")));
+                    }
                 } else {
                     canvas
-                        .with_fg(DIR_COLOR)
-                        .write_str(Vec2::new(2, i), &format!("{}/", entry.file_name().to_str().unwrap_or("!!!")));
+                            .with_fg(Color::Rgb(Rgb::new(0, 255, 0)))
+                            .write_str(Vec2::new(2, i), &format!("{}", self.prompt.get_text()));
                 }
             }
         } else {
