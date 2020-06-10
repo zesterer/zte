@@ -29,7 +29,7 @@ impl Highlights {
     }
 }
 
-const PRIMITIVES: [&str; 16] = ["usize", "isize", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "str", "bool"];
+const PRIMITIVES: [&str; 17] = ["usize", "isize", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "str", "bool", "char"];
 
 impl From<String> for Highlights {
     fn from(code: String) -> Self {
@@ -37,11 +37,12 @@ impl From<String> for Highlights {
             Default,
             Number,
             Word,
-            String,
+            String(bool),
             Symbol(char),
             LineComment,
             MultiComment(char),
-        }
+			Char(bool),
+		}
 
         let mut chars = code.chars().enumerate();
         let mut state = State::Default;
@@ -55,9 +56,13 @@ impl From<String> for Highlights {
                 State::Default => match c {
                     '\0' => break,
                     '"' => {
-                        state = State::String;
+                        state = State::String(false);
                         start = i;
                     },
+					'\'' => {
+						state = State::Char(false);
+						start = i;
+					},
                     c if c.is_whitespace() => {},
                     c if c.is_alphabetic() || c == '_' => {
                         state = State::Word;
@@ -126,12 +131,13 @@ impl From<String> for Highlights {
                         state = State::Default;
                     },
                 },
-                State::String => match c {
-                    c if c == '"' || c == '\0' => {
+                State::String(escaped) => match c {
+                    c if (c == '"' && !escaped) || c == '\0' => {
                         regions.push((start..i + 1, Region::String));
                         state = State::Default;
                     },
-                    c => {},
+					'\\' if !escaped => state = State::String(true),
+                    c => state = State::String(false),
                 },
                 State::Symbol(last) => match c {
                     '/' if last == '/' => {
@@ -161,6 +167,14 @@ impl From<String> for Highlights {
                     },
                     c => {},
                 },
+				State::Char(escaped) => match c {
+					c if (c == '\'' && !escaped) || c == '\0' => {
+						regions.push((start..i + 1, Region::String));
+                        state = State::Default;
+					},
+					'\\' if !escaped => state = State::Char(true),
+					c => state = State::Char(false),
+				},
             }
 
             if !wait {
