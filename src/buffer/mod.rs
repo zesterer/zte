@@ -29,7 +29,11 @@ impl<'a> Line<'a> {
     pub fn len(&self) -> usize {
         self.chars.len() + 1
     }
-
+    
+    pub fn get(&self, pos: usize) -> Option<char> {
+        self.chars.get(pos).copied()
+    }
+    
     pub fn chars(&self) -> impl Iterator<Item=char> + '_ {
         self.chars
             .iter()
@@ -123,12 +127,16 @@ impl Default for Cursor {
 
 pub struct Config {
     tab_width: usize,
+    hard_tabs: bool,
+	auto_indent: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             tab_width: 4,
+            hard_tabs: false,
+			auto_indent: true,
         }
     }
 }

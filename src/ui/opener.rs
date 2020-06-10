@@ -47,7 +47,11 @@ impl Opener {
             Ok(dir) => {
                 let mut entries = dir
                     .filter_map(|entry| entry.ok())
-                    .filter(|entry| entry.file_name().to_str().unwrap().contains(&file_filter))
+                    .filter(|entry| entry
+                        .path()
+                        .file_stem()
+                        .map(|f| f.to_str().unwrap().contains(&file_filter))
+                        .unwrap_or(false))
                     .collect::<Vec<_>>();
                 entries.sort_by_key(|e| e.file_name().to_str().map(|s| s.to_string()));
                 Some((0, entries))
@@ -221,7 +225,7 @@ impl Element for Opener {
                 } else {
                     canvas
                             .with_fg(ctx.theme.create_color)
-                            .write_str(Vec2::new(2, i), &format!("{:<24} [new]", self.prompt.get_text()));
+                            .write_str(Vec2::new(2, i), &format!("{:<24}[new]", self.prompt.get_text()));
                 }
             }
         } else {

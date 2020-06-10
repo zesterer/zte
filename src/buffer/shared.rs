@@ -256,6 +256,10 @@ impl<'a> BufferGuard<'a> {
     pub fn line(&self, line: usize) -> Option<Line> {
         self.buffer.content().line(line)
     }
+	
+	pub fn current_line(&self) -> Line {
+		self.line(self.cursor_loc().y).unwrap()
+	}
 
     pub fn cursor(&self) -> &Cursor {
         self.buffer.cursor(self.cursor_id)
@@ -314,6 +318,10 @@ impl<'a> BufferGuard<'a> {
         (from..to)
             .map(move |i| self.content().char_at(i).unwrap())
     }
+
+	pub fn cursor_loc(&self) -> Vec2<usize> {
+		self.pos_loc(self.cursor().pos, self.config())
+	}
 
     pub fn pos_loc(&self, mut pos: usize, cfg: &Config) -> Vec2<usize> {
         let mut row = 0;
@@ -463,6 +471,7 @@ impl<'a> BufferGuard<'a> {
         for _ in 0..len {
             self.buffer.remove_at(self.cursor().base.min(self.cursor().pos));
         }
+        self.cursor_mut().pos = self.cursor().base.min(self.cursor().pos);
     }
 
     pub fn do_cursor_movement(&mut self, dir: Dir, reach: bool, f: impl FnOnce(&mut Self)) {
@@ -491,8 +500,42 @@ impl<'a> BufferGuard<'a> {
 
         match event {
             // Mutate
-            Event::Insert(c) => self.insert(c),
+			Event::Insert(c) => {
+                self.remove_selection();
+                match c {
+                    '\n' if self.config().auto_indent => {
+		        		let whitespace = self
+        					.current_line()
+				        	.chars()
+		        			.take_while(|c| c.is_whitespace() && *c != '\n')
+        					.collect::<Vec<_>>();
+				        self.insert('\n');
+				        for ws in whitespace {
+		        			self.insert(ws);
+        				}
+			        },
+                    '\t' if !self.config().hard_tabs => {
+				        self.insert(' ');
+				        while self.cursor_loc().x % self.config().tab_width != 0 {
+					        self.insert(' ');
+				        }
+			        },
+                    c => self.insert(c),
+                }
+            },
             Event::Backspace if self.cursor().is_reaching() => self.remove_selection(),
+            Event::Backspace if !self.config().hard_tabs => {
+                self.backspace();
+                let base_x = self.cursor_loc().x - self.cursor_loc().x % self.config().tab_width;
+                if (base_x..self.cursor_loc().x)
+                    .all(|i| self.current_line().get(i).map(|c| c == ' ').unwrap_or(false))
+                    && (self.cursor_loc().x + 1) % self.config().tab_width == 0
+                {
+                    for _ in base_x..self.cursor_loc().x {
+                        self.backspace();
+                    }
+                }
+            },
             Event::Backspace => self.backspace(),
             Event::BackspaceWord => self.backspace_word(),
             Event::Delete => self.delete(),

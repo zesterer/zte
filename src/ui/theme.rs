@@ -27,6 +27,7 @@ impl Theme {
             Region::MultiComment => Color::Rgb(Rgb::gray(180)),
             Region::Symbol => Color::Rgb(Rgb::new(0, 150, 255)),
             Region::Primitive => Color::Rgb(Rgb::new(255, 100, 0)),
+            Region::Label => Color::Rgb(Rgb::new(255, 0, 0)),
             _ => Color::Reset,
         }
     }

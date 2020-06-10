@@ -29,7 +29,13 @@ impl Highlights {
     }
 }
 
-const PRIMITIVES: [&str; 17] = ["usize", "isize", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "str", "bool", "char"];
+const PRIMITIVES: [&str; 17] = [
+	"usize", "isize",
+	"u8", "u16", "u32", "u64", "u128",
+	"i8", "i16", "i32", "i64", "i128",
+	"f32", "f64",
+	"str", "bool", "char",
+];
 
 impl From<String> for Highlights {
     fn from(code: String) -> Self {
@@ -51,6 +57,7 @@ impl From<String> for Highlights {
 
         loop {
             let (i, c) = chars.clone().next().unwrap_or((0, '\0'));
+            let len = i - start;
             let mut wait = false;
             match state {
                 State::Default => match c {
@@ -146,7 +153,7 @@ impl From<String> for Highlights {
                     '*' if last == '/' => {
                         state = State::MultiComment(c);
                     },
-                    c if c.is_ascii_punctuation() && c != '"' => {},
+                    c if c.is_ascii_punctuation() && c != '"' && c != '\'' => {},
                     c => {
                         regions.push((start..i, Region::Symbol));
                         wait = true;
@@ -168,11 +175,16 @@ impl From<String> for Highlights {
                     c => {},
                 },
 				State::Char(escaped) => match c {
-					c if (c == '\'' && !escaped) || c == '\0' => {
+				    c if (c == '\'' && !escaped) || c == '\0' => {
 						regions.push((start..i + 1, Region::String));
                         state = State::Default;
 					},
-					'\\' if !escaped => state = State::Char(true),
+					c if len >1 && !escaped => {
+				        regions.push((start..i, Region::Label));
+				        wait = true;
+				        state = State::Default;
+				    },
+				    '\\' if !escaped => state = State::Char(true),
 					c => state = State::Char(false),
 				},
             }
@@ -192,7 +204,7 @@ pub enum Region {
     Keyword,
     LineComment,
     MultiComment,
-    Special,
+    Label,
     Primitive,
     Symbol,
     Bracket,
