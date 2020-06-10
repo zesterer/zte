@@ -90,13 +90,17 @@ impl Element for Opener {
                 }
             },
             Event::CursorMove(Dir::Up, _) => {
+                let prompt_len = self.prompt.get_text().len();
                 self.listings.as_mut().map(|(selected_idx, listings)| {
-                    *selected_idx = (*selected_idx + listings.len()) % (listings.len() + 1);
+                    let select_len = listings.len() + if prompt_len == 0 { 0 } else { 1 };
+                    *selected_idx = (*selected_idx + select_len.saturating_sub(1)) % select_len;
                 });
             },
             Event::CursorMove(Dir::Down, _) => {
+                let prompt_len = self.prompt.get_text().len();
                 self.listings.as_mut().map(|(selected_idx, listings)| {
-                    *selected_idx = (*selected_idx + 1) % (listings.len() + 1);
+                    let select_len = listings.len() + if prompt_len == 0 { 0 } else { 1 };
+                    *selected_idx = (*selected_idx + 1) % select_len;
                 });
             },
             Event::Backspace if self.prompt.get_text().len() == 0 => {
@@ -112,10 +116,19 @@ impl Element for Opener {
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         self.prompt.set_fg_color(if self.listings.as_ref().map(|(_, entries)| entries.is_empty()).unwrap_or(true) {
-            Color::Rgb(Rgb::new(150, 255, 0))
+            ctx.theme.create_color
         } else {
             Color::Reset
         });
+
+        let prompt_len = self.prompt.get_text().len();
+        self.listings
+            .as_mut()
+            .map(|(idx, listings)| {
+                if prompt_len == 0 {
+                    *idx = *idx % listings.len();
+                }
+            });
 
         self.prompt.update(ctx, canvas, active);
     }
@@ -178,7 +191,11 @@ impl Element for Opener {
             for (i, entry) in listings
                 .iter()
                 .map(Some)
-                .chain(std::iter::once(None))
+                .chain(if self.prompt.get_text().len() == 0 {
+                    None
+                } else {
+                    Some(None)
+                }.into_iter())
                 .enumerate()
                 .take(canvas.size().h)
             {
@@ -191,16 +208,20 @@ impl Element for Opener {
                     if entry.file_type().map(|ft| ft.is_file()).unwrap_or(true) {
                         canvas
                             .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
-                            .write_str(Vec2::new(2, i), entry.file_name().to_str().unwrap_or("!!!"));
+                            .write_str(Vec2::new(2, i), &format!("{:<24}", entry.file_name().to_str().unwrap_or("!!!")));
                     } else {
                         canvas
                             .with_fg(DIR_COLOR)
-                            .write_str(Vec2::new(2, i), &format!("{}/", entry.file_name().to_str().unwrap_or("!!!")));
+                            .write_str(Vec2::new(2, i), &format!("{:<23}/", entry.file_name().to_str().unwrap_or("!!!")));
                     }
+
+                    canvas
+                        .with_fg(ctx.theme.margin_color)
+                        .write_str(Vec2::new(26, i), &format!("{}", entry.path().parent().and_then(|p| p.to_str()).unwrap_or("")));
                 } else {
                     canvas
-                            .with_fg(Color::Rgb(Rgb::new(0, 255, 0)))
-                            .write_str(Vec2::new(2, i), &format!("{}", self.prompt.get_text()));
+                            .with_fg(ctx.theme.create_color)
+                            .write_str(Vec2::new(2, i), &format!("{:<24} [new]", self.prompt.get_text()));
                 }
             }
         } else {
