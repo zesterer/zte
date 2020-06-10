@@ -141,7 +141,9 @@ impl Display {
 
     fn init(&mut self) {
         write!(self.screen, "{}", clear::All).unwrap();
+        write!(self.screen, "{}", cursor::Save).unwrap();
         write!(self.screen, "{}", cursor::Hide).unwrap();
+        write!(self.screen, "{}", cursor::BlinkingBar).unwrap();
         for row in 0..self.size.h {
             write!(self.screen, "{}", cursor::Goto(1, row as u16 + 1)).unwrap();
             for col in 0..self.size.w {
@@ -203,5 +205,6 @@ impl Display {
 impl Drop for Display {
     fn drop(&mut self) {
         write!(self.screen, "{}", cursor::Show).unwrap();
+        write!(self.screen, "{}", cursor::Restore).unwrap();
     }
 }

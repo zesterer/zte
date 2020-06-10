@@ -71,12 +71,11 @@ impl Element for Editor {
                 }
             },
             Event::SaveBuffer => buf.try_save().unwrap(),
-            Event::DuplicateLine => buf.duplicate_line(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
-            Event::PageMove(dir) => buf.cursor_move(dir, self.page_height),
+            Event::PageMove(dir) => { buf.cursor_move(dir, self.page_height); },
             Event::Undo => buf.undo(),
             Event::Redo => buf.redo(),
-            Event::OpenFile(path) => match ctx.state.open_file(path) {
+            Event::OpenFile(path) => match ctx.state.open_file(path, self.buffer.clone()) {
                 Ok(buf) => self.buffer = buf,
                 Err(err) => log::warn!("When opening file: {:?}", err),
             },
@@ -172,9 +171,16 @@ impl Element for Editor {
                 let buf_col = col + self.loc.x;
                 let buf_pos = buf_row_pos + line_pos.unwrap_or(0);
 
-                canvas
-                    .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
-                    .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
+                if buf.cursor().inside_reach(buf_pos) && line_pos.is_some() {
+                    canvas
+                        .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
+                        .with_bg(ctx.theme.selection_color)
+                        .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
+                } else {
+                    canvas
+                        .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
+                        .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
+                }
             }
         }
 
@@ -182,6 +188,22 @@ impl Element for Editor {
             let cursor_loc = buf.pos_loc(buf.cursor().pos, &buf.config());
             let cursor_screen_loc = cursor_loc.map2(self.loc, |e, loc| e.saturating_sub(loc)) + Vec2::unit_x() * MARGIN_WIDTH;
             canvas.set_cursor(Some(cursor_screen_loc).filter(|loc| loc.x < canvas.size().w && loc.y < canvas.size().h));
+        }
+
+        // Scrollbar
+        let pad_h = (sz.h.saturating_sub(3).pow(2) / buf.content().lines().len().max(1)).max(1);
+        if pad_h < sz.h.saturating_sub(2) {
+            // Bg
+            canvas
+                .with_fg(ctx.theme.scrollbar_color)
+                .with_bg(ctx.theme.margin_color)
+                .rectangle((sz.w - 2, 1), (1, sz.h - 2), '.');
+
+            // Pad
+            canvas
+                .with_fg(ctx.theme.scrollbar_color)
+                .with_bg(ctx.theme.scrollpad_color)
+                .rectangle((sz.w - 2, 1 + self.loc.y * sz.h.saturating_sub(2) / buf.content().lines().len()), (1, pad_h), '.');
         }
     }
 }

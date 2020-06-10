@@ -47,7 +47,7 @@ impl Opener {
             Ok(dir) => {
                 let mut entries = dir
                     .filter_map(|entry| entry.ok())
-                    .filter(|entry| entry.file_name().to_str().unwrap().starts_with(&file_filter))
+                    .filter(|entry| entry.file_name().to_str().unwrap().contains(&file_filter))
                     .collect::<Vec<_>>();
                 entries.sort_by_key(|e| e.file_name().to_str().map(|s| s.to_string()));
                 Some((0, entries))
@@ -85,14 +85,14 @@ impl Element for Opener {
                     }
                 }
             },
-            Event::CursorMove(Dir::Up) => {
+            Event::CursorMove(Dir::Up, _) => {
                 self.listings.as_mut().map(|(selected_idx, listings)| {
                     if listings.len() > 0 {
                         *selected_idx = (*selected_idx + listings.len().saturating_sub(1)) % listings.len();
                     }
                 });
             },
-            Event::CursorMove(Dir::Down) => {
+            Event::CursorMove(Dir::Down, _) => {
                 self.listings.as_mut().map(|(selected_idx, listings)| {
                     if listings.len() > 0 {
                         *selected_idx = (*selected_idx + 1) % listings.len();

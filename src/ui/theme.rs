@@ -11,6 +11,9 @@ pub struct Theme {
     pub frame_bg_color: Color,
     pub margin_color: Color,
     pub line_number_color: Color,
+    pub scrollbar_color: Color,
+    pub scrollpad_color: Color,
+    pub selection_color: Color,
 }
 
 impl Theme {
@@ -35,6 +38,9 @@ impl Default for Theme {
             frame_bg_color: Color::Reset,
             margin_color: Color::Reset,
             line_number_color: Color::Rgb(Rgb::gray(100)),
+            scrollbar_color: Color::Rgb(Rgb::gray(70)),
+            scrollpad_color: Color::Rgb(Rgb::gray(175)),
+            selection_color: Color::Rgb(Rgb::new(0, 100, 80)),
         }
     }
 }

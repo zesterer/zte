@@ -308,6 +308,13 @@ impl<'a> BufferGuard<'a> {
         s
     }
 
+    pub fn selection(&self) -> impl Iterator<Item=char> + '_ {
+        let from = self.cursor().base.min(self.cursor().pos);
+        let to = self.cursor().base.max(self.cursor().pos);
+        (from..to)
+            .filter_map(move |i| self.content().char_at(i))
+    }
+
     pub fn pos_loc(&self, mut pos: usize, cfg: &Config) -> Vec2<usize> {
         let mut row = 0;
         for line in self.lines() {
@@ -370,7 +377,8 @@ impl<'a> BufferGuard<'a> {
         self.cursor_mut().pos = self.loc_pos(loc, self.config());
     }
 
-    pub fn cursor_move(&mut self, dir: Dir, n: usize) {
+    pub fn cursor_move(&mut self, dir: Dir, n: usize) -> bool {
+        let old_pos = self.cursor().pos;
         match dir {
             Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
             Dir::Right => self.cursor_mut().pos = (self.cursor().pos + n).min(self.len()),
@@ -391,6 +399,7 @@ impl<'a> BufferGuard<'a> {
                 }
             },
         }
+        self.cursor().pos != old_pos
     }
 
     fn get_next_char(&self, dir: Dir) -> Option<char> {
@@ -452,8 +461,34 @@ impl<'a> BufferGuard<'a> {
     pub fn handle(&mut self, event: Event) {
         match event {
             // Do not mutate
-            Event::CursorMove(dir) => return self.cursor_move(dir, 1),
-            Event::CursorJump(dir) => return self.cursor_jump(dir),
+            Event::CursorMove(dir, reach) => {
+                let can_do = if !reach {
+                    !self.cursor_mut().unreach(dir)
+                } else {
+                    true
+                };
+                if can_do {
+                    self.cursor_move(dir, 1);
+                }
+                if !reach {
+                    self.cursor_mut().reset_base();
+                }
+                return;
+            },
+            Event::CursorJump(dir, reach) => {
+                let can_do = if !reach {
+                    !self.cursor_mut().unreach(dir)
+                } else {
+                    true
+                };
+                if can_do {
+                    self.cursor_jump(dir);
+                }
+                if !reach {
+                    self.cursor_mut().reset_base();
+                }
+                return;
+            },
             _ => {},
         }
 
@@ -465,6 +500,12 @@ impl<'a> BufferGuard<'a> {
             Event::Backspace => self.backspace(),
             Event::BackspaceWord => self.backspace_word(),
             Event::Delete => self.delete(),
+            Event::Duplicate if self.cursor().is_reaching() => self.insert_str(&self.selection().collect::<String>()),
+            Event::Duplicate => self.duplicate_line(),
+            Event::Copy => {
+                let _ = ClipboardContext::new()
+                    .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));
+            },
             Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
                 Ok(s) => self.insert_str(&s),
                 Err(_) => {},

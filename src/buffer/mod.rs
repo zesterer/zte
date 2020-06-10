@@ -72,23 +72,51 @@ impl<'a> From<&'a [char]> for Line<'a> {
 
 #[derive(Copy, Clone)]
 pub struct Cursor {
+    pub base: usize,
     pub pos: usize,
-    pub reach: isize,
 }
 
 impl Cursor {
+    pub fn unreach(&mut self, dir: Dir) -> bool {
+        if self.base == self.pos {
+            false
+        } else {
+            self.pos = if dir.is_forward() {
+                self.base.max(self.pos)
+            } else {
+                self.base.min(self.pos)
+            };
+            true
+        }
+    }
+
+    pub fn reset_base(&mut self) {
+        self.base = self.pos;
+    }
+
+    pub fn is_reaching(&self) -> bool {
+        self.base != self.pos
+    }
+
     pub fn shift_relative_to(&mut self, pos: usize, dist: isize) {
         if self.pos >= pos {
             self.pos = (self.pos as isize + dist).max(pos as isize) as usize;
         }
+        if self.base >= pos {
+            self.base = (self.base as isize + dist).max(pos as isize) as usize;
+        }
+    }
+
+    pub fn inside_reach(&self, pos: usize) -> bool {
+        pos >= self.base && pos < self.pos || pos >= self.pos && pos < self.base
     }
 }
 
 impl Default for Cursor {
     fn default() -> Self {
         Self {
+            base: 0,
             pos: 0,
-            reach: 0,
         }
     }
 }

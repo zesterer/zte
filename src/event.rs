@@ -21,6 +21,12 @@ impl From<Dir> for Vec2<isize> {
     }
 }
 
+impl Dir {
+    pub fn is_forward(&self) -> bool {
+        matches!(self, Dir::Right | Dir::Down)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Event {
     Insert(char),
@@ -29,8 +35,8 @@ pub enum Event {
     Delete,
     Undo,
     Redo,
-    CursorMove(Dir),
-    CursorJump(Dir),
+    CursorMove(Dir, bool),
+    CursorJump(Dir, bool),
     PageMove(Dir),
     SwitchEditor(Dir),
     NewEditor(Dir),
@@ -47,7 +53,7 @@ pub enum Event {
     Cut,
     Copy,
     Paste,
-    DuplicateLine,
+    Duplicate,
     Escape,
     Quit,
 }

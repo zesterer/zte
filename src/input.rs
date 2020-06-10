@@ -26,15 +26,23 @@ pub fn begin_reading() -> Receiver<Event> {
         let events = match event.unwrap() {
             // Buffer movement
 
-            InputEvent::Key(KeyEvent::Left) => vec![Event::CursorMove(Dir::Left)],
-            InputEvent::Key(KeyEvent::Right) => vec![Event::CursorMove(Dir::Right)],
-            InputEvent::Key(KeyEvent::Up) => vec![Event::CursorMove(Dir::Up)],
-            InputEvent::Key(KeyEvent::Down) => vec![Event::CursorMove(Dir::Down)],
+            InputEvent::Key(KeyEvent::Left) => vec![Event::CursorMove(Dir::Left, false)],
+            InputEvent::Key(KeyEvent::Right) => vec![Event::CursorMove(Dir::Right, false)],
+            InputEvent::Key(KeyEvent::Up) => vec![Event::CursorMove(Dir::Up, false)],
+            InputEvent::Key(KeyEvent::Down) => vec![Event::CursorMove(Dir::Down, false)],
 
-            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 68] => vec![Event::CursorJump(Dir::Left)],
-            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 67] => vec![Event::CursorJump(Dir::Right)],
-            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 65] => vec![Event::CursorJump(Dir::Up)],
-            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 66] => vec![Event::CursorJump(Dir::Down)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 68] => vec![Event::CursorJump(Dir::Left, false)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 67] => vec![Event::CursorJump(Dir::Right, false)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 65] => vec![Event::CursorJump(Dir::Up, false)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 53, 66] => vec![Event::CursorJump(Dir::Down, false)],
+
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 50, 68] => vec![Event::CursorMove(Dir::Left, true)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 50, 67] => vec![Event::CursorMove(Dir::Right, true)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 50, 65] => vec![Event::CursorMove(Dir::Up, true)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 50, 66] => vec![Event::CursorMove(Dir::Down, true)],
+
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 68] => vec![Event::CursorJump(Dir::Left, true)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 67] => vec![Event::CursorJump(Dir::Right, true)],
 
             // Buffer editing
 
@@ -60,7 +68,7 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Ctrl('x')) => vec![Event::Cut],
             InputEvent::Key(KeyEvent::Ctrl('c')) => vec![Event::Copy],
             InputEvent::Key(KeyEvent::Ctrl('v')) => vec![Event::Paste],
-            InputEvent::Key(KeyEvent::Ctrl('d')) => vec![Event::DuplicateLine],
+            InputEvent::Key(KeyEvent::Ctrl('d')) => vec![Event::Duplicate],
 
             // Tile movement
 

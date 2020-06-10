@@ -51,7 +51,7 @@ impl State {
         (this, errors)
     }
 
-    pub fn open_file(&mut self, path: PathBuf) -> Result<BufferHandle, SharedBufferError> {
+    pub fn open_file(&mut self, path: PathBuf, old_handle: BufferHandle) -> Result<BufferHandle, SharedBufferError> {
         let full_path = path.canonicalize().unwrap();
         self
             .buffers
@@ -59,7 +59,11 @@ impl State {
             .find(|(_, (buf, _))| buf.path.as_ref().map(|p| p == &full_path).unwrap_or(false))
             .map(|(id, _)| Ok(*id))
             .unwrap_or_else(|| Ok(self.insert_buffer(SharedBuffer::open(path)?)))
-            .map(|buf| self.new_handle(buf).unwrap())
+            .map(|buf| if old_handle.buffer_id == buf {
+                old_handle
+            } else {
+                self.new_handle(buf).unwrap()
+            })
     }
 
     pub fn new_handle(&mut self, buffer_id: BufferId) -> Option<BufferHandle> {
