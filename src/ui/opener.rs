@@ -82,6 +82,10 @@ impl Element for Opener {
 
                         self.prompt = Prompt::default();
                         self.update_listings();
+                    } else {
+                        ctx.secondary_events.push_back(Event::CloseMenu);
+                        self.path.push(self.prompt.get_text());
+                        ctx.secondary_events.push_back(Event::NewFile(self.path.clone()));
                     }
                 }
             },

@@ -140,16 +140,15 @@ impl SharedBuffer {
     fn backspace(&mut self, id: CursorId) {
         let pos = self.cursor(id).pos;
         if pos > 0 {
-            self.state.content.remove(pos - 1);
-            self.state.cursors
-                .values_mut()
-                .for_each(|cursor| cursor.shift_relative_to(pos - 1, -1));
-            self.trigger_mutation();
+            self.remove_at(pos - 1);
         }
     }
 
     fn delete(&mut self, id: CursorId) {
-        let pos = self.cursor(id).pos;
+        self.remove_at(self.cursor(id).pos);
+    }
+
+    fn remove_at(&mut self, pos: usize) {
         self.state.content.remove(pos);
         self.state.cursors
             .values_mut()
@@ -174,27 +173,28 @@ impl SharedBuffer {
                 f.write(c.encode_utf8(&mut [0; 4]).as_bytes())?;
             }
             self.unsaved = false;
+            self.path = Some(path.canonicalize()?);
         }
 
         Ok(())
     }
 
-    pub fn open(path: PathBuf) -> Result<Self, SharedBufferError> {
-        let content = if let Ok(mut file) = File::open(&path) {
+    pub fn open_or_create(path: PathBuf) -> Result<Self, SharedBufferError> {
+        let (content, unsaved) = if let Ok(mut file) = File::open(&path) {
             let mut buf = String::new();
             file.read_to_string(&mut buf)?;
-            Content::from(buf)
+            (Content::from(buf), false)
         } else {
-            Content::default()
+            (Content::default(), true)
         };
 
         Ok(Self {
-            path: Some(path.canonicalize().unwrap()),
+            path: Some(path.canonicalize().unwrap_or(path)),
             state: State {
                 content,
                 cursors: HashMap::new(),
             },
-            unsaved: false,
+            unsaved,
             ..Self::default()
         })
     }
@@ -308,11 +308,11 @@ impl<'a> BufferGuard<'a> {
         s
     }
 
-    pub fn selection(&self) -> impl Iterator<Item=char> + '_ {
+    pub fn selection(&self) -> impl Iterator<Item=char> + ExactSizeIterator<Item=char> + '_ {
         let from = self.cursor().base.min(self.cursor().pos);
         let to = self.cursor().base.max(self.cursor().pos);
         (from..to)
-            .filter_map(move |i| self.content().char_at(i))
+            .map(move |i| self.content().char_at(i).unwrap())
     }
 
     pub fn pos_loc(&self, mut pos: usize, cfg: &Config) -> Vec2<usize> {
@@ -458,37 +458,32 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
+    fn remove_selection(&mut self) {
+        let len = self.selection().len();
+        for _ in 0..len {
+            self.buffer.remove_at(self.cursor().base.min(self.cursor().pos));
+        }
+    }
+
+    pub fn do_cursor_movement(&mut self, dir: Dir, reach: bool, f: impl FnOnce(&mut Self)) {
+        let can_do = if !reach {
+            !self.cursor_mut().unreach(dir)
+        } else {
+            true
+        };
+        if can_do {
+            f(self)
+        }
+        if !reach {
+            self.cursor_mut().reset_base();
+        }
+    }
+
     pub fn handle(&mut self, event: Event) {
         match event {
             // Do not mutate
-            Event::CursorMove(dir, reach) => {
-                let can_do = if !reach {
-                    !self.cursor_mut().unreach(dir)
-                } else {
-                    true
-                };
-                if can_do {
-                    self.cursor_move(dir, 1);
-                }
-                if !reach {
-                    self.cursor_mut().reset_base();
-                }
-                return;
-            },
-            Event::CursorJump(dir, reach) => {
-                let can_do = if !reach {
-                    !self.cursor_mut().unreach(dir)
-                } else {
-                    true
-                };
-                if can_do {
-                    self.cursor_jump(dir);
-                }
-                if !reach {
-                    self.cursor_mut().reset_base();
-                }
-                return;
-            },
+            Event::CursorMove(dir, reach) => return self.do_cursor_movement(dir, reach, |b| { b.cursor_move(dir, 1); }),
+            Event::CursorJump(dir, reach) => return self.do_cursor_movement(dir, reach, |b| { b.cursor_jump(dir); }),
             _ => {},
         }
 
@@ -497,11 +492,17 @@ impl<'a> BufferGuard<'a> {
         match event {
             // Mutate
             Event::Insert(c) => self.insert(c),
+            Event::Backspace if self.cursor().is_reaching() => self.remove_selection(),
             Event::Backspace => self.backspace(),
             Event::BackspaceWord => self.backspace_word(),
             Event::Delete => self.delete(),
             Event::Duplicate if self.cursor().is_reaching() => self.insert_str(&self.selection().collect::<String>()),
             Event::Duplicate => self.duplicate_line(),
+            Event::Cut => {
+                let _ = ClipboardContext::new()
+                    .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));
+                self.remove_selection();
+            },
             Event::Copy => {
                 let _ = ClipboardContext::new()
                     .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));

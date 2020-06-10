@@ -143,7 +143,7 @@ impl CharKind {
     pub fn from_char(c: char) -> Option<Self> {
         if c != '\n' && c.is_whitespace() {
             None
-        } else if c.is_alphanumeric() {
+        } else if c.is_alphanumeric() || c == '_' {
             Some(CharKind::AlphaNum)
         } else {
             Some(CharKind::Other)

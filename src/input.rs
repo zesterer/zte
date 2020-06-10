@@ -53,8 +53,8 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Ctrl('z')) => vec![Event::Undo],
             InputEvent::Key(KeyEvent::Ctrl('y')) => vec![Event::Redo],
             InputEvent::Key(KeyEvent::Esc) => vec![Event::Escape],
-            InputEvent::Key(KeyEvent::PageUp) => vec![Event::PageMove(Dir::Up)],
-            InputEvent::Key(KeyEvent::PageDown) => vec![Event::PageMove(Dir::Down)],
+            InputEvent::Key(KeyEvent::PageUp) => vec![Event::PageMove(Dir::Up, false)],
+            InputEvent::Key(KeyEvent::PageDown) => vec![Event::PageMove(Dir::Down, false)],
 
             // Buffer manipulation
 

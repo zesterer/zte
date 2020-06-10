@@ -72,10 +72,13 @@ impl Element for Editor {
             },
             Event::SaveBuffer => buf.try_save().unwrap(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
-            Event::PageMove(dir) => { buf.cursor_move(dir, self.page_height); },
+            Event::PageMove(dir, reach) => buf.do_cursor_movement(dir, reach, |b| { b.cursor_move(dir, self.page_height); }),
             Event::Undo => buf.undo(),
             Event::Redo => buf.redo(),
-            Event::OpenFile(path) => match ctx.state.open_file(path, self.buffer.clone()) {
+            Event::NewFile(path) | Event::OpenFile(path) => match ctx
+                .state
+                .open_or_create_file(path, self.buffer.clone())
+            {
                 Ok(buf) => self.buffer = buf,
                 Err(err) => log::warn!("When opening file: {:?}", err),
             },

@@ -42,7 +42,7 @@ impl State {
         let mut this = Self::default();
 
         for path in paths {
-            match SharedBuffer::open(path) {
+            match SharedBuffer::open_or_create(path) {
                 Ok(buf) => { this.insert_buffer(buf); },
                 Err(err) => errors.push(err.into()),
             }
@@ -51,14 +51,14 @@ impl State {
         (this, errors)
     }
 
-    pub fn open_file(&mut self, path: PathBuf, old_handle: BufferHandle) -> Result<BufferHandle, SharedBufferError> {
-        let full_path = path.canonicalize().unwrap();
+    pub fn open_or_create_file(&mut self, path: PathBuf, old_handle: BufferHandle) -> Result<BufferHandle, SharedBufferError> {
+        let full_path = path.canonicalize().unwrap_or(path);
         self
             .buffers
             .iter()
             .find(|(_, (buf, _))| buf.path.as_ref().map(|p| p == &full_path).unwrap_or(false))
             .map(|(id, _)| Ok(*id))
-            .unwrap_or_else(|| Ok(self.insert_buffer(SharedBuffer::open(path)?)))
+            .unwrap_or_else(|| Ok(self.insert_buffer(SharedBuffer::open_or_create(full_path)?)))
             .map(|buf| if old_handle.buffer_id == buf {
                 old_handle
             } else {
