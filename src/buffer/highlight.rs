@@ -48,6 +48,7 @@ impl From<String> for Highlights {
             LineComment,
             MultiComment(char),
 			Char(bool),
+			Label,
 		}
 
         let mut chars = code.chars().enumerate();
@@ -96,7 +97,7 @@ impl From<String> for Highlights {
                 State::Word => match c {
                     c if c.is_alphanumeric() || c == '_' => {},
                     c => {
-                        regions.push((start..i, match &code[start..i] {
+                        regions.push((start..i, match code.get(start..i).unwrap_or("!") {
                             "struct" => Region::Keyword,
                             "enum" => Region::Keyword,
                             "use" => Region::Keyword,
@@ -180,13 +181,20 @@ impl From<String> for Highlights {
                         state = State::Default;
 					},
 					c if len >1 && !escaped => {
-				        regions.push((start..i, Region::Label));
 				        wait = true;
-				        state = State::Default;
+				        state = State::Label;
 				    },
 				    '\\' if !escaped => state = State::Char(true),
 					c => state = State::Char(false),
 				},
+                State::Label => match c {
+                    c if c.is_alphanumeric() || c == '_' => {},
+                    c => {
+                        regions.push((start..i, Region::Label));
+                        wait = true;
+                        state = State::Default;
+                    },
+                },
             }
 
             if !wait {

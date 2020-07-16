@@ -15,6 +15,8 @@ pub struct Theme {
     pub scrollpad_color: Color,
     pub selection_color: Color,
     pub create_color: Color,
+    pub subtle_color: Color,
+    pub subtle_bg_color: Color,
 }
 
 impl Theme {
@@ -44,6 +46,8 @@ impl Default for Theme {
             scrollpad_color: Color::Rgb(Rgb::gray(175)),
             selection_color: Color::Rgb(Rgb::new(0, 100, 80)),
             create_color: Color::Rgb(Rgb::new(100, 255, 0)),
+            subtle_color: Color::Rgb(Rgb::gray(150)),
+            subtle_bg_color: Color::Rgb(Rgb::gray(65)),
         }
     }
 }

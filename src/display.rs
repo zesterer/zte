@@ -183,7 +183,8 @@ impl Display {
                     }
 
                     let Cell(c, fg, bg, attr) = back;
-                    write!(self.screen, "{}{}{}{}", Fg(fg), Bg(bg), attr, c).unwrap();
+                    write!(self.screen, "{}{}{}", Fg(fg), Bg(bg), attr).unwrap();
+                    write!(self.screen, "{}", c).unwrap();
                     last_pos = Vec2::new(col, row);
                 }
             }

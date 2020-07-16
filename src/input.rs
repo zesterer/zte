@@ -44,6 +44,8 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 68] => vec![Event::CursorJump(Dir::Left, true)],
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 67] => vec![Event::CursorJump(Dir::Right, true)],
 
+            InputEvent::Key(KeyEvent::Ctrl('a')) => vec![Event::SelectAll],
+
             // Buffer editing
 
             InputEvent::Key(KeyEvent::Char(c)) => vec![Event::Insert(c)],
@@ -55,6 +57,7 @@ pub fn begin_reading() -> Receiver<Event> {
             InputEvent::Key(KeyEvent::Esc) => vec![Event::Escape],
             InputEvent::Key(KeyEvent::PageUp) => vec![Event::PageMove(Dir::Up, false)],
             InputEvent::Key(KeyEvent::PageDown) => vec![Event::PageMove(Dir::Down, false)],
+            InputEvent::Key(KeyEvent::Ctrl(';')) => vec![Event::Comment],
 
             // Buffer manipulation
 
@@ -64,7 +67,9 @@ pub fn begin_reading() -> Receiver<Event> {
 
             // Buffer actions
 
+            InputEvent::Key(KeyEvent::Ctrl('n')) => vec![Event::NewBuffer],
             InputEvent::Key(KeyEvent::Ctrl('s')) => vec![Event::SaveBuffer],
+
             InputEvent::Key(KeyEvent::Ctrl('x')) => vec![Event::Cut],
             InputEvent::Key(KeyEvent::Ctrl('c')) => vec![Event::Copy],
             InputEvent::Key(KeyEvent::Ctrl('v')) => vec![Event::Paste],

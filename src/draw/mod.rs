@@ -83,6 +83,22 @@ pub trait Canvas: Sized {
             }
         }
     }
+
+    fn frame(&mut self) {
+        let sz = self.size();
+        for i in 1..sz.w.saturating_sub(1) {
+            self.write_char(Vec2::new(i, 0), '─');
+            self.write_char(Vec2::new(i, sz.h.saturating_sub(1)), '─');
+        }
+        for j in 1..sz.h.saturating_sub(1) {
+            self.write_char(Vec2::new(0, j), '│'.into());
+            self.write_char(Vec2::new(sz.w.saturating_sub(1), j), '│');
+        }
+        self.write_char(Vec2::new(0, 0), '┌'.into());
+        self.write_char(Vec2::new(sz.w.saturating_sub(1), 0), '┐');
+        self.write_char(Vec2::new(0, sz.h.saturating_sub(1)), '└');
+        self.write_char(Vec2::new(sz.w.saturating_sub(1), sz.h.saturating_sub(1)), '┘');
+    }
 }
 
 pub struct Drawer<'a, D: Canvas> {

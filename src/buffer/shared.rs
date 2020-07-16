@@ -256,7 +256,7 @@ impl<'a> BufferGuard<'a> {
     pub fn line(&self, line: usize) -> Option<Line> {
         self.buffer.content().line(line)
     }
-	
+
 	pub fn current_line(&self) -> Line {
 		self.line(self.cursor_loc().y).unwrap()
 	}
@@ -320,10 +320,10 @@ impl<'a> BufferGuard<'a> {
     }
 
 	pub fn cursor_loc(&self) -> Vec2<usize> {
-		self.pos_loc(self.cursor().pos, self.config())
+		self.pos_loc(self.cursor().pos)
 	}
 
-    pub fn pos_loc(&self, mut pos: usize, cfg: &Config) -> Vec2<usize> {
+    pub fn pos_loc(&self, mut pos: usize) -> Vec2<usize> {
         let mut row = 0;
         for line in self.lines() {
             if pos >= line.len() {
@@ -336,7 +336,7 @@ impl<'a> BufferGuard<'a> {
 
         let mut col = 0;
         match self.line(row) {
-            Some(line) => for (p, _) in line.glyphs(cfg) {
+            Some(line) => for (p, _) in line.glyphs(self.config()) {
                 match p {
                     Some(p) if p == pos => break,
                     Some(_) => col += 1,
@@ -348,14 +348,14 @@ impl<'a> BufferGuard<'a> {
         Vec2::new(col, row)
     }
 
-    pub fn loc_pos(&self, loc: Vec2<usize>, cfg: &Config) -> usize {
+    pub fn loc_pos(&self, loc: Vec2<usize>) -> usize {
         let mut pos = (0..loc.y)
             .map(|l| self.line(l).map(|l| l.len()).unwrap_or(0))
             .sum::<usize>();
 
         pos += match self.line(loc.y) {
             Some(line) => line
-                .glyphs(cfg)
+                .glyphs(self.config())
                 .skip(loc.x)
                 .next()
                 .unwrap()
@@ -368,7 +368,7 @@ impl<'a> BufferGuard<'a> {
     }
 
     pub fn duplicate_line(&mut self) {
-        let row = self.pos_loc(self.cursor().pos, self.config()).y;
+        let row = self.pos_loc(self.cursor().pos).y;
         if let Some(line) = self.line(row) {
             let s = line.get_string();
             self.insert_line(row + 1, &s);
@@ -382,7 +382,7 @@ impl<'a> BufferGuard<'a> {
     }
 
     pub fn cursor_set(&mut self, loc: Vec2<usize>) {
-        self.cursor_mut().pos = self.loc_pos(loc, self.config());
+        self.cursor_mut().pos = self.loc_pos(loc);
     }
 
     pub fn cursor_move(&mut self, dir: Dir, n: usize) -> bool {
@@ -391,15 +391,15 @@ impl<'a> BufferGuard<'a> {
             Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
             Dir::Right => self.cursor_mut().pos = (self.cursor().pos + n).min(self.len()),
             Dir::Up => {
-                let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
+                let cursor_loc = self.pos_loc(self.cursor().pos);
                 if cursor_loc.y == 0 {
                     self.cursor_mut().pos = 0;
                 } else {
-                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)), self.config());
+                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)));
                 }
             },
             Dir::Down => {
-                let cursor_loc = self.pos_loc(self.cursor().pos, self.config());
+                let cursor_loc = self.pos_loc(self.cursor().pos);
                 if cursor_loc.y == self.line_count() {
                     self.cursor_mut().pos = self.len() + 1;
                 } else {
@@ -423,12 +423,15 @@ impl<'a> BufferGuard<'a> {
 
         if let Dir::Left | Dir::Right = dir {
             // Consume any whitespace before
-            while matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
-                let old_pos = self.cursor().pos;
-                self.cursor_move(dir, 1);
-                if self.cursor().pos == old_pos {
-                    break;
+            if matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
+                while matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
+                    let old_pos = self.cursor().pos;
+                    self.cursor_move(dir, 1);
+                    if self.cursor().pos == old_pos {
+                        break;
+                    }
                 }
+                return;
             }
 
             let kind = match self.get_next_char(dir) {
@@ -488,11 +491,37 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
+    // Find the position in the buffer at which the given line begins (i.e: initial indentation ends)
+    pub fn line_start(&self, line: usize) -> Option<usize> {
+        let pos = self.loc_pos(Vec2::new(0, line));
+        Some(pos + self
+            .line(line)?
+            .chars()
+            .enumerate()
+            .find(|(_, c)| !c.is_whitespace() || *c == '\n')?
+            .0)
+    }
+
+    pub fn indent_at(&mut self, pos: usize) {
+        if self.config().hard_tabs {
+            self.insert_at(pos, '\t');
+        } else {
+            let col = self.pos_loc(pos).x;
+            for _ in col..(col / self.config().tab_width + 1) * self.config().tab_width {
+                self.insert_at(pos, ' ');
+            }
+        }
+    }
+
     pub fn handle(&mut self, event: Event) {
         match event {
             // Do not mutate
             Event::CursorMove(dir, reach) => return self.do_cursor_movement(dir, reach, |b| { b.cursor_move(dir, 1); }),
             Event::CursorJump(dir, reach) => return self.do_cursor_movement(dir, reach, |b| { b.cursor_jump(dir); }),
+            Event::SelectAll => {
+                self.cursor_mut().base = 0;
+                self.cursor_mut().pos = self.len();
+            },
             _ => {},
         }
 
@@ -501,9 +530,9 @@ impl<'a> BufferGuard<'a> {
         match event {
             // Mutate
 			Event::Insert(c) => {
-                self.remove_selection();
                 match c {
                     '\n' if self.config().auto_indent => {
+                        self.remove_selection();
 		        		let whitespace = self
         					.current_line()
 				        	.chars()
@@ -514,25 +543,44 @@ impl<'a> BufferGuard<'a> {
 		        			self.insert(ws);
         				}
 			        },
-                    '\t' if !self.config().hard_tabs => {
-				        self.insert(' ');
-				        while self.cursor_loc().x % self.config().tab_width != 0 {
-					        self.insert(' ');
-				        }
-			        },
-                    c => self.insert(c),
+                    '\t' => {
+                        let base_line = self.pos_loc(self.cursor().base).y;
+                        let pos_line = self.pos_loc(self.cursor().pos).y;
+
+                        if base_line != pos_line {
+                            (base_line.min(pos_line)..=base_line.max(pos_line))
+                                .for_each(|l| {
+                                    if let Some(pos) = self.line_start(l) {
+                                        self.indent_at(pos);
+                                    }
+                                });
+                        } else {
+                            self.indent_at(self.cursor().pos);
+                        }
+                    },
+                    c => {
+                        self.remove_selection();
+                        self.insert(c);
+                    },
                 }
             },
             Event::Backspace if self.cursor().is_reaching() => self.remove_selection(),
             Event::Backspace if !self.config().hard_tabs => {
+                let keep_going = self
+                    .content()
+                    .char_at(self.cursor().pos.saturating_sub(1))
+                    .map(|c| c == ' ')
+                    .unwrap_or(false);
                 self.backspace();
-                let base_x = self.cursor_loc().x - self.cursor_loc().x % self.config().tab_width;
-                if (base_x..self.cursor_loc().x)
-                    .all(|i| self.current_line().get(i).map(|c| c == ' ').unwrap_or(false))
-                    && (self.cursor_loc().x + 1) % self.config().tab_width == 0
-                {
-                    for _ in base_x..self.cursor_loc().x {
-                        self.backspace();
+                if keep_going {
+                    let base_x = self.cursor_loc().x - self.cursor_loc().x % self.config().tab_width;
+                    if (base_x..self.cursor_loc().x)
+                        .all(|i| self.current_line().get(i).map(|c| c == ' ').unwrap_or(false))
+                        && (self.cursor_loc().x + 1) % self.config().tab_width == 0
+                    {
+                        for _ in base_x..self.cursor_loc().x {
+                            self.backspace();
+                        }
                     }
                 }
             },
@@ -541,6 +589,18 @@ impl<'a> BufferGuard<'a> {
             Event::Delete => self.delete(),
             Event::Duplicate if self.cursor().is_reaching() => self.insert_str(&self.selection().collect::<String>()),
             Event::Duplicate => self.duplicate_line(),
+            Event::Comment => {
+                let base_line = self.pos_loc(self.cursor().base).y;
+                let pos_line = self.pos_loc(self.cursor().pos).y;
+
+                for l in base_line.min(pos_line)..=base_line.max(pos_line) {
+                    if let Some(pos) = self.line_start(l) {
+                        self.insert_at(pos + 0, '/');
+                        self.insert_at(pos + 1, '/');
+                        self.insert_at(pos + 2, ' ');
+                    }
+                }
+            },
             Event::Cut => {
                 let _ = ClipboardContext::new()
                     .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));

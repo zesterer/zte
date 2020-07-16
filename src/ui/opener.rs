@@ -3,6 +3,7 @@ use std::{
     fs::DirEntry,
 };
 use vek::*;
+use number_prefix::NumberPrefix;
 use crate::{
     Canvas,
     Event,
@@ -149,23 +150,12 @@ impl Element for Opener {
         // Frame
         let sz = canvas.size();
         canvas.rectangle(Vec2::zero(), sz, ' '.into());
-        for i in 1..sz.w - 1 {
-            canvas.set(Vec2::new(i, 0), '-'.into());
-            canvas.set(Vec2::new(i, sz.h - 1), '-'.into());
-        }
-        for j in 1..sz.h - 1 {
-            canvas.set(Vec2::new(0, j), '|'.into());
-            canvas.set(Vec2::new(sz.w - 1, j), '|'.into());
-        }
-        canvas.set(Vec2::new(0, 0), '.'.into());
-        canvas.set(Vec2::new(sz.w - 1, 0), '.'.into());
-        canvas.set(Vec2::new(0, sz.h - 1), '\''.into());
-        canvas.set(Vec2::new(sz.w - 1, sz.h - 1), '\''.into());
+        canvas.frame();
 
         let title = format!("[Open File]");
         canvas.write_str(Vec2::new((sz.w.saturating_sub(title.len())) / 2, 0), &title);
 
-        const DIR_COLOR: Color = Color::Rgb(Rgb::new(100, 100, 255));
+        const DIR_COLOR: Color = Color::Rgb(Rgb::new(255, 200, 100));
 
         // Prompt
         let mut path_text = format!("{}", self.path.display());
@@ -174,10 +164,10 @@ impl Element for Opener {
         }
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w - 2, canvas.size().h - 2));
         // Render most of path
-        canvas.with_fg(DIR_COLOR).write_str(Vec2::zero(), &path_text);
+        canvas.with_fg(DIR_COLOR).write_str(Vec2::new(1, 0), &path_text);
         // Render prompt (last path element)
         self.prompt.render(ctx, &mut canvas.window(Rect::new(
-            path_text.len(),
+            1 + path_text.len(),
             0,
             canvas.size().w,
             canvas.size().h,
@@ -192,7 +182,7 @@ impl Element for Opener {
         ));
 
         if let Some((selected_idx, listings)) = &self.listings {
-            for (i, entry) in listings
+            for (y, (i, entry)) in listings
                 .iter()
                 .map(Some)
                 .chain(if self.prompt.get_text().len() == 0 {
@@ -201,31 +191,55 @@ impl Element for Opener {
                     Some(None)
                 }.into_iter())
                 .enumerate()
+                .skip(selected_idx.saturating_sub(canvas.size().h.saturating_sub(1)))
                 .take(canvas.size().h)
+                .enumerate()
             {
-                canvas.write_str(Vec2::new(0, i), if i == *selected_idx {
-                    ">  "
+                let bg_color = if i == *selected_idx {
+                    ctx.theme.selection_color
                 } else {
-                    "   "
-                });
+                    Color::Reset
+                };
                 if let Some(entry) = entry {
                     if entry.file_type().map(|ft| ft.is_file()).unwrap_or(true) {
                         canvas
                             .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
-                            .write_str(Vec2::new(2, i), &format!("{:<24}", entry.file_name().to_str().unwrap_or("!!!")));
+                            .with_bg(bg_color)
+                            .write_str(Vec2::new(1, y), &format!("{:<48}", entry.file_name().to_str().unwrap_or("!!!")));
                     } else {
                         canvas
                             .with_fg(DIR_COLOR)
-                            .write_str(Vec2::new(2, i), &format!("{:<23}/", entry.file_name().to_str().unwrap_or("!!!")));
+                            .with_bg(bg_color)
+                            .write_str(Vec2::new(1, y), &format!("{:<47}", &format!("{}/", entry.file_name().to_str().unwrap_or("!!!"))));
                     }
 
-                    canvas
-                        .with_fg(ctx.theme.margin_color)
-                        .write_str(Vec2::new(26, i), &format!("{}", entry.path().parent().and_then(|p| p.to_str()).unwrap_or("")));
+                    if let Ok(meta) = entry.metadata() {
+                        let file_size = match NumberPrefix::decimal(meta.len() as f64) {
+                            NumberPrefix::Standalone(bytes) => format!("{} B", bytes),
+                            NumberPrefix::Prefixed(prefix, n) => format!("{:.1} {}B", n, prefix),
+                        };
+
+                        let perms = if meta.permissions().readonly() { "r" } else { "rw" };
+
+                        let file_type = if meta.file_type().is_file() {
+                            "file"
+                        } else if meta.file_type().is_dir() {
+                            "dir"
+                        } else {
+                            "symlink"
+                        };
+
+                        let desc = format!("{:>8} {:>6} {:>8}", file_size, perms, file_type);
+
+                        canvas
+                            .with_fg(ctx.theme.subtle_color)
+                            .write_str(Vec2::new(49, y), &desc);
+                    }
                 } else {
                     canvas
-                            .with_fg(ctx.theme.create_color)
-                            .write_str(Vec2::new(2, i), &format!("{:<24}[new]", self.prompt.get_text()));
+                        .with_fg(ctx.theme.create_color)
+                        .with_bg(bg_color)
+                        .write_str(Vec2::new(1, y), &format!("{:<48}[new]", self.prompt.get_text()));
                 }
             }
         } else {

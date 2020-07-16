@@ -58,18 +58,7 @@ impl Element for Switcher {
         // Frame
         let sz = canvas.size();
         canvas.rectangle(Vec2::zero(), sz, ' '.into());
-        for i in 1..sz.w - 1 {
-            canvas.set(Vec2::new(i, 0), '-'.into());
-            canvas.set(Vec2::new(i, sz.h - 1), '-'.into());
-        }
-        for j in 1..sz.h - 1 {
-            canvas.set(Vec2::new(0, j), '|'.into());
-            canvas.set(Vec2::new(sz.w - 1, j), '|'.into());
-        }
-        canvas.set(Vec2::new(0, 0), '.'.into());
-        canvas.set(Vec2::new(sz.w - 1, 0), '.'.into());
-        canvas.set(Vec2::new(0, sz.h - 1), '\''.into());
-        canvas.set(Vec2::new(sz.w - 1, sz.h - 1), '\''.into());
+        canvas.frame();
 
         let title = format!("[Recent Buffers]");
         canvas.write_str(Vec2::new((sz.w.saturating_sub(title.len())) / 2, 0), &title);

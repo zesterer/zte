@@ -6,7 +6,7 @@ use crate::{
     Line,
     Event,
     Dir,
-    buffer::highlight::Highlights,
+    buffer::{highlight::Highlights, shared::SharedBuffer},
 };
 use super::{
     Context,
@@ -70,6 +70,10 @@ impl Element for Editor {
                     ctx.state.close_buffer(old_buffer);
                 }
             },
+            Event::NewBuffer => {
+                let buf = ctx.state.insert_buffer(SharedBuffer::default());
+                self.buffer = ctx.state.new_handle(buf).unwrap();
+            },
             Event::SaveBuffer => buf.try_save().unwrap(),
             Event::SwitchBuffer(buffer) => self.buffer = buffer,
             Event::PageMove(dir, reach) => buf.do_cursor_movement(dir, reach, |b| { b.cursor_move(dir, self.page_height); }),
@@ -101,7 +105,7 @@ impl Element for Editor {
             .get_buffer(&self.buffer)
             .unwrap();
 
-        let cursor_loc = buf.pos_loc(buf.cursor().pos, buf.config());
+        let cursor_loc = buf.pos_loc(buf.cursor().pos);
 
         self.loc.x = self.loc.x
             .min(cursor_loc.x.saturating_sub(CURSOR_SPACE.x))
@@ -118,35 +122,27 @@ impl Element for Editor {
             .unwrap();
 
         // Frame
-        let mut frame_canvas = canvas.with_fg(Color::Rgb(if active {
-            Rgb::broadcast(255)
-        } else {
-            Rgb::broadcast(100)
-        }));
-        for i in 1..sz.w.saturating_sub(1) {
-            frame_canvas.write_char(Vec2::new(i, 0), '-');
-            frame_canvas.write_char(Vec2::new(i, sz.h.saturating_sub(1)), '-');
-        }
-        for j in 1..sz.h.saturating_sub(1) {
-            frame_canvas.write_char(Vec2::new(0, j), '|'.into());
-            frame_canvas.write_char(Vec2::new(sz.w.saturating_sub(1), j), '|');
-        }
-        frame_canvas.write_char(Vec2::new(0, 0), '.'.into());
-        frame_canvas.write_char(Vec2::new(sz.w.saturating_sub(1), 0), '.');
-        frame_canvas.write_char(Vec2::new(0, sz.h.saturating_sub(1)), '\'');
-        frame_canvas.write_char(Vec2::new(sz.w.saturating_sub(1), sz.h.saturating_sub(1)), '\'');
+        canvas
+            .with_fg(Color::Rgb(if active {
+                Rgb::broadcast(255)
+            } else {
+                Rgb::broadcast(100)
+            }))
+            .frame();
 
         // Title
-        let title = format!("[{}{}]", if buf.is_unsaved() { "*" } else { "" }, buf.title());
+        let title = format!("[ {}{} ]", if buf.is_unsaved() { "*" } else { "" }, buf.title());
         canvas.write_str(Vec2::new((sz.w.saturating_sub(title.len())) / 2, 0), &title);
 
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 
         let highlights = Highlights::from(buf.get_string());
 
+        let cursor_loc = buf.pos_loc(buf.cursor().pos);
+
         for row in 0..canvas.size().h {
             let buf_row = row + self.loc.y;
-            let buf_row_pos = buf.loc_pos(Vec2::new(0, buf_row), &buf.config());
+            let buf_row_pos = buf.loc_pos(Vec2::new(0, buf_row));
 
             let (line, margin) = match buf.line(buf_row) {
                 Some(line) => (line, format!("{:>4} ", buf_row + 1)),
@@ -174,39 +170,40 @@ impl Element for Editor {
                 let buf_col = col + self.loc.x;
                 let buf_pos = buf_row_pos + line_pos.unwrap_or(0);
 
-                if buf.cursor().inside_reach(buf_pos) && line_pos.is_some() {
-                    canvas
-                        .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
-                        .with_bg(ctx.theme.selection_color)
-                        .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
+                let bg_color = if buf.cursor().inside_reach(buf_pos) && line_pos.is_some() {
+                    ctx.theme.selection_color
+                } else if buf_row == cursor_loc.y {
+                    ctx.theme.subtle_bg_color
                 } else {
-                    canvas
-                        .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
-                        .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
-                }
+                    Color::Reset
+                };
+
+                canvas
+                    .with_fg(ctx.theme.get_highlight_color(highlights.get_at(buf_pos)))
+                    .with_bg(bg_color)
+                    .write_char(Vec2::new(MARGIN_WIDTH + col, row), c);
             }
         }
 
         if active {
-            let cursor_loc = buf.pos_loc(buf.cursor().pos, &buf.config());
             let cursor_screen_loc = cursor_loc.map2(self.loc, |e, loc| e.saturating_sub(loc)) + Vec2::unit_x() * MARGIN_WIDTH;
             canvas.set_cursor(Some(cursor_screen_loc).filter(|loc| loc.x < canvas.size().w && loc.y < canvas.size().h));
         }
 
         // Scrollbar
-        let pad_h = (sz.h.saturating_sub(3).pow(2) / buf.content().lines().len().max(1)).max(1);
+        let pad_h = (sz.h.saturating_sub(2).pow(2) / buf.content().lines().len().max(1)).max(1);
         if pad_h < sz.h.saturating_sub(2) {
             // Bg
             canvas
                 .with_fg(ctx.theme.scrollbar_color)
                 .with_bg(ctx.theme.margin_color)
-                .rectangle((sz.w - 2, 1), (1, sz.h - 2), '.');
+                .rectangle((sz.w - 2, 0), (1, sz.h - 2), '│');
 
             // Pad
             canvas
                 .with_fg(ctx.theme.scrollbar_color)
                 .with_bg(ctx.theme.scrollpad_color)
-                .rectangle((sz.w - 2, 1 + self.loc.y * sz.h.saturating_sub(2) / buf.content().lines().len()), (1, pad_h), '.');
+                .rectangle((sz.w - 2, self.loc.y * sz.h.saturating_sub(2) / buf.content().lines().len()), (1, pad_h), '.');
         }
     }
 }

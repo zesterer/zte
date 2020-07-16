@@ -29,11 +29,11 @@ impl<'a> Line<'a> {
     pub fn len(&self) -> usize {
         self.chars.len() + 1
     }
-    
+
     pub fn get(&self, pos: usize) -> Option<char> {
         self.chars.get(pos).copied()
     }
-    
+
     pub fn chars(&self) -> impl Iterator<Item=char> + '_ {
         self.chars
             .iter()
