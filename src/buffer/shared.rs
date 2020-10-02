@@ -6,6 +6,7 @@ use std::{
     io::{self, Read, Write},
     cmp::PartialEq,
 };
+#[cfg(feature = "copy_paste")]
 use clipboard::{ClipboardContext, ClipboardProvider};
 use vek::*;
 use crate::{Dir, Event};
@@ -602,14 +603,21 @@ impl<'a> BufferGuard<'a> {
                 }
             },
             Event::Cut => {
-                let _ = ClipboardContext::new()
-                    .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));
+                #[cfg(feature = "copy_paste")]
+                {
+                    let _ = ClipboardContext::new()
+                        .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));
+                }
                 self.remove_selection();
             },
             Event::Copy => {
-                let _ = ClipboardContext::new()
-                    .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));
+                #[cfg(feature = "copy_paste")]
+                {
+                    let _ = ClipboardContext::new()
+                        .and_then(|mut ctx| ctx.set_contents(self.selection().collect()));
+                }
             },
+            #[cfg(feature = "copy_paste")]
             Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
                 Ok(s) => self.insert_str(&s),
                 Err(_) => {},

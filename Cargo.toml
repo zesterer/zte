@@ -8,6 +8,9 @@ license = "GPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+copy_paste = ["clipboard"]
+
 [dependencies]
 clap = "2.33"
 termion = "1.5"
@@ -20,6 +23,6 @@ serde = "1.0"
 serde_derive = "1.0"
 config = "0.9"
 backtrace = "0.3"
-clipboard = "0.5"
+clipboard = { version = "0.5", optional = true }
 vte = "0.8"
 number_prefix = "0.4"
