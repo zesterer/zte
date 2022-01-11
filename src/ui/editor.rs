@@ -154,9 +154,18 @@ impl Element for Editor {
                 .chars()
                 .enumerate()
             {
+                let line_selected = buf.cursor().encloses(buf_row_pos) && row < buf.content().lines().len();
                 canvas
-                    .with_fg(ctx.theme.line_number_color)
-                    .with_bg(ctx.theme.margin_color)
+                    .with_fg(if line_selected {
+                        Color::Rgb(Rgb::broadcast(255))
+                    } else {
+                        ctx.theme.line_number_color
+                    })
+                    .with_bg(if line_selected {
+                        ctx.theme.selection_color
+                    } else {
+                        ctx.theme.margin_color
+                    })
                     .write_char(Vec2::new(col, row), c);
             }
 
@@ -168,9 +177,9 @@ impl Element for Editor {
                 .take(canvas.size().w.saturating_sub(MARGIN_WIDTH))
             {
                 let buf_col = col + self.loc.x;
-                let buf_pos = buf_row_pos + line_pos.unwrap_or(0);
+                let buf_pos = buf_row_pos + line_pos.unwrap_or(line.len().saturating_sub(1));
 
-                let bg_color = if buf.cursor().inside_reach(buf_pos) && line_pos.is_some() {
+                let bg_color = if buf.cursor().inside_reach(buf_pos) /*&& line_pos.is_some()*/ {
                     ctx.theme.selection_color
                 } else if buf_row == cursor_loc.y {
                     ctx.theme.subtle_bg_color

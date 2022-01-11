@@ -114,6 +114,10 @@ impl Cursor {
     pub fn inside_reach(&self, pos: usize) -> bool {
         pos >= self.base && pos < self.pos || pos >= self.pos && pos < self.base
     }
+
+    pub fn encloses(&self, pos: usize) -> bool {
+        pos > self.base && pos <= self.pos || pos > self.pos && pos <= self.base
+    }
 }
 
 impl Default for Cursor {

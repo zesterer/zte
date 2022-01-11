@@ -58,7 +58,7 @@ impl From<String> for Highlights {
 
         loop {
             let (i, c) = chars.clone().next().unwrap_or((0, '\0'));
-            let len = i - start;
+            let len = i.saturating_sub(start);
             let mut wait = false;
             match state {
                 State::Default => match c {

@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-copy_paste = ["clipboard"]
+default = ["clipboard"]
 
 [dependencies]
 clap = "2.33"

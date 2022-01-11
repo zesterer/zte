@@ -1,6 +1,7 @@
 use std::{
     path::PathBuf,
     fs::DirEntry,
+    time::SystemTime,
 };
 use vek::*;
 use number_prefix::NumberPrefix;
@@ -44,17 +45,43 @@ impl Opener {
 
     pub fn update_listings(&mut self) {
         let file_filter = self.prompt.get_text();
+
+        let now = SystemTime::now();
+
+        let score_name = |file: &DirEntry| {
+            const STARTS_WITH: i32 = 1000;
+            const CONTAINS: i32 = 400;
+            const HIDDEN: i32 = -200;
+            const CHANGED: i32 = 200;
+            const IS_DIR: i32 = 0;
+
+            let fname = file.file_name().to_str().unwrap_or("").to_string();
+
+            0
+                + file.metadata().map_or(false, |f| f.is_dir()) as i32 * IS_DIR
+                + fname.starts_with(&file_filter) as i32 * STARTS_WITH
+                + fname.contains(&file_filter) as i32 * CONTAINS
+                + fname.starts_with(".") as i32 * HIDDEN
+                + file.metadata()
+                    .and_then(|m| m.accessed())
+                    .map_or(0, |time| (1.0 / (now.duration_since(time).map(|d| d.as_secs_f32()).unwrap_or(0.0) + 1.0)) as i32 * CHANGED)
+        };
+
         self.listings = match self.path.read_dir() {
             Ok(dir) => {
                 let mut entries = dir
                     .filter_map(|entry| entry.ok())
                     .filter(|entry| entry
                         .path()
-                        .file_stem()
-                        .map(|f| f.to_str().unwrap().contains(&file_filter))
+                        .file_name()
+                        .map(|f| f.to_str().unwrap_or("").to_lowercase().contains(&file_filter.to_lowercase()))
                         .unwrap_or(false))
                     .collect::<Vec<_>>();
-                entries.sort_by_key(|e| e.file_name().to_str().map(|s| s.to_string()));
+                if file_filter.is_empty() {
+                    entries.sort_by_cached_key(|e| e.file_name().to_str().unwrap_or("").to_string());
+                } else {
+                    entries.sort_by_cached_key(|e| -score_name(e));
+                }
                 Some((0, entries))
             },
             Err(_) => None,
@@ -215,7 +242,7 @@ impl Element for Opener {
 
                     if let Ok(meta) = entry.metadata() {
                         let file_size = match NumberPrefix::decimal(meta.len() as f64) {
-                            NumberPrefix::Standalone(bytes) => format!("{} B", bytes),
+                            NumberPrefix::Standalone(bytes) => format!("{}  B", bytes),
                             NumberPrefix::Prefixed(prefix, n) => format!("{:.1} {}B", n, prefix),
                         };
 

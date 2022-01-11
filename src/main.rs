@@ -29,6 +29,7 @@ fn setup() -> Config {
     panic::set_hook(Box::new(move |info| {
         log::error!("{}", info);
         log::error!("{:?}", Backtrace::new());
+        eprintln!("Panic: {}", info);
     }));
 
     // Enable logging
@@ -62,6 +63,7 @@ fn main() {
             .help("Specify a file to edit")
             .multiple(true))
         .get_matches();
+
 
     let mut display = Display::new();
 
