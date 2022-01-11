@@ -212,7 +212,7 @@ impl Element for Editor {
             canvas
                 .with_fg(ctx.theme.scrollbar_color)
                 .with_bg(ctx.theme.scrollpad_color)
-                .rectangle((sz.w - 2, self.loc.y * sz.h.saturating_sub(2) / buf.content().lines().len()), (1, pad_h), '.');
+                .rectangle((sz.w - 2, ((self.loc.y * sz.h.saturating_sub(1)) as f32 / buf.content().lines().len().max(1) as f32) as usize), (1, pad_h), '.');
         }
     }
 }

@@ -45,22 +45,29 @@ impl Opener {
 
     pub fn update_listings(&mut self) {
         let file_filter = self.prompt.get_text();
+        let file_filter_lower = file_filter.to_lowercase();
 
         let now = SystemTime::now();
 
         let score_name = |file: &DirEntry| {
             const STARTS_WITH: i32 = 1000;
+            const STARTS_WITH_LOWER: i32 = 800;
             const CONTAINS: i32 = 400;
+            const CONTAINS_LOWER: i32 = 300;
             const HIDDEN: i32 = -200;
             const CHANGED: i32 = 200;
             const IS_DIR: i32 = 0;
 
             let fname = file.file_name().to_str().unwrap_or("").to_string();
+            let fname_lower = fname.to_lowercase();
 
             0
                 + file.metadata().map_or(false, |f| f.is_dir()) as i32 * IS_DIR
                 + fname.starts_with(&file_filter) as i32 * STARTS_WITH
+                + fname_lower.starts_with(&file_filter_lower) as i32 * STARTS_WITH_LOWER
                 + fname.contains(&file_filter) as i32 * CONTAINS
+                + fname_lower.contains(&file_filter_lower) as i32 * CONTAINS_LOWER
+                + fname.to_lowercase().contains(&file_filter.to_lowercase()) as i32 * CONTAINS
                 + fname.starts_with(".") as i32 * HIDDEN
                 + file.metadata()
                     .and_then(|m| m.accessed())
@@ -74,7 +81,7 @@ impl Opener {
                     .filter(|entry| entry
                         .path()
                         .file_name()
-                        .map(|f| f.to_str().unwrap_or("").to_lowercase().contains(&file_filter.to_lowercase()))
+                        .map(|f| f.to_str().unwrap_or("").to_lowercase().contains(&file_filter_lower))
                         .unwrap_or(false))
                     .collect::<Vec<_>>();
                 if file_filter.is_empty() {
