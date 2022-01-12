@@ -33,7 +33,7 @@ pub struct Context {
 }
 
 pub trait Element {
-    type Response = ();
+    type Response;
 
     fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response;
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool);

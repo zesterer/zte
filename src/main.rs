@@ -1,5 +1,3 @@
-#![feature(associated_type_defaults, or_patterns)]
-
 mod config;
 mod display;
 mod input;
