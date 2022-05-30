@@ -24,3 +24,7 @@ backtrace = "0.3"
 clipboard = { version = "0.5", optional = true }
 vte = "0.8"
 number_prefix = "0.4"
+logos = "0.12"
+
+[profile.dev]
+opt-level = 2

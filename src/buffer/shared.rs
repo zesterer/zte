@@ -1,10 +1,11 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
-    path::PathBuf,
+    path::{Path, PathBuf},
     fs::File,
     io::{self, Read, Write},
     cmp::PartialEq,
+    time::{Instant, Duration},
 };
 #[cfg(feature = "clipboard")]
 use clipboard::{ClipboardContext, ClipboardProvider};
@@ -17,6 +18,8 @@ use super::{
     Content,
     CharKind,
 };
+
+const UNDO_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct BufferId(pub usize);
@@ -56,7 +59,7 @@ const MAX_UNDO_STATES: usize = 256;
 
 pub struct SharedBuffer {
     state: State,
-    past_states: VecDeque<State>,
+    past_states: VecDeque<(State, Option<Instant>)>,
     future_states: Vec<State>,
     config: Config,
     pub path: Option<PathBuf>,
@@ -66,7 +69,16 @@ pub struct SharedBuffer {
 
 impl SharedBuffer {
     fn pre_edit(&mut self) {
-        self.past_states.push_front(self.state.clone());
+        let now = Instant::now();
+        if let Some(past_state) = self.past_states
+            .front_mut()
+            .filter(|(_, i)| i.as_ref().map_or(false, |i| now.saturating_duration_since(*i) < UNDO_TIMEOUT))
+        {
+            past_state.1 = Some(now);
+        } else {
+            self.past_states.push_front((self.state.clone(), Some(now)));
+        }
+
         while self.past_states.len() > MAX_UNDO_STATES {
             self.past_states.pop_back();
         }
@@ -74,7 +86,7 @@ impl SharedBuffer {
     }
 
     fn undo(&mut self) {
-        if let Some(s) = self.past_states.pop_front() {
+        if let Some((s, _)) = self.past_states.pop_front() {
             self.future_states.push(self.state.clone());
             self.state.align_with(s);
         }
@@ -82,7 +94,7 @@ impl SharedBuffer {
 
     fn redo(&mut self) {
         if let Some(s) = self.future_states.pop() {
-            self.past_states.push_front(self.state.clone());
+            self.past_states.push_front((self.state.clone(), None));
             self.state.align_with(s);
         }
     }
@@ -311,6 +323,12 @@ impl<'a> BufferGuard<'a> {
         let mut s = String::new();
         self.lines().for_each(|line| s.extend(line.chars()));
         s
+    }
+
+    pub fn path(&self) -> Option<&Path> {
+        self.buffer.path
+            .as_ref()
+            .map(|p| p.as_path())
     }
 
     pub fn selection(&self) -> impl Iterator<Item=char> + ExactSizeIterator<Item=char> + '_ {
@@ -619,7 +637,10 @@ impl<'a> BufferGuard<'a> {
             },
             #[cfg(feature = "clipboard")]
             Event::Paste => match ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
-                Ok(s) => self.insert_str(&s),
+                Ok(s) => {
+                    self.remove_selection();
+                    self.insert_str(&s)
+                },
                 Err(_) => {},
             },
             _ => {},

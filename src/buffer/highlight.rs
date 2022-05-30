@@ -1,5 +1,9 @@
-use std::ops::Range;
+use std::{
+    ops::Range,
+    path::Path,
+};
 
+#[derive(Default)]
 pub struct Highlights {
     regions: Vec<(Range<usize>, Region)>,
 }
@@ -29,6 +33,23 @@ impl Highlights {
     }
 }
 
+impl Highlights {
+    pub fn from_file(path: Option<&Path>, src: &str) -> Self {
+        let regions = match path.and_then(|p| p.extension()?.to_str()) {
+            Some("rs") => RustToken::lexer(src)
+                .spanned()
+                .map(|(tok, span)| (span, match tok {
+                    RustToken::Other => Region::Normal,
+                    RustToken::Token(r) => r,
+                }))
+                .collect(),
+            _ => return Self::default(),
+        };
+        Self { regions }
+    }
+}
+
+/*
 const PRIMITIVES: [&str; 17] = [
 	"usize", "isize",
 	"u8", "u16", "u32", "u64", "u128",
@@ -36,175 +57,7 @@ const PRIMITIVES: [&str; 17] = [
 	"f32", "f64",
 	"str", "bool", "char",
 ];
-
-impl From<String> for Highlights {
-    fn from(code: String) -> Self {
-        enum State {
-            Default,
-            Number,
-            Word,
-            String(bool),
-            Symbol(char),
-            LineComment,
-            MultiComment(char),
-			Char(bool),
-			Label,
-		}
-
-        let mut chars = code.chars().enumerate();
-        let mut state = State::Default;
-        let mut regions = Vec::new();
-        let mut start = 0;
-
-        loop {
-            let (i, c) = chars.clone().next().unwrap_or((0, '\0'));
-            let len = i.saturating_sub(start);
-            let mut wait = false;
-            match state {
-                State::Default => match c {
-                    '\0' => break,
-                    '"' => {
-                        state = State::String(false);
-                        start = i;
-                    },
-					'\'' => {
-						state = State::Char(false);
-						start = i;
-					},
-                    c if c.is_whitespace() => {},
-                    c if c.is_alphabetic() || c == '_' => {
-                        state = State::Word;
-                        start = i;
-                    },
-                    c if c.is_numeric() => {
-                        state = State::Number;
-                        start = i;
-                    },
-                    c if c.is_ascii_punctuation() && c != '"' => {
-                        state = State::Symbol(c);
-                        start = i;
-                    },
-                    c => {},
-                },
-                State::Number => match c {
-                    c if c.is_alphanumeric() || c == '_' || c == '.' => {},
-                    c => {
-                        regions.push((start..i, Region::Numeric));
-                        wait = true;
-                        state = State::Default;
-                    },
-                },
-                State::Word => match c {
-                    c if c.is_alphanumeric() || c == '_' => {},
-                    c => {
-                        regions.push((start..i, match code.get(start..i).unwrap_or("!") {
-                            "struct" => Region::Keyword,
-                            "enum" => Region::Keyword,
-                            "use" => Region::Keyword,
-                            "match" => Region::Keyword,
-                            "if" => Region::Keyword,
-                            "else" => Region::Keyword,
-                            "loop" => Region::Keyword,
-                            "while" => Region::Keyword,
-                            "let" => Region::Keyword,
-                            "fn" => Region::Keyword,
-                            "pub" => Region::Keyword,
-                            "continue" => Region::Keyword,
-                            "break" => Region::Keyword,
-                            "return" => Region::Keyword,
-                            "as" => Region::Keyword,
-                            "const" => Region::Keyword,
-                            "crate" => Region::Keyword,
-                            "extern" => Region::Keyword,
-                            "true" => Region::Keyword,
-                            "false" => Region::Keyword,
-                            "impl" => Region::Keyword,
-                            "for" => Region::Keyword,
-                            "in" => Region::Keyword,
-                            "mod" => Region::Keyword,
-                            "move" => Region::Keyword,
-                            "mut" => Region::Keyword,
-                            "ref" => Region::Keyword,
-                            "self" => Region::Keyword,
-                            "Self" => Region::Keyword,
-                            "static" => Region::Keyword,
-                            "trait" => Region::Keyword,
-                            "type" => Region::Keyword,
-                            "unsafe" => Region::Keyword,
-                            "where" => Region::Keyword,
-                            s if PRIMITIVES.contains(&s) => Region::Primitive,
-                            _ => Region::Normal,
-                        }));
-                        wait = true;
-                        state = State::Default;
-                    },
-                },
-                State::String(escaped) => match c {
-                    c if (c == '"' && !escaped) || c == '\0' => {
-                        regions.push((start..i + 1, Region::String));
-                        state = State::Default;
-                    },
-					'\\' if !escaped => state = State::String(true),
-                    c => state = State::String(false),
-                },
-                State::Symbol(last) => match c {
-                    '/' if last == '/' => {
-                        state = State::LineComment;
-                    },
-                    '*' if last == '/' => {
-                        state = State::MultiComment(c);
-                    },
-                    c if c.is_ascii_punctuation() && c != '"' && c != '\'' => {},
-                    c => {
-                        regions.push((start..i, Region::Symbol));
-                        wait = true;
-                        state = State::Default;
-                    },
-                },
-                State::LineComment => match c {
-                    '\n' => {
-                        regions.push((start..i, Region::LineComment));
-                        state = State::Default;
-                    },
-                    c => {},
-                },
-                State::MultiComment(last) => match c {
-                    c if c == '\0' || (c == '/' && last == '*') => {
-                        regions.push((start..i, Region::LineComment));
-                        state = State::Default;
-                    },
-                    c => {},
-                },
-				State::Char(escaped) => match c {
-				    c if (c == '\'' && !escaped) || c == '\0' => {
-						regions.push((start..i + 1, Region::String));
-                        state = State::Default;
-					},
-					c if len >1 && !escaped => {
-				        wait = true;
-				        state = State::Label;
-				    },
-				    '\\' if !escaped => state = State::Char(true),
-					c => state = State::Char(false),
-				},
-                State::Label => match c {
-                    c if c.is_alphanumeric() || c == '_' => {},
-                    c => {
-                        regions.push((start..i, Region::Label));
-                        wait = true;
-                        state = State::Default;
-                    },
-                },
-            }
-
-            if !wait {
-                chars.next();
-            }
-        }
-
-        Self { regions }
-    }
-}
+*/
 
 #[derive(Copy, Clone, Debug)]
 pub enum Region {
@@ -218,4 +71,75 @@ pub enum Region {
     Bracket,
     Numeric,
     String,
+    Macro,
+}
+
+use logos::Logos;
+
+#[derive(Logos)]
+enum RustToken {
+    #[regex(r"[a-zA-Z_][0-9a-zA-Z_]+!", |_| Region::Macro, priority = 0)]
+    #[regex(r"[a-zA-Z_][0-9a-zA-Z_]+", |_| Region::Normal, priority = 0)]
+    #[regex(r"'[a-zA-Z_][0-9a-zA-Z_]+", |_| Region::Label, priority = 0)]
+    #[regex(r"//[^\n\r]*", |_| Region::LineComment, priority = 0)]
+    #[regex(r"/[*][^*/]*[*]/", |_| Region::MultiComment, priority = 0)]
+    #[regex(r"[0-9][.[0-9]]?", |_| Region::Numeric, priority = 0)]
+    #[regex(r#"["][^"]*""#, |_| Region::String, priority = 0)]
+    #[token(r"+", |_| Region::Symbol)]
+    #[token(r"-", |_| Region::Symbol)]
+    #[token(r"*", |_| Region::Symbol)]
+    #[token(r"/", |_| Region::Symbol)]
+    #[token(r"%", |_| Region::Symbol)]
+    #[token(r"[", |_| Region::Symbol)]
+    #[token(r"]", |_| Region::Symbol)]
+    #[token(r"{", |_| Region::Symbol)]
+    #[token(r"}", |_| Region::Symbol)]
+    #[token(r"(", |_| Region::Symbol)]
+    #[token(r")", |_| Region::Symbol)]
+    #[token(r"<", |_| Region::Symbol)]
+    #[token(r">", |_| Region::Symbol)]
+    #[token(r"=", |_| Region::Symbol)]
+    #[token(r"&", |_| Region::Symbol)]
+    #[token(r"@", |_| Region::Symbol)]
+    #[token(r".", |_| Region::Symbol)]
+    #[token(r":", |_| Region::Symbol)]
+    #[token("struct", |_| Region::Keyword)]
+    #[token("enum", |_| Region::Keyword)]
+    #[token("use", |_| Region::Keyword)]
+    #[token("match", |_| Region::Keyword)]
+    #[token("if", |_| Region::Keyword)]
+    #[token("else", |_| Region::Keyword)]
+    #[token("loop", |_| Region::Keyword)]
+    #[token("while", |_| Region::Keyword)]
+    #[token("let", |_| Region::Keyword)]
+    #[token("fn", |_| Region::Keyword)]
+    #[token("pub", |_| Region::Keyword)]
+    #[token("continue", |_| Region::Keyword)]
+    #[token("break", |_| Region::Keyword)]
+    #[token("return", |_| Region::Keyword)]
+    #[token("as", |_| Region::Keyword)]
+    #[token("const", |_| Region::Keyword)]
+    #[token("crate", |_| Region::Keyword)]
+    #[token("extern", |_| Region::Keyword)]
+    #[token("true", |_| Region::Keyword)]
+    #[token("false", |_| Region::Keyword)]
+    #[token("impl", |_| Region::Keyword)]
+    #[token("for", |_| Region::Keyword)]
+    #[token("in", |_| Region::Keyword)]
+    #[token("mod", |_| Region::Keyword)]
+    #[token("move", |_| Region::Keyword)]
+    #[token("mut", |_| Region::Keyword)]
+    #[token("ref", |_| Region::Keyword)]
+    #[token("self", |_| Region::Keyword)]
+    #[token("Self", |_| Region::Keyword)]
+    #[token("static", |_| Region::Keyword)]
+    #[token("trait", |_| Region::Keyword)]
+    #[token("type", |_| Region::Keyword)]
+    #[token("unsafe", |_| Region::Keyword)]
+    #[token("where", |_| Region::Keyword)]
+    Token(Region),
+
+    #[error]
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    Other,
 }

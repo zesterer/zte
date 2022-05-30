@@ -136,7 +136,7 @@ impl Element for Editor {
 
         let mut canvas = canvas.window(Rect::new(1, 1, canvas.size().w.saturating_sub(2), canvas.size().h.saturating_sub(2)));
 
-        let highlights = Highlights::from(buf.get_string());
+        let highlights = Highlights::from_file(buf.path(), &buf.get_string());
 
         let cursor_loc = buf.pos_loc(buf.cursor().pos);
 

@@ -30,6 +30,7 @@ impl Theme {
             Region::Symbol => Color::Rgb(Rgb::new(0, 150, 255)),
             Region::Primitive => Color::Rgb(Rgb::new(255, 100, 0)),
             Region::Label => Color::Rgb(Rgb::new(255, 0, 0)),
+            Region::Macro => Color::Rgb(Rgb::new(0, 255, 230)),
             _ => Color::Reset,
         }
     }
