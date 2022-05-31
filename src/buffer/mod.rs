@@ -152,18 +152,35 @@ impl Default for Config {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone)]
 pub enum CharKind {
     AlphaNum,
+    Newline,
+    Delimiter,
     Other,
+}
+
+impl PartialEq for CharKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (CharKind::AlphaNum, CharKind::AlphaNum)
+            | (CharKind::Newline, CharKind::Newline)
+            | (CharKind::Other, CharKind::Other) => true,
+            _ => false,
+        }
+    }
 }
 
 impl CharKind {
     pub fn from_char(c: char) -> Option<Self> {
-        if c != '\n' && c.is_whitespace() {
+        if c == '\n' {
+            Some(CharKind::Newline)
+        } else if c.is_whitespace() {
             None
         } else if c.is_alphanumeric() || c == '_' {
             Some(CharKind::AlphaNum)
+        } else if ['(', ')', '{', '}', '[', ']'].contains(&c) {
+            Some(CharKind::Delimiter)
         } else {
             Some(CharKind::Other)
         }

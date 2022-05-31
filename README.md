@@ -27,7 +27,7 @@ ZTE is a personal project. I grew frustrated with existing text editors and want
 
 ### Text manipulation
 
-With an editor pane, 'standard' non-modal keybindings apply:
+Within an editor pane, 'standard' non-modal keybindings apply:
 
 - Arrow keys + page up + page down to move around the text
 - Control + arrow keys to move around the text word-wise
@@ -36,6 +36,7 @@ With an editor pane, 'standard' non-modal keybindings apply:
 - `Ctrl + X`: Cut
 - `Ctrl + C`: Copy
 - `Ctrl + V`: Paste
+- `Ctrl + D`: Duplicate line or selection
 
 ### Editor pane manipulation
 

@@ -444,8 +444,6 @@ impl<'a> BufferGuard<'a> {
     }
 
     pub fn cursor_jump(&mut self, dir: Dir) {
-        //self.cursor_move(dir, 1);
-
         if let Dir::Left | Dir::Right = dir {
             // Consume any whitespace before
             if matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
@@ -456,7 +454,6 @@ impl<'a> BufferGuard<'a> {
                         break;
                     }
                 }
-                return;
             }
 
             let kind = match self.get_next_char(dir) {
@@ -464,6 +461,7 @@ impl<'a> BufferGuard<'a> {
                 None => return,
             };
 
+            self.cursor_move(dir, 1);
             while self.get_next_char(dir).map(CharKind::from_char) == Some(kind) {
                 let old_pos = self.cursor().pos;
                 self.cursor_move(dir, 1);
@@ -487,6 +485,7 @@ impl<'a> BufferGuard<'a> {
             None => return,
         };
 
+        self.backspace();
         while self.get_next_char(Dir::Left).map(CharKind::from_char) == Some(kind)
             && self.cursor().pos > 0
         {
