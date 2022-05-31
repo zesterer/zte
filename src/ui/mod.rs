@@ -47,7 +47,7 @@ pub struct MainUi {
 }
 
 impl MainUi {
-    pub fn new(theme: Theme, state: State) -> Self {
+    pub fn new(theme: Theme, state: State, buffers: Vec<BufferId>) -> Self {
         let mut ctx = Context {
             theme,
             state,
@@ -55,16 +55,12 @@ impl MainUi {
             secondary_events: VecDeque::new(),
         };
 
-        let buffer_count = ctx.state.buffers().len();
-        let panels = match buffer_count {
+        let panels = match buffers.len() {
             0 => Panels::empty(&mut ctx, 1),
             _ => {
                 let mut panels = Panels::empty(&mut ctx, 0);
 
-                for buffer in ctx.state
-                    .buffers()
-                    .collect::<Vec<_>>()
-                {
+                for buffer in buffers.into_iter().rev() {
                     panels.insert_column(0, Tile::Editor(Editor::from(ctx.state
                         .new_handle(buffer)
                         .unwrap())));
@@ -84,18 +80,31 @@ impl MainUi {
     }
 
     pub fn handle(&mut self, event: Event) -> bool {
-        match &mut self.menu {
+        if let Err(event) = match &mut self.menu {
             Some(menu) => match event {
-                Event::Escape | Event::CloseMenu => self.menu = None,
+                Event::CloseMenu => Ok(self.menu = None),
+                Event::Escape => match self.menu.take() {
+                    Some(Menu::Switcher(switcher)) => Ok(switcher.cancel(&mut self.ctx)),
+                    Some(Menu::Opener(_)) => Ok(()),
+                    None => Err(event),
+                },
                 event => match menu {
                     Menu::Switcher(switcher) => switcher.handle(&mut self.ctx, event),
                     Menu::Opener(opener) => opener.handle(&mut self.ctx, event),
                 },
             },
-            None => match event {
+            None => Err(event)
+        } {
+            match event {
                 Event::Escape => return true,
                 Event::OpenPrompt => unimplemented!(),
-                Event::OpenSwitcher => self.menu = Some(Menu::Switcher(Switcher::new(&mut self.ctx))),
+                Event::OpenSwitcher => match self.panels.active_mut().and_then(|col| col.active_mut()) {
+                    Some(Tile::Editor(editor)) => self.menu = Some(Menu::Switcher(Switcher::new(
+                        &mut self.ctx,
+                        editor.buffer().clone(),
+                    ))),
+                    _ => {},
+                },
                 Event::OpenOpener => self.menu = Some(Menu::Opener(Opener::new(&mut self.ctx))),
                 event => self.panels.handle(&mut self.ctx, event),
             }
@@ -109,7 +118,7 @@ impl MainUi {
     }
 
     pub fn update(&mut self, canvas: &mut impl Canvas) {
-        self.panels.update(&mut self.ctx, canvas, true);
+        self.panels.update(&mut self.ctx, canvas, self.menu.is_none());
 
         match &mut self.menu {
             Some(Menu::Switcher(switcher)) => switcher.update(&mut self.ctx, canvas, true),
@@ -126,12 +135,6 @@ impl MainUi {
             Some(Menu::Opener(opener)) => opener.render(&mut self.ctx, canvas, true),
             None => {},
         }
-    }
-}
-
-impl Default for MainUi {
-    fn default() -> Self {
-        Self::new(Theme::default(), State::default())
     }
 }
 

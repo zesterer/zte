@@ -97,9 +97,9 @@ impl Opener {
 }
 
 impl Element for Opener {
-    type Response = ();
+    type Response = Result<(), Event>;
 
-    fn handle(&mut self, ctx: &mut Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         match event {
             Event::Insert('/') => {
                 self.path.push(format!("{}/", self.prompt.get_text()));
@@ -147,10 +147,11 @@ impl Element for Opener {
                 self.update_listings();
             },
             event => {
-                self.prompt.handle(ctx, event);
+                self.prompt.handle(ctx, event)?;
                 self.update_listings();
             },
         }
+        Ok(())
     }
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {

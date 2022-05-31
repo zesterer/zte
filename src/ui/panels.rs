@@ -74,9 +74,9 @@ impl Column {
 }
 
 impl Element for Column {
-    type Response = ();
+    type Response = Result<(), Event>;
 
-    fn handle(&mut self, ctx: &mut Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         match event {
             Event::SwitchEditor(Dir::Up) => { let _ = self.switch_to(self.active_idx as isize - 1); },
             Event::SwitchEditor(Dir::Down) => { let _ = self.switch_to(self.active_idx as isize + 1); },
@@ -94,11 +94,13 @@ impl Element for Column {
                 self.tiles.insert(self.active_idx + 1, Tile::Terminal(Terminal::default()));
                 self.active_idx += 1;
             },
-            event => { self.active_mut().map(|tile| match tile {
-                Tile::Editor(editor) => editor.handle(ctx, event),
-                Tile::Terminal(terminal) => terminal.handle(ctx, event),
-            }); },
+            event => match self.active_mut() {
+                Some(Tile::Editor(editor)) => editor.handle(ctx, event)?,
+                Some(Tile::Terminal(terminal)) => terminal.handle(ctx, event),
+                None => {},
+            },
         }
+        Ok(())
     }
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {

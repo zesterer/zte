@@ -3,6 +3,7 @@ use crate::{
     Canvas,
     Event,
     Dir,
+    BufferHandle,
 };
 use super::{
     Context,
@@ -11,24 +12,31 @@ use super::{
 
 pub struct Switcher {
     selected_idx: usize,
+    prev_buffer: BufferHandle,
 }
 
 impl Switcher {
-    pub fn new(ctx: &mut Context) -> Self {
-        Self { selected_idx: 0 }
+    pub fn new(ctx: &mut Context, prev_buffer: BufferHandle) -> Self {
+        Self { selected_idx: 0, prev_buffer }
+    }
+
+    pub fn cancel(self, ctx: &mut Context) {
+        ctx.secondary_events.push_back(Event::SwitchBuffer(self.prev_buffer));
     }
 }
 
 impl Element for Switcher {
-    type Response = ();
+    type Response = Result<(), Event>;
 
-    fn handle(&mut self, ctx: &mut Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         let recent_count = ctx.state.recent_buffers().len();
         match event {
-            Event::CursorMove(Dir::Up, _) => self.selected_idx = (self.selected_idx + recent_count.saturating_sub(1)) % recent_count,
-            Event::CursorMove(Dir::Down, _) => self.selected_idx = (self.selected_idx + 1) % recent_count,
-            Event::Insert('\n') => {
-                ctx.secondary_events.push_back(Event::CloseMenu);
+            Event::CursorMove(dir, _) => {
+                match dir {
+                    Dir::Up => self.selected_idx = (self.selected_idx + recent_count.saturating_sub(1)) % recent_count,
+                    Dir::Down => self.selected_idx = (self.selected_idx + 1) % recent_count,
+                    _ => return Err(event),
+                }
                 ctx.secondary_events.push_back(Event::SwitchBuffer({
                     let old_handle = ctx.state
                         .recent_buffers()
@@ -38,8 +46,10 @@ impl Element for Switcher {
                     ctx.state.duplicate_handle(&old_handle).unwrap()
                 }));
             },
-            _ => {},
+            Event::Insert('\n') => ctx.secondary_events.push_back(Event::CloseMenu),
+            _ => return Err(event),
         }
+        Ok(())
     }
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {

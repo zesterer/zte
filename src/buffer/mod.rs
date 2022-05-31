@@ -94,6 +94,11 @@ impl Cursor {
         }
     }
 
+    pub fn go_to(&mut self, pos: usize) {
+        self.pos = pos;
+        self.base = pos;
+    }
+
     pub fn reset_base(&mut self) {
         self.base = self.pos;
     }
@@ -133,6 +138,7 @@ pub struct Config {
     tab_width: usize,
     hard_tabs: bool,
 	auto_indent: bool,
+    insert_matching: bool,
 }
 
 impl Default for Config {
@@ -141,6 +147,7 @@ impl Default for Config {
             tab_width: 4,
             hard_tabs: false,
 			auto_indent: true,
+            insert_matching: false,
         }
     }
 }

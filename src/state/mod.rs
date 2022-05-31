@@ -36,19 +36,20 @@ pub struct State {
 }
 
 impl State {
-    pub fn from_paths(paths: impl Iterator<Item=PathBuf>) -> (Self, Vec<StateError>) {
+    pub fn from_paths(paths: impl Iterator<Item=PathBuf>) -> (Self, Vec<BufferId>, Vec<StateError>) {
         let mut errors = Vec::new();
 
         let mut this = Self::default();
 
+        let mut buffers = Vec::new();
         for path in paths {
             match SharedBuffer::open_or_create(path) {
-                Ok(buf) => { this.insert_buffer(buf); },
+                Ok(buf) => buffers.push(this.insert_buffer(buf)),
                 Err(err) => errors.push(err.into()),
             }
         }
 
-        (this, errors)
+        (this, buffers, errors)
     }
 
     pub fn open_or_create_file(&mut self, path: PathBuf, old_handle: BufferHandle) -> Result<BufferHandle, SharedBufferError> {

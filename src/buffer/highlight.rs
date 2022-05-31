@@ -35,12 +35,46 @@ impl Highlights {
 
 impl Highlights {
     pub fn from_file(path: Option<&Path>, src: &str) -> Self {
+        let indices = src.char_indices().map(|(i, _)| i).collect::<Vec<_>>();
+        let byte_to_char_idx = |idx| indices.binary_search(&idx).unwrap_or_else(|i| i);
         let regions = match path.and_then(|p| p.extension()?.to_str()) {
-            Some("rs") => RustToken::lexer(src)
+            Some("rs") | Some("ron") => RustToken::lexer(src)
                 .spanned()
                 .map(|(tok, span)| (span, match tok {
                     RustToken::Other => Region::Normal,
                     RustToken::Token(r) => r,
+                }))
+                .collect(),
+            Some("toml") => TomlToken::lexer(src)
+                .spanned()
+                .map(|(tok, span)| (tok, byte_to_char_idx(span.start)..byte_to_char_idx(span.end)))
+                .map(|(tok, span)| (span, match tok {
+                    TomlToken::Other => Region::Normal,
+                    TomlToken::Token(r) => r,
+                }))
+                .collect(),
+            Some("md") => MdToken::lexer(src)
+                .spanned()
+                .map(|(tok, span)| (tok, byte_to_char_idx(span.start)..byte_to_char_idx(span.end)))
+                .map(|(tok, span)| (span, match tok {
+                    MdToken::Other => Region::Normal,
+                    MdToken::Token(r) => r,
+                }))
+                .collect(),
+            Some("log") => LogToken::lexer(src)
+                .spanned()
+                .map(|(tok, span)| (tok, byte_to_char_idx(span.start)..byte_to_char_idx(span.end)))
+                .map(|(tok, span)| (span, match tok {
+                    LogToken::Other => Region::Normal,
+                    LogToken::Token(r) => r,
+                }))
+                .collect(),
+            Some("glsl") | Some("vert") | Some("frag") => GlslToken::lexer(src)
+                .spanned()
+                .map(|(tok, span)| (tok, byte_to_char_idx(span.start)..byte_to_char_idx(span.end)))
+                .map(|(tok, span)| (span, match tok {
+                    GlslToken::Other => Region::Normal,
+                    GlslToken::Token(r) => r,
                 }))
                 .collect(),
             _ => return Self::default(),
@@ -49,16 +83,6 @@ impl Highlights {
     }
 }
 
-/*
-const PRIMITIVES: [&str; 17] = [
-	"usize", "isize",
-	"u8", "u16", "u32", "u64", "u128",
-	"i8", "i16", "i32", "i64", "i128",
-	"f32", "f64",
-	"str", "bool", "char",
-];
-*/
-
 #[derive(Copy, Clone, Debug)]
 pub enum Region {
     Normal,
@@ -66,25 +90,35 @@ pub enum Region {
     LineComment,
     MultiComment,
     Label,
-    Primitive,
     Symbol,
     Bracket,
     Numeric,
     String,
     Macro,
+    Type,
+    Constant,
+    Path,
+    Error,
+    Warning,
+    Info,
 }
 
 use logos::Logos;
 
 #[derive(Logos)]
 enum RustToken {
-    #[regex(r"[a-zA-Z_][0-9a-zA-Z_]+!", |_| Region::Macro, priority = 0)]
-    #[regex(r"[a-zA-Z_][0-9a-zA-Z_]+", |_| Region::Normal, priority = 0)]
-    #[regex(r"'[a-zA-Z_][0-9a-zA-Z_]+", |_| Region::Label, priority = 0)]
+    #[regex(r"[a-zA-Z_][0-9a-zA-Z_]*!", |_| Region::Macro, priority = 0)]
+    #[regex(r"[a-z_][0-9a-zA-Z_]*", |_| Region::Normal, priority = 1)]
+    //#[regex(r"[a-z_][0-9a-zA-Z_]*::", |_| Region::Path, priority = 0)]
+    #[regex(r"'[a-zA-Z_][0-9a-zA-Z_]*", |_| Region::Label, priority = 0)]
     #[regex(r"//[^\n\r]*", |_| Region::LineComment, priority = 0)]
-    #[regex(r"/[*][^*/]*[*]/", |_| Region::MultiComment, priority = 0)]
-    #[regex(r"[0-9][.[0-9]]?", |_| Region::Numeric, priority = 0)]
+    #[regex(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", |_| Region::MultiComment, priority = 0)]
+    #[regex(r"[[0b]|[0o]]?[0-9]+[.[0-9]]?", |_| Region::Numeric, priority = 0)]
+    #[regex(r"0x[0-9a-fA-F]+[.[0-9a-fA-F]]?", |_| Region::Numeric, priority = 0)]
     #[regex(r#"["][^"]*""#, |_| Region::String, priority = 0)]
+    #[regex(r"#\[[^\]]*\]", |_| Region::Macro, priority = 0)]
+    #[regex(r"#!\[[^\]]*\]", |_| Region::Macro, priority = 0)]
+    #[regex(r"[A-Z][0-9A-Z_]+", |_| Region::Constant, priority = 1)]
     #[token(r"+", |_| Region::Symbol)]
     #[token(r"-", |_| Region::Symbol)]
     #[token(r"*", |_| Region::Symbol)]
@@ -103,6 +137,7 @@ enum RustToken {
     #[token(r"@", |_| Region::Symbol)]
     #[token(r".", |_| Region::Symbol)]
     #[token(r":", |_| Region::Symbol)]
+    #[token(r"?", |_| Region::Symbol)]
     #[token("struct", |_| Region::Keyword)]
     #[token("enum", |_| Region::Keyword)]
     #[token("use", |_| Region::Keyword)]
@@ -111,6 +146,7 @@ enum RustToken {
     #[token("else", |_| Region::Keyword)]
     #[token("loop", |_| Region::Keyword)]
     #[token("while", |_| Region::Keyword)]
+    #[token("for", |_| Region::Keyword)]
     #[token("let", |_| Region::Keyword)]
     #[token("fn", |_| Region::Keyword)]
     #[token("pub", |_| Region::Keyword)]
@@ -124,7 +160,6 @@ enum RustToken {
     #[token("true", |_| Region::Keyword)]
     #[token("false", |_| Region::Keyword)]
     #[token("impl", |_| Region::Keyword)]
-    #[token("for", |_| Region::Keyword)]
     #[token("in", |_| Region::Keyword)]
     #[token("mod", |_| Region::Keyword)]
     #[token("move", |_| Region::Keyword)]
@@ -137,6 +172,129 @@ enum RustToken {
     #[token("type", |_| Region::Keyword)]
     #[token("unsafe", |_| Region::Keyword)]
     #[token("where", |_| Region::Keyword)]
+    #[regex(r"[A-Z][0-9a-zA-Z_]*", |_| Region::Type, priority = 0)]
+    #[token("usize", |_| Region::Type)]
+    #[token("isize", |_| Region::Type)]
+    #[regex("u[0-9]+", |_| Region::Type)]
+    #[regex("i[0-9]+", |_| Region::Type)]
+    #[regex("f[0-9]+", |_| Region::Type)]
+    #[token("str", |_| Region::Type)]
+    #[token("bool", |_| Region::Type)]
+    #[token("char", |_| Region::Type)]
+    Token(Region),
+
+    #[error]
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    Other,
+}
+
+#[derive(Logos)]
+enum GlslToken {
+    #[regex(r"[a-zA-Z_][0-9a-zA-Z_]*!", |_| Region::Macro, priority = 0)]
+    #[regex(r"[a-z_][0-9a-zA-Z_]*", |_| Region::Normal, priority = 0)]
+    #[regex(r"//[^\n\r]*", |_| Region::LineComment, priority = 0)]
+    #[regex(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", |_| Region::MultiComment, priority = 0)]
+    #[regex(r"[[0b]|[0o]]?[0-9]+[.[0-9]]?u?", |_| Region::Numeric, priority = 1)]
+    #[regex(r"0x[0-9a-fA-F]+[.[0-9a-fA-F]]?u?", |_| Region::Numeric, priority = 1)]
+    #[regex(r#"["][^"]*""#, |_| Region::String, priority = 0)]
+    #[regex(r"[A-Z][0-9A-Z_]+", |_| Region::Constant, priority = 100)]
+    #[regex(r"#[a-z]+", |_| Region::Macro, priority = 0)]
+    #[regex(r"gl_[0-9a-zA-Z_]*", |_| Region::Constant, priority = 1)]
+    #[token(r"+", |_| Region::Symbol)]
+    #[token(r"-", |_| Region::Symbol)]
+    #[token(r"*", |_| Region::Symbol)]
+    #[token(r"/", |_| Region::Symbol)]
+    #[token(r"%", |_| Region::Symbol)]
+    #[token(r"[", |_| Region::Symbol)]
+    #[token(r"]", |_| Region::Symbol)]
+    #[token(r"{", |_| Region::Symbol)]
+    #[token(r"}", |_| Region::Symbol)]
+    #[token(r"(", |_| Region::Symbol)]
+    #[token(r")", |_| Region::Symbol)]
+    #[token(r"<", |_| Region::Symbol)]
+    #[token(r">", |_| Region::Symbol)]
+    #[token(r"=", |_| Region::Symbol)]
+    #[token(r"&", |_| Region::Symbol)]
+    #[token(r"@", |_| Region::Symbol)]
+    #[token(r".", |_| Region::Symbol)]
+    #[token(r":", |_| Region::Symbol)]
+    #[token(r"?", |_| Region::Symbol)]
+    #[token("struct", |_| Region::Keyword)]
+    #[token("enum", |_| Region::Keyword)]
+    #[token("layout", |_| Region::Keyword)]
+    #[token("uniform", |_| Region::Keyword)]
+    #[token("if", |_| Region::Keyword)]
+    #[token("else", |_| Region::Keyword)]
+    #[token("for", |_| Region::Keyword)]
+    #[token("while", |_| Region::Keyword)]
+    #[token("continue", |_| Region::Keyword)]
+    #[token("break", |_| Region::Keyword)]
+    #[token("return", |_| Region::Keyword)]
+    #[token("in", |_| Region::Keyword)]
+    #[token("out", |_| Region::Keyword)]
+    #[token("inout", |_| Region::Keyword)]
+    #[token("flat", |_| Region::Keyword)]
+    #[token("smooth", |_| Region::Keyword)]
+    #[token("discard", |_| Region::Keyword)]
+    #[token("const", |_| Region::Keyword)]
+    #[token("true", |_| Region::Keyword)]
+    #[token("false", |_| Region::Keyword)]
+    #[regex(r"[A-Z][0-9a-zA-Z_]*", |_| Region::Type, priority = 2)]
+    #[regex("vec[0-9]", |_| Region::Type)]
+    #[regex("ivec[0-9]", |_| Region::Type)]
+    #[regex("uvec[0-9]", |_| Region::Type)]
+    #[regex("bvec[0-9]", |_| Region::Type)]
+    #[token("int", |_| Region::Type)]
+    #[token("uint", |_| Region::Type)]
+    #[token("float", |_| Region::Type)]
+    #[token("double", |_| Region::Type)]
+    #[token("bool", |_| Region::Type)]
+    #[token("void", |_| Region::Type)]
+    Token(Region),
+
+    #[error]
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    Other,
+}
+
+#[derive(Logos)]
+enum TomlToken {
+    #[regex(r"[a-zA-Z_][0-9a-zA-Z_\-]+", |_| Region::Macro, priority = 0)] // Key
+    #[regex(r"\[[0-9a-zA-Z_-]+\]", |_| Region::Label, priority = 0)]
+    #[regex(r"#[^\n\r]*", |_| Region::LineComment, priority = 0)]
+    #[regex(r"[0-9][.[0-9]]?", |_| Region::Numeric, priority = 0)]
+    #[regex(r#"["][^"]*""#, |_| Region::String, priority = 100)]
+    Token(Region),
+
+    #[error]
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    Other,
+}
+
+#[derive(Logos)]
+enum LogToken {
+    #[regex(r"error|ERROR", |_| Region::Error)]
+    #[regex(r"warn|WARN", |_| Region::Warning)]
+    #[regex(r"info|INFO", |_| Region::Info)]
+    #[regex(r"trace|TRACE", |_| Region::LineComment)]
+    Token(Region),
+
+    #[error]
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    Other,
+}
+
+#[derive(Logos)]
+enum MdToken {
+    //#[regex(r"[^\n\r]*", |_| Region::MultiComment, priority = 0)]
+    #[regex(r"#[^\n\r]*", |_| Region::Macro, priority = 1)]
+    #[regex(r"##[^\n\r]*", |_| Region::Macro, priority = 2)]
+    #[regex(r"###[^\n\r]*", |_| Region::Macro, priority = 3)]
+    #[regex(r#"\[[^\]]*\](\([^\)]*\))?"#, |_| Region::String, priority = 100)]
+    #[regex(r#"[ \t\n\f]*-"#, |_| Region::Symbol, priority = 1)]
+    #[regex(r#"```[^[```]]*```"#, |_| Region::Numeric, priority = 100)]
+    #[regex(r#"`[^`]*`"#, |_| Region::Numeric, priority = 100)]
+    #[regex(r#"\*[^\*]*\*"#, |_| Region::Info, priority = 100)]
     Token(Region),
 
     #[error]

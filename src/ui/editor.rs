@@ -48,12 +48,16 @@ impl Editor {
             .map(|b| Self::from(ctx.state.duplicate_handle(&b).unwrap()))
             .unwrap_or_else(|| Self::empty(ctx))
     }
+
+    pub fn buffer(&self) -> &BufferHandle {
+        &self.buffer
+    }
 }
 
 impl Element for Editor {
-    type Response = ();
+    type Response = Result<(), Event>;
 
-    fn handle(&mut self, ctx: &mut Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         let mut buf = ctx.state
             .get_buffer(&self.buffer)
             .unwrap();
@@ -86,8 +90,9 @@ impl Element for Editor {
                 Ok(buf) => self.buffer = buf,
                 Err(err) => log::warn!("When opening file: {:?}", err),
             },
-            event => buf.handle(event),
+            event => buf.handle(event)?,
         }
+        Ok(())
     }
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {

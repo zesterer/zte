@@ -65,12 +65,12 @@ fn main() {
 
     let mut display = Display::new();
 
-    let state = match matches.values_of("PATH") {
-        Some(paths) => State::from_paths(paths.map(|path| path.to_string().into())).0,
-        None => State::default(),
+    let (state, buffers, _) = match matches.values_of("PATH") {
+        Some(paths) => State::from_paths(paths.map(|path| path.to_string().into())),
+        None => (State::default(), Vec::new(), Vec::new()),
     };
 
-    let mut ui = MainUi::new(Theme::default(), state);
+    let mut ui = MainUi::new(Theme::default(), state, buffers);
 
     let event_rx = input::begin_reading();
     loop {

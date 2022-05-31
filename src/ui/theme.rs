@@ -28,9 +28,14 @@ impl Theme {
             Region::LineComment => Color::Rgb(Rgb::gray(120)),
             Region::MultiComment => Color::Rgb(Rgb::gray(180)),
             Region::Symbol => Color::Rgb(Rgb::new(0, 150, 255)),
-            Region::Primitive => Color::Rgb(Rgb::new(255, 100, 0)),
             Region::Label => Color::Rgb(Rgb::new(255, 0, 0)),
             Region::Macro => Color::Rgb(Rgb::new(0, 255, 230)),
+            Region::Type => Color::Rgb(Rgb::new(255, 100, 0)),
+            Region::Constant => Color::Rgb(Rgb::new(225, 200, 255)),
+            Region::Path => Color::Rgb(Rgb::new(225, 255, 200)),
+            Region::Error => Color::Rgb(Rgb::new(225, 0, 0)),
+            Region::Warning => Color::Rgb(Rgb::new(255, 180, 50)),
+            Region::Info => Color::Rgb(Rgb::new(0, 200, 75)),
             _ => Color::Reset,
         }
     }

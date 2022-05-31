@@ -70,11 +70,11 @@ impl Prompt {
 }
 
 impl Element for Prompt {
-    type Response = ();
+    type Response = Result<(), Event>;
 
-    fn handle(&mut self, ctx: &mut Context, event: Event) {
+    fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         match event {
-            Event::Insert('\n') => {},
+            Event::Insert('\n') => Ok(()),
             event => self.buf_mut().handle(event),
         }
     }

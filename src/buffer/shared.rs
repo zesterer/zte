@@ -400,6 +400,12 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
+    pub fn insert_str_at(&mut self, at: usize, s: &str) {
+        for (i, c) in s.chars().enumerate() {
+            self.insert_at(at + i, c);
+        }
+    }
+
     pub fn cursor_set(&mut self, loc: Vec2<usize>) {
         self.cursor_mut().pos = self.loc_pos(loc);
     }
@@ -532,14 +538,15 @@ impl<'a> BufferGuard<'a> {
         }
     }
 
-    pub fn handle(&mut self, event: Event) {
+    pub fn handle(&mut self, event: Event) -> Result<(), Event> {
         match event {
             // Do not mutate
-            Event::CursorMove(dir, reach) => return self.do_cursor_movement(dir, reach, |b| { b.cursor_move(dir, 1); }),
-            Event::CursorJump(dir, reach) => return self.do_cursor_movement(dir, reach, |b| { b.cursor_jump(dir); }),
+            Event::CursorMove(dir, reach) => return Ok(self.do_cursor_movement(dir, reach, |b| { b.cursor_move(dir, 1); })),
+            Event::CursorJump(dir, reach) => return Ok(self.do_cursor_movement(dir, reach, |b| { b.cursor_jump(dir); })),
             Event::SelectAll => {
                 self.cursor_mut().base = 0;
                 self.cursor_mut().pos = self.len();
+                return Ok(())
             },
             _ => {},
         }
@@ -552,15 +559,26 @@ impl<'a> BufferGuard<'a> {
                 match c {
                     '\n' if self.config().auto_indent => {
                         self.remove_selection();
+                        let indent_more = self.get_next_char(Dir::Left).map_or(false, |c| ['{', '(', '['].contains(&c));
+                        let newline_after = self.get_next_char(Dir::Right).map_or(false, |c| ['}', ')', ']'].contains(&c));
 		        		let whitespace = self
         					.current_line()
 				        	.chars()
 		        			.take_while(|c| c.is_whitespace() && *c != '\n')
-        					.collect::<Vec<_>>();
+        					.collect::<String>();
 				        self.insert('\n');
-				        for ws in whitespace {
+				        for ws in whitespace.chars() {
 		        			self.insert(ws);
         				}
+                        if indent_more {
+                            self.indent_at(self.cursor().pos);
+                            if newline_after {
+                                let old_pos = self.cursor().pos;
+                                self.insert('\n');
+                                self.insert_str(&whitespace);
+                                self.cursor_mut().go_to(old_pos);
+                            }
+                        }
 			        },
                     '\t' => {
                         let base_line = self.pos_loc(self.cursor().base).y;
@@ -580,6 +598,19 @@ impl<'a> BufferGuard<'a> {
                     c => {
                         self.remove_selection();
                         self.insert(c);
+
+                        if self.config().insert_matching {
+                            if let Some(trailing) = match c {
+                                '{' => Some('}'),
+                                '[' => Some(']'),
+                                '(' => Some(')'),
+                                _ => None,
+                            } {
+                                let old_pos = self.cursor().pos;
+                                self.insert(trailing);
+                                self.cursor_mut().go_to(old_pos);
+                            }
+                        }
                     },
                 }
             },
@@ -643,7 +674,8 @@ impl<'a> BufferGuard<'a> {
                 },
                 Err(_) => {},
             },
-            _ => {},
+            _ => return Err(event),
         }
+        Ok(())
     }
 }
