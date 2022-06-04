@@ -43,6 +43,8 @@ pub fn begin_reading() -> Receiver<Event> {
 
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 68] => vec![Event::CursorJump(Dir::Left, true)],
             InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 67] => vec![Event::CursorJump(Dir::Right, true)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 65] => vec![Event::CursorJump(Dir::Up, true)],
+            InputEvent::Unsupported(event) if event == &[27, 91, 49, 59, 54, 66] => vec![Event::CursorJump(Dir::Down, true)],
 
             InputEvent::Key(KeyEvent::Ctrl('a')) => vec![Event::SelectAll],
 

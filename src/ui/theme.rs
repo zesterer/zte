@@ -23,11 +23,14 @@ impl Theme {
     pub fn get_highlight_color(&self, region: Region) -> Color {
         match region {
             Region::Numeric => Color::Rgb(Rgb::new(255, 100, 200)),
+            Region::Property => Color::Rgb(Rgb::new(210, 210, 230)),
             Region::Keyword => Color::Rgb(Rgb::new(50, 200, 100)),
             Region::String => Color::Rgb(Rgb::new(255, 200, 50)),
             Region::LineComment => Color::Rgb(Rgb::gray(120)),
             Region::MultiComment => Color::Rgb(Rgb::gray(180)),
             Region::Symbol => Color::Rgb(Rgb::new(0, 150, 255)),
+            Region::Bracket => Color::Rgb(Rgb::new(100, 180, 255)),
+            Region::Block => Color::Rgb(Rgb::new(210, 130, 250)),
             Region::Label => Color::Rgb(Rgb::new(255, 0, 0)),
             Region::Macro => Color::Rgb(Rgb::new(0, 255, 230)),
             Region::Type => Color::Rgb(Rgb::new(255, 100, 0)),

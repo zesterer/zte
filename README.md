@@ -22,6 +22,7 @@ ZTE is a personal project. I grew frustrated with existing text editors and want
     - `.ron`
     - `.md`
     - `.log`
+    - `.tao`
 
 ## Keybindings
 

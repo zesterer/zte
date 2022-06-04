@@ -444,31 +444,71 @@ impl<'a> BufferGuard<'a> {
     }
 
     pub fn cursor_jump(&mut self, dir: Dir) {
-        if let Dir::Left | Dir::Right = dir {
-            // Consume any whitespace before
-            if matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
-                while matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
+        match dir {
+            Dir::Left | Dir::Right => {
+                // Consume any whitespace before
+                if matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
+                    while matches!(self.get_next_char(dir).map(CharKind::from_char), Some(None)) {
+                        let old_pos = self.cursor().pos;
+                        self.cursor_move(dir, 1);
+                        if self.cursor().pos == old_pos {
+                            break;
+                        }
+                    }
+                }
+
+                let kind = match self.get_next_char(dir) {
+                    Some(c) => CharKind::from_char(c),
+                    None => return,
+                };
+
+                self.cursor_move(dir, 1);
+                while self.get_next_char(dir).map(CharKind::from_char) == Some(kind) {
                     let old_pos = self.cursor().pos;
                     self.cursor_move(dir, 1);
                     if self.cursor().pos == old_pos {
                         break;
                     }
                 }
-            }
-
-            let kind = match self.get_next_char(dir) {
-                Some(c) => CharKind::from_char(c),
-                None => return,
-            };
-
-            self.cursor_move(dir, 1);
-            while self.get_next_char(dir).map(CharKind::from_char) == Some(kind) {
+            },
+            Dir::Down => {
                 let old_pos = self.cursor().pos;
-                self.cursor_move(dir, 1);
-                if self.cursor().pos == old_pos {
-                    break;
+                let (left, right) = loop {
+                    match self.get_next_char(Dir::Right) {
+                        Some('{') => {
+                            self.cursor_move(Dir::Right, 1);
+                            break ('{', '}');
+                        },
+                        Some(_) => { self.cursor_move(Dir::Right, 1); },
+                        None => {
+                            // Cancel
+                            self.cursor_mut().pos = old_pos;
+                            return;
+                        },
+                    }
+                };
+
+                let mut balance = 0;
+                loop {
+                    match self.get_next_char(Dir::Right) {
+                        Some(c) if c == right => if balance == 0 {
+                            self.cursor_move(Dir::Right, 1);
+                            break
+                        } else {
+                            balance -= 1;
+                        },
+                        Some(c) if c == left => balance += 1,
+                        Some(_) => {},
+                        None => {
+                            // Cancel
+                            self.cursor_mut().pos = old_pos;
+                            return;
+                        },
+                    }
+                    self.cursor_move(Dir::Right, 1);
                 }
-            }
+            },
+            Dir::Up => {},
         }
     }
 
