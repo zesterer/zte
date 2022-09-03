@@ -479,7 +479,9 @@ impl<'a> BufferGuard<'a> {
                             self.cursor_move(Dir::Right, 1);
                             break ('{', '}');
                         },
-                        Some(_) => { self.cursor_move(Dir::Right, 1); },
+                        Some(_) => if !self.cursor_move(Dir::Right, 1) {
+                            return
+                        } else {},
                         None => {
                             // Cancel
                             self.cursor_mut().pos = old_pos;
@@ -505,7 +507,9 @@ impl<'a> BufferGuard<'a> {
                             return;
                         },
                     }
-                    self.cursor_move(Dir::Right, 1);
+                    if !self.cursor_move(Dir::Right, 1) {
+                        return;
+                    }
                 }
             },
             Dir::Up => {},
