@@ -61,8 +61,8 @@ impl Element for Switcher {
         let mut canvas = canvas.window(Rect::new(
             sz.w / 4,
             sz.h / 4,
-            sz.w - sz.w / 2,
-            sz.h - sz.h / 2,
+            sz.w.saturating_sub(sz.w / 2),
+            sz.h.saturating_sub(sz.h / 2),
         ));
 
         // Frame
@@ -77,8 +77,8 @@ impl Element for Switcher {
         let mut canvas = canvas.window(Rect::new(
             1,
             1,
-            canvas.size().w - 2,
-            canvas.size().h - 2,
+            canvas.size().w.saturating_sub(2),
+            canvas.size().h.saturating_sub(2),
         ));
 
         let handles = ctx.state.recent_buffers().cloned().collect::<Vec<_>>();

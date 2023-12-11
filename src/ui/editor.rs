@@ -59,7 +59,7 @@ impl Element for Editor {
 
     fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         let mut buf = ctx.state
-            .get_buffer(&self.buffer)
+            .get_buffer_mut(&self.buffer)
             .unwrap();
 
         match event {
@@ -107,7 +107,7 @@ impl Element for Editor {
         }
 
         let buf = ctx.state
-            .get_buffer(&self.buffer)
+            .get_buffer_mut(&self.buffer)
             .unwrap();
 
         let cursor_loc = buf.pos_loc(buf.cursor().pos);
@@ -123,7 +123,7 @@ impl Element for Editor {
     fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
         let sz = canvas.size();
         let buf = ctx.state
-            .get_buffer(&self.buffer)
+            .get_buffer_mut(&self.buffer)
             .unwrap();
 
         // Frame

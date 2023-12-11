@@ -112,7 +112,7 @@ impl SharedBuffer {
         self.state.cursors.get_mut(&id).unwrap()
     }
 
-    fn is_unsaved(&self) -> bool {
+    pub fn is_unsaved(&self) -> bool {
         self.unsaved
     }
 

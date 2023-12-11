@@ -81,9 +81,10 @@ fn main() {
         match event_rx.recv().unwrap() {
             Event::Tick => display.update_size(),
             event => if ui.handle(event) {
-                log::info!("Quitting...");
                 break;
             } else {},
         }
     }
+
+    log::info!("Quitting...");
 }

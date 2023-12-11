@@ -78,7 +78,7 @@ impl State {
     }
 
     pub fn duplicate_handle(&mut self, handle: &BufferHandle) -> Option<BufferHandle> {
-        let buf = self.get_buffer(handle)?;
+        let buf = self.get_buffer_mut(handle)?;
 
         let cursor = buf
             .buffer
@@ -107,7 +107,11 @@ impl State {
         self.insert_buffer(SharedBuffer::default())
     }
 
-    pub fn get_buffer(&mut self, handle: &BufferHandle) -> Option<BufferGuard> {
+    pub fn get_buffer(&self, handle: &BufferHandle) -> Option<&SharedBuffer> {
+        Some(&self.buffers.get(&handle.buffer_id)?.0)
+    }
+
+    pub fn get_buffer_mut(&mut self, handle: &BufferHandle) -> Option<BufferGuard> {
         Some(BufferGuard {
             buffer: &mut self.buffers.get_mut(&handle.buffer_id)?.0,
             cursor_id: handle.cursor_id,
@@ -124,6 +128,10 @@ impl State {
 
     pub fn recent_buffers(&self) -> impl Iterator<Item=&BufferHandle> + ExactSizeIterator<Item=&BufferHandle> + '_ {
         self.recent.iter().rev()
+    }
+
+    pub fn any_unsaved(&self) -> bool {
+        self.recent.iter().any(|b| self.get_buffer(b).map_or(false, |b| b.is_unsaved()))
     }
 
     pub fn set_recent_buffer(&mut self, handle: BufferHandle) {

@@ -178,8 +178,8 @@ impl Element for Opener {
         let mut canvas = canvas.window(Rect::new(
             sz.w / 4,
             sz.h / 4,
-            sz.w - sz.w / 2,
-            sz.h - sz.h / 2,
+            sz.w.saturating_sub(sz.w / 2),
+            sz.h.saturating_sub(sz.h / 2),
         ));
 
         // Frame
@@ -213,7 +213,7 @@ impl Element for Opener {
             0,
             1,
             canvas.size().w,
-            canvas.size().h - 1,
+            canvas.size().h.saturating_sub(1),
         ));
 
         if let Some((selected_idx, listings)) = &self.listings {

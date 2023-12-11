@@ -3,6 +3,7 @@ mod editor;
 mod terminal;
 mod panels;
 mod switcher;
+mod confirm;
 mod opener;
 mod prompt;
 
@@ -13,6 +14,7 @@ pub use self::{
     terminal::Terminal,
     panels::{Panels, Tile},
     switcher::Switcher,
+    confirm::Confirm,
     opener::Opener,
     prompt::Prompt,
 };
@@ -85,18 +87,22 @@ impl MainUi {
                 Event::CloseMenu => Ok(self.menu = None),
                 Event::Escape => match self.menu.take() {
                     Some(Menu::Switcher(switcher)) => Ok(switcher.cancel(&mut self.ctx)),
+                    Some(Menu::Confirm(confirm)) => Ok(confirm.cancel(&mut self.ctx)),
                     Some(Menu::Opener(_)) => Ok(()),
                     None => Err(event),
                 },
                 event => match menu {
                     Menu::Switcher(switcher) => switcher.handle(&mut self.ctx, event),
                     Menu::Opener(opener) => opener.handle(&mut self.ctx, event),
+                    Menu::Confirm(confirm) => confirm.handle(&mut self.ctx, event),
                 },
             },
             None => Err(event)
         } {
             match event {
-                Event::Escape => return true,
+                Event::Quit => return true,
+                Event::Escape if !self.ctx.state.any_unsaved() => return true,
+                Event::Escape => self.menu = Some(Menu::Confirm(Confirm::quit(&mut self.ctx))),
                 Event::OpenPrompt => unimplemented!(),
                 Event::OpenSwitcher => match self.panels.active_mut().and_then(|col| col.active_mut()) {
                     Some(Tile::Editor(editor)) => self.menu = Some(Menu::Switcher(Switcher::new(
@@ -111,7 +117,7 @@ impl MainUi {
         }
 
         if let Some(e) = self.ctx.secondary_events.pop_front() {
-            self.handle(e);
+            return self.handle(e);
         }
 
         false
@@ -123,6 +129,7 @@ impl MainUi {
         match &mut self.menu {
             Some(Menu::Switcher(switcher)) => switcher.update(&mut self.ctx, canvas, true),
             Some(Menu::Opener(opener)) => opener.update(&mut self.ctx, canvas, true),
+            Some(Menu::Confirm(confirm)) => confirm.update(&mut self.ctx, canvas, true),
             None => {},
         }
     }
@@ -133,6 +140,7 @@ impl MainUi {
         match &self.menu {
             Some(Menu::Switcher(switcher)) => switcher.render(&mut self.ctx, canvas, true),
             Some(Menu::Opener(opener)) => opener.render(&mut self.ctx, canvas, true),
+            Some(Menu::Confirm(confirm)) => confirm.render(&mut self.ctx, canvas, true),
             None => {},
         }
     }
@@ -141,4 +149,5 @@ impl MainUi {
 pub enum Menu {
     Switcher(Switcher),
     Opener(Opener),
+    Confirm(Confirm),
 }
