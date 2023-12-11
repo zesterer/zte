@@ -21,6 +21,14 @@ use crate::{
 
 pub fn begin_reading() -> Receiver<Event> {
     let (tx, rx) = channel();
+    
+    thread::spawn({
+        let tx = tx.clone();
+        move || loop {
+            thread::sleep(std::time::Duration::from_millis(100));
+            if tx.send(Event::Tick).is_err() { break }
+        }
+    });
 
     thread::spawn(move || for event in stdin().events() {
         let events = match event.unwrap() {

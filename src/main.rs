@@ -78,9 +78,12 @@ fn main() {
         ui.render(&mut display);
         display.render();
 
-        if ui.handle(event_rx.recv().unwrap()) {
-            log::info!("Quitting...");
-            break;
+        match event_rx.recv().unwrap() {
+            Event::Tick => display.update_size(),
+            event => if ui.handle(event) {
+                log::info!("Quitting...");
+                break;
+            } else {},
         }
     }
 }

@@ -60,4 +60,5 @@ pub enum Event {
     Duplicate,
     Escape,
     Quit,
+    Tick,
 }

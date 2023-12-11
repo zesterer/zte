@@ -121,6 +121,7 @@ pub struct Display {
     cursor_pos: Option<Vec2<usize>>,
     grids: (Grid, Grid),
     screen: AlternateScreen<MouseTerminal<RawTerminal<Stdout>>>,
+    stale: bool,
 }
 
 impl Display {
@@ -134,6 +135,7 @@ impl Display {
             cursor_pos: None,
             grids: (grid.clone(), grid),
             screen,
+            stale: true,
         };
         this.init();
         this
@@ -167,6 +169,20 @@ impl Display {
     pub fn set_cursor(&mut self, pos: Option<Vec2<usize>>) {
         self.cursor_pos = pos;
     }
+    
+    pub fn update_size(&mut self) {
+        // Update size if it differs
+        let new_size = Extent2::from(terminal_size().unwrap()).map(|e: u16| e as usize);
+        let size_changed = if self.size != new_size {
+            self.size = new_size;
+            let grid = Grid::new(self.size);
+            self.grids = (grid.clone(), grid);
+            self.stale = true;
+            true
+        } else {
+            false
+        };
+    }
 
     #[allow(dead_code)]
     pub fn render(&mut self) {
@@ -177,7 +193,7 @@ impl Display {
             for col in 0..self.size.w {
                 let (front, back) = (self.grids.0.get((col, row)), self.grids.1.get((col, row)));
 
-                if front != back {
+                if front != back || self.stale {
                     if last_pos != Vec2::new(col.saturating_sub(1), row) {
                         write!(self.screen, "{}", cursor::Goto(col as u16 + 1, row as u16 + 1)).unwrap();
                     }
@@ -200,6 +216,8 @@ impl Display {
         }
 
         self.screen.flush().unwrap();
+        
+        self.stale = false;
     }
 }
 
