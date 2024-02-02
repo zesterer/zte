@@ -4,20 +4,70 @@ use crate::{
     Event,
     Dir,
     BufferHandle,
+    Color,
 };
 use super::{
     Context,
     Element,
+    Prompt,
 };
+pub struct List<T> {
+    entries: Vec<T>,
+    priorities: Vec<usize>,
+    selected: Option<usize>,
+}
+
+impl<T> List<T> {
+    pub fn new(entries: impl IntoIterator<Item = T>) -> Self {
+        let entries = entries.into_iter().collect::<Vec<_>>();
+        Self {
+            priorities: (0..entries.len()).collect(),
+            entries,
+            selected: Some(0),
+        }
+    }
+    
+    pub fn update(&mut self, mut score: impl FnMut(&T) -> Option<i32>) {
+        let old_selected = self.selected.map(|s| self.priorities[s]);
+
+        let entries_score = (0..self.entries.len()).map(|i| score(&self.entries[i])).collect::<Vec<_>>();
+        self.priorities.clear();
+        self.priorities.extend((0..self.entries.len()).filter(|i| entries_score[*i].is_some()));
+        self.priorities.sort_by_key(|i| std::cmp::Reverse(entries_score[*i]));
+        
+        self.selected = if self.priorities.is_empty() {
+            None
+        } else {
+            Some(self.priorities.iter().enumerate().find(|(_, x)| Some(**x) == old_selected).map(|(i, _)| i).unwrap_or(0))
+        };
+    }
+    
+    pub fn move_by(&mut self, r: isize) {
+        if let Some(selected) = &mut self.selected {
+            *selected = (*selected as isize + self.priorities.len() as isize + r) as usize % self.priorities.len();
+        }
+    }
+    
+    pub fn elements(&self) -> impl ExactSizeIterator<Item = &T> { self.priorities.iter().map(move |i| &self.entries[*i]) }
+    
+    pub fn selected_idx(&self) -> Option<usize> { self.selected }
+    pub fn selected(&self) -> Option<&T> { Some(&self.entries[self.priorities[self.selected?]]) }
+}
 
 pub struct Switcher {
-    selected_idx: usize,
+    prompt: Prompt,
     prev_buffer: BufferHandle,
+    
+    recent: List<usize>,
 }
 
 impl Switcher {
     pub fn new(ctx: &mut Context, prev_buffer: BufferHandle) -> Self {
-        Self { selected_idx: 0, prev_buffer }
+        Self {
+            prev_buffer,
+            prompt: Prompt::default(),
+            recent: List::new(0..ctx.state.recent_buffers().count()),
+        }
     }
 
     pub fn cancel(self, ctx: &mut Context) {
@@ -30,25 +80,42 @@ impl Element for Switcher {
 
     fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         let recent_count = ctx.state.recent_buffers().len();
+        let last_selected = self.recent.selected().copied();
         match event {
-            Event::CursorMove(dir, _) => {
-                match dir {
-                    Dir::Up => self.selected_idx = (self.selected_idx + recent_count.saturating_sub(1)) % recent_count,
-                    Dir::Down => self.selected_idx = (self.selected_idx + 1) % recent_count,
-                    _ => return Err(event),
-                }
+            Event::CursorMove(Dir::Up, _) => self.recent.move_by(-1),
+            Event::CursorMove(Dir::Down, _) => self.recent.move_by(1),
+            Event::Insert('\n') => ctx.secondary_events.push_back(Event::CloseMenu),
+            event => {
+                self.prompt.handle(ctx, event)?;
+                let s = self.prompt.get_text();
+                let handles = ctx.state.recent_buffers().cloned().collect::<Vec<_>>();
+                self.recent.update(|i| {
+                    let buf = ctx.state.get_shared_buffer(handles[*i].buffer_id).unwrap();
+                    let title = buf.title().to_lowercase();
+                    if title.starts_with(&s) {
+                        Some(10)
+                    } else if title.contains(&s) {
+                        Some(5)
+                    } else {
+                        None
+                    }
+                });
+            },
+        }
+        
+        if self.recent.selected().copied() != last_selected {
+            if let Some(selected) = self.recent.selected() {
                 ctx.secondary_events.push_back(Event::SwitchBuffer({
                     let old_handle = ctx.state
                         .recent_buffers()
-                        .nth(self.selected_idx)
+                        .nth(*selected)
                         .unwrap()
                         .clone();
                     ctx.state.duplicate_handle(&old_handle).unwrap()
                 }));
-            },
-            Event::Insert('\n') => ctx.secondary_events.push_back(Event::CloseMenu),
-            _ => return Err(event),
+            }
         }
+        
         Ok(())
     }
 
@@ -69,6 +136,13 @@ impl Element for Switcher {
         let sz = canvas.size();
         canvas.rectangle(Vec2::zero(), sz, ' '.into());
         canvas.frame();
+        
+        self.prompt.render(ctx, &mut canvas.window(Rect::new(
+            2,
+            1,
+            canvas.size().w.saturating_sub(3),
+            canvas.size().h,
+        )), active);
 
         let title = format!("[Recent Buffers]");
         canvas.write_str(Vec2::new((sz.w.saturating_sub(title.len())) / 2, 0), &title);
@@ -76,19 +150,27 @@ impl Element for Switcher {
         // Entries
         let mut canvas = canvas.window(Rect::new(
             1,
-            1,
+            2,
             canvas.size().w.saturating_sub(2),
-            canvas.size().h.saturating_sub(2),
+            canvas.size().h.saturating_sub(3),
         ));
 
         let handles = ctx.state.recent_buffers().cloned().collect::<Vec<_>>();
-        for (i, handle) in handles.iter().enumerate().take(canvas.size().h) {
-            if i == self.selected_idx {
-                canvas.write_char(Vec2::new(0, i), '>');
-            }
+        for (idx, i) in self.recent.elements().enumerate().take(canvas.size().h) {
+            let y = idx;
+            
+            let bg_color = if Some(idx) == self.recent.selected_idx() {
+                ctx.theme.selection_color
+            } else {
+                Color::Reset
+            };
 
-            let buf = ctx.state.get_shared_buffer(handle.buffer_id).unwrap();
-            canvas.write_str(Vec2::new(2, i), buf.title());
+            let buf = ctx.state.get_shared_buffer(handles[*i].buffer_id).unwrap();
+            
+            canvas
+                .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
+                .with_bg(bg_color)
+                .write_str(Vec2::new(1, y), &format!("{:<48}", buf.title()));
         }
     }
 }
