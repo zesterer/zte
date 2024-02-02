@@ -1,6 +1,6 @@
 [package]
 name = "zte"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Joshua Barretto <joshua.s.barretto@gmail.com>"]
 edition = "2018"
 description = "A buffer/window-driven text editor that takes inspiration from Howl"
