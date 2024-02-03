@@ -78,6 +78,7 @@ impl<'a> From<&'a [char]> for Line<'a> {
 pub struct Cursor {
     pub base: usize,
     pub pos: usize,
+    pub preferred_x: Option<usize>,
 }
 
 impl Cursor {
@@ -130,6 +131,7 @@ impl Default for Cursor {
         Self {
             base: 0,
             pos: 0,
+            preferred_x: None,
         }
     }
 }

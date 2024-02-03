@@ -202,7 +202,7 @@ impl Element for Opener {
         canvas.with_fg(DIR_COLOR).write_str(Vec2::new(1, 0), &path_text);
         // Render prompt (last path element)
         self.prompt.render(ctx, &mut canvas.window(Rect::new(
-            1 + path_text.len(),
+            1 + path_text.chars().count(),
             0,
             canvas.size().w,
             canvas.size().h,

@@ -27,7 +27,7 @@ impl<T> List<T> {
         }
     }
     
-    pub fn update(&mut self, mut score: impl FnMut(&T) -> Option<i32>) {
+    pub fn update(&mut self, mut score: impl FnMut(&T) -> Option<i32>, reset: bool) {
         let old_selected = self.selected.map(|s| self.priorities[s]);
 
         let entries_score = (0..self.entries.len()).map(|i| score(&self.entries[i])).collect::<Vec<_>>();
@@ -37,6 +37,8 @@ impl<T> List<T> {
         
         self.selected = if self.priorities.is_empty() {
             None
+        } else if reset {
+            Some(0)
         } else {
             Some(self.priorities.iter().enumerate().find(|(_, x)| Some(**x) == old_selected).map(|(i, _)| i).unwrap_or(0))
         };
@@ -86,20 +88,32 @@ impl Element for Switcher {
             Event::CursorMove(Dir::Down, _) => self.recent.move_by(1),
             Event::Insert('\n') => ctx.secondary_events.push_back(Event::CloseMenu),
             event => {
+                let old_prompt = self.prompt.get_text();
                 self.prompt.handle(ctx, event)?;
-                let s = self.prompt.get_text();
+                
+                let prompt = self.prompt.get_text();
+                let prompt_lower = prompt.to_lowercase();
+                
                 let handles = ctx.state.recent_buffers().cloned().collect::<Vec<_>>();
                 self.recent.update(|i| {
                     let buf = ctx.state.get_shared_buffer(handles[*i].buffer_id).unwrap();
-                    let title = buf.title().to_lowercase();
-                    if title.starts_with(&s) {
-                        Some(10)
-                    } else if title.contains(&s) {
-                        Some(5)
+                    
+                    let title = buf.title();
+                    let title_lower = title.to_lowercase();
+                    
+                    const STARTS_WITH: i32 = 8;
+                    const STARTS_WITH_LOWER: i32 = 4;
+                    const CONTAINS: i32 = 2;
+                    const CONTAINS_LOWER: i32 = 1;
+                    if title_lower.contains(&prompt_lower) {
+                        Some(CONTAINS_LOWER
+                            + title.contains(&prompt) as i32 * CONTAINS
+                            + title.starts_with(&prompt) as i32 * STARTS_WITH
+                            + title_lower.starts_with(&prompt_lower) as i32 * STARTS_WITH_LOWER)
                     } else {
                         None
                     }
-                });
+                }, old_prompt != prompt);
             },
         }
         
@@ -120,7 +134,11 @@ impl Element for Switcher {
     }
 
     fn update(&mut self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {
-        // Todo
+        self.prompt.set_fg_color(if self.recent.elements().len() == 0 {
+            ctx.theme.invalid_color
+        } else {
+            Color::Rgb(Rgb::new(255, 255, 255))
+        });
     }
 
     fn render(&self, ctx: &mut Context, canvas: &mut impl Canvas, active: bool) {

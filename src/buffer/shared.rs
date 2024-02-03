@@ -292,6 +292,7 @@ impl<'a> BufferGuard<'a> {
 
     pub fn insert(&mut self, c: char) {
         self.buffer.insert(self.cursor_id, c);
+        self.cursor_mut().preferred_x = Some(self.cursor_loc().x);
     }
 
     pub fn insert_at(&mut self, pos: usize, c: char) {
@@ -413,14 +414,21 @@ impl<'a> BufferGuard<'a> {
     pub fn cursor_move(&mut self, dir: Dir, n: usize) -> bool {
         let old_pos = self.cursor().pos;
         match dir {
-            Dir::Left => self.cursor_mut().pos = self.cursor().pos.saturating_sub(n),
-            Dir::Right => self.cursor_mut().pos = (self.cursor().pos + n).min(self.len()),
+            Dir::Left => {
+                self.cursor_mut().pos = self.cursor().pos.saturating_sub(n);
+                self.cursor_mut().preferred_x = Some(self.cursor_loc().x);
+            },
+            Dir::Right => {
+                self.cursor_mut().pos = (self.cursor().pos + n).min(self.len());
+                self.cursor_mut().preferred_x = Some(self.cursor_loc().x);
+            },
             Dir::Up => {
                 let cursor_loc = self.pos_loc(self.cursor().pos);
                 if cursor_loc.y == 0 {
                     self.cursor_mut().pos = 0;
                 } else {
-                    self.cursor_mut().pos = self.loc_pos(Vec2::new(cursor_loc.x, cursor_loc.y.saturating_sub(n)));
+                    let x = self.cursor().preferred_x.unwrap_or(cursor_loc.x);
+                    self.cursor_mut().pos = self.loc_pos(Vec2::new(x, cursor_loc.y.saturating_sub(n)));
                 }
             },
             Dir::Down => {
@@ -428,7 +436,8 @@ impl<'a> BufferGuard<'a> {
                 if cursor_loc.y == self.line_count() {
                     self.cursor_mut().pos = self.len() + 1;
                 } else {
-                    self.cursor_set(Vec2::new(cursor_loc.x, cursor_loc.y + n));
+                    let x = self.cursor().preferred_x.unwrap_or(cursor_loc.x);
+                    self.cursor_set(Vec2::new(x, cursor_loc.y + n));
                 }
             },
         }
@@ -551,6 +560,9 @@ impl<'a> BufferGuard<'a> {
         } else {
             true
         };
+        
+        
+        
         if can_do {
             f(self)
         }

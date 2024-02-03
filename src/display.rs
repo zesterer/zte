@@ -16,6 +16,8 @@ use termion::{
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Color {
     Rgb(Rgb<u8>),
+    Red,
+    Green,
     Reset,
 }
 
@@ -26,6 +28,8 @@ impl fmt::Display for Fg<Color> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             Color::Rgb(rgb) => write!(f, "{}", color::Rgb(rgb.r, rgb.g, rgb.b).fg_string())?,
+            Color::Red => write!(f, "{}", color::Red.fg_str())?,
+            Color::Green => write!(f, "{}", color::Green.fg_str())?,
             Color::Reset => write!(f, "{}", color::Reset.fg_str())?,
         }
         Ok(())
@@ -36,6 +40,8 @@ impl fmt::Display for Bg<Color> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             Color::Rgb(rgb) => write!(f, "{}", color::Rgb(rgb.r, rgb.g, rgb.b).bg_string())?,
+            Color::Red => write!(f, "{}", color::Red.bg_str())?,
+            Color::Green => write!(f, "{}", color::Green.bg_str())?,
             Color::Reset => write!(f, "{}", color::Reset.bg_str())?,
         }
         Ok(())
@@ -186,7 +192,8 @@ impl Display {
 
     #[allow(dead_code)]
     pub fn render(&mut self) {
-        write!(self.screen, "{}", cursor::Goto(1, 1)).unwrap();
+        let mut buf = Vec::new();
+        write!(buf, "{}", cursor::Goto(1, 1)).unwrap();
         let mut last_pos = Vec2::zero();
 
         for row in 0..self.size.h {
@@ -195,12 +202,12 @@ impl Display {
 
                 if front != back || self.stale {
                     if last_pos != Vec2::new(col.saturating_sub(1), row) {
-                        write!(self.screen, "{}", cursor::Goto(col as u16 + 1, row as u16 + 1)).unwrap();
+                        write!(buf, "{}", cursor::Goto(col as u16 + 1, row as u16 + 1)).unwrap();
                     }
 
                     let Cell(c, fg, bg, attr) = back;
-                    write!(self.screen, "{}{}{}", Fg(fg), Bg(bg), attr).unwrap();
-                    write!(self.screen, "{}", c).unwrap();
+                    write!(buf, "{}{}{}", Fg(fg), Bg(bg), attr).unwrap();
+                    write!(buf, "{}", c).unwrap();
                     last_pos = Vec2::new(col, row);
                 }
             }
@@ -209,11 +216,13 @@ impl Display {
         self.grids.0 = self.grids.1.clone();
 
         if let Some(cursor_pos) = self.cursor_pos {
-            write!(self.screen, "{}", cursor::Show).unwrap();
-            write!(self.screen, "{}", cursor::Goto(cursor_pos.x as u16 + 1, cursor_pos.y as u16 + 1)).unwrap();
+            write!(buf, "{}", cursor::Show).unwrap();
+            write!(buf, "{}", cursor::Goto(cursor_pos.x as u16 + 1, cursor_pos.y as u16 + 1)).unwrap();
         } else {
-            write!(self.screen, "{}", cursor::Hide).unwrap();
+            write!(buf, "{}", cursor::Hide).unwrap();
         }
+        
+        self.screen.write_all(&mut buf);
 
         self.screen.flush().unwrap();
         
