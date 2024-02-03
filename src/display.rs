@@ -222,7 +222,7 @@ impl Display {
             write!(buf, "{}", cursor::Hide).unwrap();
         }
         
-        self.screen.write_all(&mut buf);
+        self.screen.write_all(&mut buf).unwrap();
 
         self.screen.flush().unwrap();
         

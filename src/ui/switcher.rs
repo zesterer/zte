@@ -185,10 +185,12 @@ impl Element for Switcher {
 
             let buf = ctx.state.get_shared_buffer(handles[*i].buffer_id).unwrap();
             
+            let saved = if buf.is_unsaved() { "*" } else { " " };
+            
             canvas
                 .with_fg(Color::Rgb(Rgb::new(255, 255, 255)))
                 .with_bg(bg_color)
-                .write_str(Vec2::new(1, y), &format!("{:<48}", buf.title()));
+                .write_str(Vec2::new(1, y), &format!("{}{:<48}", saved, buf.title()));
         }
     }
 }

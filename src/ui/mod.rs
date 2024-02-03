@@ -112,11 +112,12 @@ impl MainUi {
                     _ => {},
                 },
                 Event::OpenOpener => self.menu = Some(Menu::Opener(Opener::new(&mut self.ctx))),
+                Event::ConfirmCloseBuffer(buffer) => self.menu = Some(Menu::Confirm(Confirm::close_buffer(buffer))),
                 event => self.panels.handle(&mut self.ctx, event),
             }
         }
 
-        if let Some(e) = self.ctx.secondary_events.pop_front() {
+        while let Some(e) = self.ctx.secondary_events.pop_front() {
             return self.handle(e);
         }
 

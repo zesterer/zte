@@ -31,13 +31,16 @@ ZTE is a personal project. I grew frustrated with existing text editors and want
 Within an editor pane, 'standard' non-modal keybindings apply:
 
 - Arrow keys + page up + page down to move around the text
-- Control + arrow keys to move around the text word-wise
-- Shift + arrow keys to select text
+- Ctrl + arrow keys to move around the text word-wise
+- Shift + arrow keys to select characters
+- Shift + ctrl + arrow keys to select words
 
 - `Ctrl + X`: Cut
 - `Ctrl + C`: Copy
 - `Ctrl + V`: Paste
 - `Ctrl + D`: Duplicate line or selection
+
+The DE clipboard will be used where possible.
 
 ### Editor pane manipulation
 
@@ -51,7 +54,7 @@ Within an editor pane, 'standard' non-modal keybindings apply:
 - `Ctrl + S`: Save the current buffer
 - `Ctrl + N`: Create a new buffer (currently not useful until saving buffers with new names is implemented, use `Ctrl + O` instead to create a new file)
 
-- `Ctrl + B`: Switch the current editor pane to a new buffer
+- `Ctrl + B`: Switch the current editor pane between recent buffers
 - `Ctrl + Q`: Close the current buffer (unsaved data will be lost)
 
 ### Misc

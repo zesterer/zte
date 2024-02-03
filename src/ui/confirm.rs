@@ -12,6 +12,7 @@ use super::{
 
 enum Action {
     Quit,
+    CloseBuffer(BufferHandle),
 }
 
 pub struct Confirm {
@@ -22,6 +23,10 @@ impl Confirm {
     pub fn quit(ctx: &mut Context) -> Self {
         Self { action: Action::Quit }
     }
+    
+    pub fn close_buffer(buffer: BufferHandle) -> Self {
+        Self { action: Action::CloseBuffer(buffer) }
+    }
 
     pub fn cancel(self, ctx: &mut Context) {}
 }
@@ -31,13 +36,15 @@ impl Element for Confirm {
 
     fn handle(&mut self, ctx: &mut Context, event: Event) -> Self::Response {
         let recent_count = ctx.state.recent_buffers().len();
-        match &self.action {
-            Action::Quit => match event {
-                Event::Insert('y') => return Err(Event::Quit),
-                Event::Insert('n') => ctx.secondary_events.push_back(Event::CloseMenu),
-                event @ Event::Escape => return Err(event),
-                _ => {},
+        match (&self.action, event) {
+            (Action::Quit, Event::Insert('y')) => return Err(Event::Quit),
+            (Action::CloseBuffer(_), Event::Insert('y')) => {
+                ctx.secondary_events.push_back(Event::CloseMenu);
+                return Err(Event::CloseBuffer { force: true })
             },
+            (_, Event::Insert('n')) => ctx.secondary_events.push_back(Event::CloseMenu),
+            (_, event @ Event::Escape) => return Err(event),
+            (_, _) => {},
         }
         Ok(())
     }
@@ -81,6 +88,10 @@ impl Element for Confirm {
                     .map(|b| b.title())
                     .collect::<Vec<_>>()
                     .join("\n"),
+            ),
+            Action::CloseBuffer(buffer) => format!(
+                "Close `{}` and lose unsaved changes? (y/n)",
+                ctx.state.get_buffer(&buffer).map_or("", |b| b.title()),
             ),
         };
         for (i, line) in text.lines().enumerate() {

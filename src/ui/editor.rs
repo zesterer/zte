@@ -63,7 +63,12 @@ impl Element for Editor {
             .unwrap();
 
         match event {
-            Event::CloseBuffer => {
+            Event::CloseBuffer { force } => if !force && ctx.state
+                .get_buffer(&self.buffer)
+                .map_or(false, |b| b.is_unsaved())
+            {
+                ctx.secondary_events.push_back(Event::ConfirmCloseBuffer(self.buffer.clone()));
+            } else {
                 let buf = ctx.state
                     .recent_buffers()
                     .find(|buf| buf.buffer_id != self.buffer.buffer_id)

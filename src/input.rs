@@ -73,7 +73,7 @@ pub fn begin_reading() -> Receiver<Event> {
 
             InputEvent::Key(KeyEvent::Ctrl('b')) => vec![Event::OpenSwitcher],
             InputEvent::Key(KeyEvent::Ctrl('o')) => vec![Event::OpenOpener],
-            InputEvent::Key(KeyEvent::Ctrl('q')) => vec![Event::CloseBuffer],
+            InputEvent::Key(KeyEvent::Ctrl('q')) => vec![Event::CloseBuffer { force: false }],
 
             // Buffer actions
 
