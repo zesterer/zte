@@ -1,0 +1,13 @@
+[package]
+name = "zte2"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+slotmap = "1.0"
+crossterm = "0.27"
+thiserror = "1.0"
+
+[profile.dev]
+opt-level = 2
