@@ -1,4 +1,4 @@
-use super::Error;
+use crate::{theme, Error};
 
 pub use crossterm::{
     cursor::SetCursorStyle as CursorStyle,
@@ -72,6 +72,23 @@ impl<'a> Rect<'a> {
         }
     }
     
+    pub fn with_border(&mut self, theme: &theme::BorderTheme) -> Rect {
+        let edge = self.size().map(|e| e.saturating_sub(1));
+        for col in 0..edge[0] {
+            self.get_mut([col, 0]).map(|c| c.c = theme.top);
+            self.get_mut([col, edge[1]]).map(|c| c.c = theme.bottom);
+        }
+        for row in 0..edge[1] {
+            self.get_mut([0, row]).map(|c| c.c = theme.left);
+            self.get_mut([edge[0], row]).map(|c| c.c = theme.right);
+        }
+        self.get_mut([0, 0]).map(|c| c.c = theme.top_left);
+        self.get_mut([edge[0], 0]).map(|c| c.c = theme.top_right);
+        self.get_mut([0, edge[1]]).map(|c| c.c = theme.bottom_left);
+        self.get_mut([edge[0], edge[1]]).map(|c| c.c = theme.bottom_right);
+        self.rect([1, 1], self.size().map(|e| e.saturating_sub(2)))
+    }
+    
     pub fn with_fg(&mut self, fg: Color) -> Rect {
         Rect { fg, bg: self.bg, origin: self.origin, size: self.size, fb: self.fb }
     }
@@ -82,17 +99,17 @@ impl<'a> Rect<'a> {
 
     pub fn size(&self) -> [usize; 2] { self.size.map(|e| e as usize) }
     
-    pub fn fill(&mut self, c: char) -> &mut Self {
+    pub fn fill(&mut self, c: char) -> Rect {
         for row in 0..self.size()[1] {
             for col in 0..self.size()[0] {
                 let cell = Cell { c, fg: self.fg, bg: self.bg };
                 if let Some(c) = self.get_mut([col, row]) { *c = cell; }
             }
         }
-        self
+        self.rect([0, 0], self.size())
     }
     
-    pub fn text<C: Borrow<char>>(&mut self, origin: [usize; 2], text: impl IntoIterator<Item = C>) -> &mut Self {
+    pub fn text<C: Borrow<char>>(&mut self, origin: [usize; 2], text: impl IntoIterator<Item = C>) -> Rect {
         for (idx, c) in text.into_iter().enumerate() {
             if origin[0] + idx >= self.size()[0] {
                 break;
@@ -101,15 +118,15 @@ impl<'a> Rect<'a> {
                 if let Some(c) = self.get_mut([origin[0] + idx, origin[1]]) { *c = cell; }
             }
         }
-        self
+        self.rect([0, 0], self.size())
     }
     
-    pub fn set_cursor(&mut self, cursor: [usize; 2], style: CursorStyle) -> &mut Self {
+    pub fn set_cursor(&mut self, cursor: [usize; 2], style: CursorStyle) -> Rect {
         self.fb.cursor = Some((
             [self.origin[0] + cursor[0] as u16, self.origin[1] + cursor[1] as u16],
             style,
         ));
-        self
+        self.rect([0, 0], self.size())
     }
 }
 

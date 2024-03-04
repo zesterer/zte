@@ -59,8 +59,6 @@ impl Element<CanEnd> for Prompt {
 impl Visual for Prompt {
     fn render(&self, state: &State, frame: &mut Rect) {    
         frame
-            .rect([0, frame.size()[1].saturating_sub(1)], [frame.size()[0], 1])
-            .with_bg(state.theme.status_bg)
             .with(|f| self.input.render(state, f));
     }
 }
@@ -87,7 +85,7 @@ impl Visual for Show {
         let lines = self.label.lines().count();
         self.label.render(
             state,
-            &mut frame.rect([0, frame.size()[1].saturating_sub(1 + lines)], [frame.size()[0], lines]),
+            &mut frame.rect([0, frame.size()[1].saturating_sub(3 + lines)], [frame.size()[0], lines]),
         );
     }
 }
@@ -118,7 +116,7 @@ impl Visual for Confirm {
         let lines = self.label.lines().count();
         self.label.render(
             state,
-            &mut frame.rect([0, frame.size()[1].saturating_sub(1 + lines)], [frame.size()[0], lines]),
+            &mut frame.rect([0, frame.size()[1].saturating_sub(3 + lines)], [frame.size()[0], lines]),
         );
     }
 }

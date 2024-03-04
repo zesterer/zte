@@ -29,13 +29,16 @@ impl Element<CanEnd> for Root {
         let action = loop {
             task_idx = match task_idx.checked_sub(1) {
                 Some(task_idx) => task_idx,
-                None => break event.to_action(|e| if e.is_prompt() {
-                    Some(Action::OpenPrompt)
-                } else if e.is_cancel() {
-                    Some(Action::Cancel)
-                } else {
-                    None
-                }),
+                None => break match self.panes.handle(event) {
+                    Ok(resp) => resp.action,
+                    Err(event) => event.to_action(|e| if e.is_prompt() {
+                        Some(Action::OpenPrompt)
+                    } else if e.is_cancel() {
+                        Some(Action::Cancel)
+                    } else {
+                        None
+                    }),
+                },
             };
             
             let res = match &mut self.tasks[task_idx] {
@@ -83,20 +86,24 @@ impl Element<CanEnd> for Root {
 impl Visual for Root {
     fn render(&self, state: &State, frame: &mut Rect) {
         frame
-            .with_bg(Color::Black)
             .fill(' ');
         
         // Display status bar
         frame
-            .rect([0, frame.size()[1].saturating_sub(1)], [frame.size()[0], 1])
-            .with_bg(state.theme.status_bg)
-            .fill(' ');
+            .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
+            .fill(' ')
+            .with_border(&state.theme.border)
+            .with(|frame| {
+                if let Some(Task::Prompt(p)) = self.tasks.last() {
+                    p.render(state, frame);
+                }
+            });
         
         if let Some(task) = self.tasks.last() {
             match task {
-                Task::Prompt(p) => p.render(state, frame),
                 Task::Show(s) => s.render(state, frame),
                 Task::Confirm(c) => c.render(state, frame),
+                _ => {},
             }
         }
     }

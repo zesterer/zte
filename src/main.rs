@@ -2,6 +2,7 @@ mod action;
 mod ui;
 mod terminal;
 mod state;
+mod theme;
 
 use crate::{
     terminal::{Terminal, TerminalEvent, Color},

@@ -1,4 +1,5 @@
 use crate::{
+    theme,
     ui::{self, Resp, Element as _},
     Action, Event, Args, Error, Color,
 };
@@ -41,24 +42,10 @@ pub enum Activity {
     Console(Console),
 }
 
-pub struct Theme {
-    pub ui_bg: Color,
-    pub status_bg: Color,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self {
-            ui_bg: Color::AnsiValue(235),
-            status_bg: Color::AnsiValue(23),
-        }
-    }
-}
-
 pub struct State {
     pub activities: HopSlotMap<ActivityId, Activity>,
     pub tick: u64,
-    pub theme: Theme,
+    pub theme: theme::Theme,
 }
 
 impl TryFrom<Args> for State {
@@ -67,7 +54,7 @@ impl TryFrom<Args> for State {
         Ok(Self {
             activities: HopSlotMap::default(),
             tick: 0,
-            theme: Theme::default(),
+            theme: theme::Theme::default(),
         })
     }
 }
