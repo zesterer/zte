@@ -1,49 +1,43 @@
 use crate::{
     theme,
-    ui::{self, Resp, Element as _},
-    Action, Event, Args, Error, Color,
+    ui::{self, Element as _, Resp},
+    Action, Args, Color, Error, Event,
 };
-use crossterm::event::{KeyCode, KeyModifiers, KeyEvent, KeyEventKind};
-use slotmap::{HopSlotMap, new_key_type};
-use std::collections::HashMap;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use slotmap::{new_key_type, HopSlotMap};
+use std::{io, path::PathBuf};
 
 new_key_type! {
-    // Per-activity
-    pub struct ViewId;
-    pub struct ActivityId;
+    pub struct BufferId;
+    pub struct CursorId;
 }
 
-pub struct Cursor {
-    base: (usize, usize),
-    pos: (usize, usize),
+#[derive(Default)]
+pub struct Cursor {}
+
+pub struct Buffer {
+    pub path: PathBuf,
+    pub chars: Vec<char>,
+    pub cursors: HopSlotMap<CursorId, Cursor>,
 }
 
-pub struct FileView {
-    line: usize,
-    cursor: Cursor,
-    // For searches
-    // view_cursor: Option<Cursor>,
-}
-
-pub struct File {
-    views: HopSlotMap<ViewId, FileView>,
-}
-
-pub struct ConsoleView {
-    line: usize,
-}
-
-pub struct Console {
-    views: HopSlotMap<ViewId, ConsoleView>,
-}
-
-pub enum Activity {
-    File(File),
-    Console(Console),
+impl Buffer {
+    pub fn new(path: PathBuf) -> Result<Self, Error> {
+        let chars = match std::fs::read_to_string(&path) {
+            Ok(s) => s.chars().collect(),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
+            Err(err) => return Err(err.into()),
+        };
+        Ok(Self {
+            path,
+            chars,
+            cursors: HopSlotMap::default(),
+        })
+    }
 }
 
 pub struct State {
-    pub activities: HopSlotMap<ActivityId, Activity>,
+    pub buffers: HopSlotMap<BufferId, Buffer>,
     pub tick: u64,
     pub theme: theme::Theme,
 }
@@ -51,15 +45,21 @@ pub struct State {
 impl TryFrom<Args> for State {
     type Error = Error;
     fn try_from(args: Args) -> Result<Self, Self::Error> {
-        Ok(Self {
-            activities: HopSlotMap::default(),
+        let mut this = Self {
+            buffers: HopSlotMap::default(),
             tick: 0,
             theme: theme::Theme::default(),
-        })
+        };
+
+        for path in args.paths {
+            this.buffers.insert(Buffer::new(path)?);
+        }
+
+        Ok(this)
     }
 }
 
-impl State {    
+impl State {
     pub fn tick(&mut self) {
         self.tick += 1;
     }

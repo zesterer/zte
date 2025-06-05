@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::BufferId;
 
 pub struct Root {
     panes: Panes,
@@ -13,9 +14,9 @@ pub enum Task {
 }
 
 impl Root {
-    pub fn new(state: &State) -> Self {
+    pub fn new(state: &mut State, buffers: &[BufferId]) -> Self {
         Self {
-            panes: Panes,
+            panes: Panes::new(state, buffers),
             status: Status,
             tasks: Vec::new(),
         }
@@ -29,24 +30,28 @@ impl Element<CanEnd> for Root {
         let action = loop {
             task_idx = match task_idx.checked_sub(1) {
                 Some(task_idx) => task_idx,
-                None => break match self.panes.handle(event) {
-                    Ok(resp) => resp.action,
-                    Err(event) => event.to_action(|e| if e.is_prompt() {
-                        Some(Action::OpenPrompt)
-                    } else if e.is_cancel() {
-                        Some(Action::Cancel)
-                    } else {
-                        None
-                    }),
-                },
+                None => {
+                    break match self.panes.handle(event) {
+                        Ok(resp) => resp.action,
+                        Err(event) => event.to_action(|e| {
+                            if e.is_prompt() {
+                                Some(Action::OpenPrompt)
+                            } else if e.is_cancel() {
+                                Some(Action::Cancel)
+                            } else {
+                                None
+                            }
+                        }),
+                    }
+                }
             };
-            
+
             let res = match &mut self.tasks[task_idx] {
                 Task::Prompt(p) => p.handle(event),
                 Task::Show(s) => s.handle(event),
                 Task::Confirm(c) => c.handle(event),
             };
-                
+
             match res {
                 Ok(resp) => {
                     // If the task has requested that it should end, kill it and all of its children
@@ -58,16 +63,19 @@ impl Element<CanEnd> for Root {
                 Err(e) => event = e,
             }
         };
- 
-        // Handle 'top-level' actions       
+
+        // Handle 'top-level' actions
         if let Some(action) = action {
             match action {
                 Action::OpenPrompt => {
                     self.tasks.clear(); // Prompt overrides all
                     self.tasks.push(Task::Prompt(Prompt {
-                        input: Input { preamble: "> ", ..Input::default() },
+                        input: Input {
+                            preamble: "> ",
+                            ..Input::default()
+                        },
                     }));
-                },
+                }
                 Action::Cancel => self.tasks.push(Task::Confirm(Confirm {
                     label: Label("Are you sure you wish to quit? (y/n)".to_string()),
                     action: Action::Quit,
@@ -77,7 +85,7 @@ impl Element<CanEnd> for Root {
                 action => todo!("Unhandled action {action:?}"),
             }
         }
-        
+
         // Root element swallows all other events
         Ok(Resp::handled(None))
     }
@@ -85,25 +93,36 @@ impl Element<CanEnd> for Root {
 
 impl Visual for Root {
     fn render(&self, state: &State, frame: &mut Rect) {
-        frame
-            .fill(' ');
-        
+        frame.fill(' ');
+
+        let task_has_focus = self.tasks.last().is_some();
+
         // Display status bar
         frame
             .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
-            .fill(' ')
-            .with_border(&state.theme.border)
+            .with_border(if task_has_focus {
+                &state.theme.focus_border
+            } else {
+                &state.theme.border
+            })
             .with(|frame| {
                 if let Some(Task::Prompt(p)) = self.tasks.last() {
                     p.render(state, frame);
                 }
             });
-        
+
+        frame
+            .rect([0, 0], [frame.size()[0], frame.size()[1].saturating_sub(3)])
+            .with_focus(!task_has_focus)
+            .with(|frame| {
+                self.panes.render(state, frame);
+            });
+
         if let Some(task) = self.tasks.last() {
             match task {
                 Task::Show(s) => s.render(state, frame),
                 Task::Confirm(c) => c.render(state, frame),
-                _ => {},
+                _ => {}
             }
         }
     }

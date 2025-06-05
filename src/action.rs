@@ -1,8 +1,5 @@
-use crate::{
-    state::State,
-    terminal::TerminalEvent,
-};
-use crossterm::event::{KeyEvent, KeyCode, KeyEventKind, KeyModifiers};
+use crate::{state::State, terminal::TerminalEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 #[derive(Clone, Debug)]
 pub enum Dir {
@@ -14,14 +11,15 @@ pub enum Dir {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Char(char), // Insert a character
-    Backspace, // Backspace a character
-    Move(Dir), // Move the cursor
-    Cancel, // Cancels the current context
-    Go, // Search, accept, or select the current option
-    Quit, // Quit the application
-    OpenPrompt, // Open the command prompt
-    Show(String), // Display some arbitrary text to the user
+    Char(char),    // Insert a character
+    Backspace,     // Backspace a character
+    Move(Dir),     // Move the cursor
+    PaneMove(Dir), // Move panes
+    Cancel,        // Cancels the current context
+    Go,            // Search, accept, or select the current option
+    Quit,          // Quit the application
+    OpenPrompt,    // Open the command prompt
+    Show(String),  // Display some arbitrary text to the user
 }
 
 pub enum Event {
@@ -35,7 +33,7 @@ impl Event {
     pub fn from_raw(e: TerminalEvent) -> Self {
         Self::Raw(RawEvent(e))
     }
-    
+
     /// Turn the event into an action (if possible).
     ///
     /// The translation function allows elements to translate raw events into their own context-specific actions.
@@ -51,22 +49,44 @@ pub struct RawEvent(TerminalEvent);
 
 impl RawEvent {
     pub fn to_char(&self) -> Option<char> {
-        match &self.0 {
+        match self.0 {
             TerminalEvent::Key(KeyEvent {
                 code,
-                modifiers: KeyModifiers::NONE,
+                modifiers,
                 kind: KeyEventKind::Press | KeyEventKind::Repeat,
                 ..
             }) => match code {
-                KeyCode::Char(c) => Some(*c),
-                KeyCode::Backspace => Some('\x08'),
-                KeyCode::Enter => Some('\n'),
+                KeyCode::Char(c)
+                    if matches!(modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT) =>
+                {
+                    Some(c)
+                }
+                KeyCode::Backspace if modifiers == KeyModifiers::NONE => Some('\x08'),
+                KeyCode::Enter if modifiers == KeyModifiers::NONE => Some('\n'),
                 _ => None,
             },
             _ => None,
         }
     }
-    
+
+    pub fn to_pane_move(&self) -> Option<Dir> {
+        match &self.0 {
+            TerminalEvent::Key(KeyEvent {
+                code,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                ..
+            }) => match code {
+                KeyCode::Char('a') => Some(Dir::Left),
+                KeyCode::Char('d') => Some(Dir::Right),
+                KeyCode::Char('w') => Some(Dir::Up),
+                KeyCode::Char('s') => Some(Dir::Down),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn to_move(&self) -> Option<Dir> {
         match &self.0 {
             TerminalEvent::Key(KeyEvent {
@@ -84,31 +104,40 @@ impl RawEvent {
             _ => None,
         }
     }
-    
+
     pub fn is_go(&self) -> bool {
-        matches!(&self.0, TerminalEvent::Key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            ..
-        }))
+        matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        )
     }
-    
+
     pub fn is_prompt(&self) -> bool {
-        matches!(&self.0, TerminalEvent::Key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::ALT,
-            kind: KeyEventKind::Press,
-            ..
-        }))
+        matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        )
     }
-    
+
     pub fn is_cancel(&self) -> bool {
-        matches!(&self.0, TerminalEvent::Key(KeyEvent {
-            code: KeyCode::Esc,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            ..
-        }))
+        matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Esc,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        )
     }
 }

@@ -1,20 +1,20 @@
+mod input;
+mod panes;
 mod prompt;
 mod root;
-mod panes;
 mod status;
-mod input;
 
 pub use self::{
-    prompt::{Prompt, Confirm, Show},
-    panes::Panes,
-    status::Status,
-    root::Root,
     input::Input,
+    panes::Panes,
+    prompt::{Confirm, Prompt, Show},
+    root::Root,
+    status::Status,
 };
 
 use crate::{
-    terminal::{Rect, Color},
-    State, Action, Event, Dir,
+    terminal::{Color, Rect},
+    Action, Dir, Event, State,
 };
 
 pub enum CannotEnd {}
@@ -32,8 +32,10 @@ impl Resp<CanEnd> {
             action: action.into(),
         }
     }
-    
-    pub fn should_end(&self) -> bool { self.should_end.is_some() }
+
+    pub fn should_end(&self) -> bool {
+        self.should_end.is_some()
+    }
 }
 
 impl<T> Resp<T> {
@@ -43,7 +45,7 @@ impl<T> Resp<T> {
             action: action.into(),
         }
     }
-    
+
     pub fn into_can_end(self) -> Resp<CanEnd> {
         Resp {
             should_end: None,
@@ -68,18 +70,17 @@ pub struct Label(String);
 
 impl std::ops::Deref for Label {
     type Target = String;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Visual for Label {
     fn render(&self, state: &State, frame: &mut Rect) {
-        frame
-            .with_bg(state.theme.ui_bg)
-            .fill(' ')
-            .with(|frame| {
-                for (idx, line) in self.lines().enumerate() {
-                    frame.text([0, idx], line.chars());
-                }
-            });
+        frame.with_bg(state.theme.ui_bg).fill(' ').with(|frame| {
+            for (idx, line) in self.lines().enumerate() {
+                frame.text([0, idx], line.chars());
+            }
+        });
     }
 }
