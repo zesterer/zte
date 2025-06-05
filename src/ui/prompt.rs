@@ -41,7 +41,7 @@ impl Prompt {
 }
 
 impl Element<CanEnd> for Prompt {
-    fn handle(&mut self, event: Event) -> Result<Resp<CanEnd>, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event> {
         match event.to_action(|e| {
             if e.is_cancel() {
                 Some(Action::Cancel)
@@ -64,7 +64,7 @@ impl Element<CanEnd> for Prompt {
                     ))))
                 }
             }
-            _ => self.input.handle(event).map(Resp::into_can_end),
+            _ => self.input.handle(state, event).map(Resp::into_can_end),
         }
     }
 }
@@ -80,7 +80,7 @@ pub struct Show {
 }
 
 impl Element<CanEnd> for Show {
-    fn handle(&mut self, event: Event) -> Result<Resp<CanEnd>, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event> {
         match event.to_action(|e| {
             if e.is_cancel() {
                 Some(Action::Cancel)
@@ -113,7 +113,7 @@ pub struct Confirm {
 }
 
 impl Element<CanEnd> for Confirm {
-    fn handle(&mut self, event: Event) -> Result<Resp<CanEnd>, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event> {
         match event.to_action(|e| {
             if e.is_cancel() || e.to_char() == Some('n') {
                 Some(Action::Cancel)

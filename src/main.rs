@@ -49,7 +49,7 @@ fn main() -> Result<(), Error> {
 
                 // Have the UI handle events
                 if ui
-                    .handle(Event::from_raw(ev))
+                    .handle(&mut state, Event::from_raw(ev))
                     .map_or(false, |r| r.should_end())
                 {
                     return Ok(());

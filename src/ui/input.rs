@@ -15,7 +15,7 @@ impl Input {
 }
 
 impl Element for Input {
-    fn handle(&mut self, event: Event) -> Result<Resp, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)

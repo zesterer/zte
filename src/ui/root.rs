@@ -24,14 +24,14 @@ impl Root {
 }
 
 impl Element<CanEnd> for Root {
-    fn handle(&mut self, mut event: Event) -> Result<Resp<CanEnd>, Event> {
+    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<CanEnd>, Event> {
         // Pass the event down through the list of tasks until we meet one that can handle it
         let mut task_idx = self.tasks.len();
         let action = loop {
             task_idx = match task_idx.checked_sub(1) {
                 Some(task_idx) => task_idx,
                 None => {
-                    break match self.panes.handle(event) {
+                    break match self.panes.handle(state, event) {
                         Ok(resp) => resp.action,
                         Err(event) => event.to_action(|e| {
                             if e.is_prompt() {
@@ -42,14 +42,14 @@ impl Element<CanEnd> for Root {
                                 None
                             }
                         }),
-                    }
+                    };
                 }
             };
 
             let res = match &mut self.tasks[task_idx] {
-                Task::Prompt(p) => p.handle(event),
-                Task::Show(s) => s.handle(event),
-                Task::Confirm(c) => c.handle(event),
+                Task::Prompt(p) => p.handle(state, event),
+                Task::Show(s) => s.handle(state, event),
+                Task::Confirm(c) => c.handle(state, event),
             };
 
             match res {

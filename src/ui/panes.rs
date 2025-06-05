@@ -1,5 +1,8 @@
 use super::*;
-use crate::state::{BufferId, Cursor, CursorId};
+use crate::{
+    state::{BufferId, Cursor, CursorId},
+    terminal::CursorStyle,
+};
 
 #[derive(Clone)]
 pub struct Doc {
@@ -17,13 +20,24 @@ impl Doc {
 }
 
 impl Element for Doc {
-    fn handle(&mut self, event: Event) -> Result<Resp, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        let Some(buffer) = state.buffers.get_mut(self.buffer) else {
+            return Err(event);
+        };
+        let Some(cursor) = buffer.cursors.get(self.cursor) else {
+            return Err(event);
+        };
+
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
                 .or_else(|| e.to_move().map(Action::Move))
                 .or_else(|| e.to_pane_move().map(Action::PaneMove))
         }) {
+            Some(Action::Char(c)) => {
+                buffer.insert(cursor.pos, c);
+                Ok(Resp::handled(None))
+            }
             _ => Err(event),
         }
     }
@@ -31,12 +45,22 @@ impl Element for Doc {
 
 impl Visual for Doc {
     fn render(&self, state: &State, frame: &mut Rect) {
-        if let Some(buffer) = state.buffers.get(self.buffer) {
-            for (i, line) in buffer.chars.split(|c| *c == '\n').enumerate() {
-                frame.text([0, i], line);
+        let Some(buffer) = state.buffers.get(self.buffer) else {
+            return;
+        };
+        let Some(cursor) = buffer.cursors.get(self.cursor) else {
+            return;
+        };
+
+        let mut n = 0;
+        for (i, line) in buffer.chars.split(|c| *c == '\n').enumerate() {
+            frame.text([0, i], line);
+
+            if (n..=n + line.len()).contains(&cursor.pos) {
+                frame.set_cursor([cursor.pos - n, i], CursorStyle::BlinkingBar);
             }
-        } else {
-            frame.text([0, 0], "[Error: no buffer]".chars());
+
+            n += line.len() + 1;
         }
     }
 }
@@ -64,7 +88,7 @@ impl Panes {
 }
 
 impl Element for Panes {
-    fn handle(&mut self, event: Event) -> Result<Resp, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
         match event.to_action(|e| e.to_pane_move().map(Action::PaneMove)) {
             Some(Action::PaneMove(Dir::Left)) => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();
@@ -79,7 +103,7 @@ impl Element for Panes {
                 if let Some(pane) = self.panes.get_mut(self.selected) {
                     // Pass to pane
                     match pane {
-                        Pane::Doc(doc) => doc.handle(event),
+                        Pane::Doc(doc) => doc.handle(state, event),
                     }
                 } else {
                     // No active pane, don't handle

@@ -1,11 +1,11 @@
-use crate::{theme, Error};
+use crate::{Error, theme};
 
 pub use crossterm::{
     cursor::SetCursorStyle as CursorStyle, event::Event as TerminalEvent, style::Color,
 };
 
 use crossterm::{
-    cursor, event, style, terminal, ExecutableCommand, QueueableCommand, SynchronizedUpdate,
+    ExecutableCommand, QueueableCommand, SynchronizedUpdate, cursor, event, style, terminal,
 };
 use std::{
     borrow::Borrow,

@@ -13,8 +13,8 @@ pub use self::{
 };
 
 use crate::{
-    terminal::{Color, Rect},
     Action, Dir, Event, State,
+    terminal::{Color, Rect},
 };
 
 pub enum CannotEnd {}
@@ -59,7 +59,7 @@ pub trait Element<CanEnd = CannotEnd> {
     ///
     /// If handled, convert into a series of secondary actions.
     /// If unhandled, return the original event to be handled by a lower element.
-    fn handle(&mut self, event: Event) -> Result<Resp<CanEnd>, Event>;
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event>;
 }
 
 pub trait Visual {
