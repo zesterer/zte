@@ -1,4 +1,4 @@
-use crate::{state::State, terminal::TerminalEvent};
+use crate::{state::BufferId, terminal::TerminalEvent};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 #[derive(Clone, Debug)]
@@ -11,15 +11,19 @@ pub enum Dir {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Char(char),    // Insert a character
-    Backspace,     // Backspace a character
-    Move(Dir),     // Move the cursor
-    PaneMove(Dir), // Move panes
-    Cancel,        // Cancels the current context
-    Go,            // Search, accept, or select the current option
-    Quit,          // Quit the application
-    OpenPrompt,    // Open the command prompt
-    Show(String),  // Display some arbitrary text to the user
+    Char(char),             // Insert a character
+    Backspace,              // Backspace a character
+    Move(Dir),              // Move the cursor
+    PaneMove(Dir),          // Move panes
+    Cancel,                 // Cancels the current context
+    Go,                     // Search, accept, or select the current option
+    Yes,                    // A binary confirmation is answered 'yes'
+    No,                     // A binary confirmation is answered 'no'
+    Quit,                   // Quit the application
+    OpenPrompt,             // Open the command prompt
+    OpenSwitcher,           // Open the buffer switcher
+    Show(String),           // Display some arbitrary text to the user
+    SwitchBuffer(BufferId), // Switch the current pane to the given buffer
 }
 
 pub enum Event {
@@ -117,8 +121,8 @@ impl RawEvent {
         )
     }
 
-    pub fn is_prompt(&self) -> bool {
-        matches!(
+    pub fn to_open(&self) -> Option<Action> {
+        if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Enter,
@@ -126,11 +130,49 @@ impl RawEvent {
                 kind: KeyEventKind::Press,
                 ..
             })
-        )
+        ) {
+            Some(Action::OpenPrompt)
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('b'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenSwitcher)
+        } else {
+            None
+        }
     }
 
-    pub fn is_cancel(&self) -> bool {
-        matches!(
+    pub fn to_go(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::Go)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_yes(&self) -> Option<Action> {
+        if matches!(self.to_char(), Some('y' | 'Y')) {
+            Some(Action::Yes)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_cancel(&self) -> Option<Action> {
+        if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Esc,
@@ -138,6 +180,18 @@ impl RawEvent {
                 kind: KeyEventKind::Press,
                 ..
             })
-        )
+        ) {
+            Some(Action::Cancel)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_no(&self) -> Option<Action> {
+        if matches!(self.to_char(), Some('n' | 'N')) {
+            Some(Action::No)
+        } else {
+            None
+        }
     }
 }

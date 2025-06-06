@@ -9,6 +9,8 @@ pub struct BorderTheme {
     pub top_right: char,
     pub bottom_left: char,
     pub bottom_right: char,
+    pub join_left: char,
+    pub join_right: char,
     pub fg: Color,
 }
 
@@ -23,6 +25,8 @@ impl Default for BorderTheme {
             top_right: '╮',
             bottom_left: '╰',
             bottom_right: '╯',
+            join_left: '├',
+            join_right: '┤',
             fg: Color::DarkGrey,
         }
     }
@@ -30,7 +34,7 @@ impl Default for BorderTheme {
 
 pub struct Theme {
     pub ui_bg: Color,
-    pub status_bg: Color,
+    pub select_bg: Color,
     pub border: BorderTheme,
     pub focus_border: BorderTheme,
 }
@@ -39,7 +43,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             ui_bg: Color::AnsiValue(235),
-            status_bg: Color::AnsiValue(23),
+            select_bg: Color::AnsiValue(23),
             border: BorderTheme::default(),
             focus_border: BorderTheme {
                 fg: Color::White,

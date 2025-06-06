@@ -11,6 +11,7 @@ pub enum Task {
     Prompt(Prompt),
     Show(Show),
     Confirm(Confirm),
+    Switcher(Switcher),
 }
 
 impl Root {
@@ -33,15 +34,7 @@ impl Element<CanEnd> for Root {
                 None => {
                     break match self.panes.handle(state, event) {
                         Ok(resp) => resp.action,
-                        Err(event) => event.to_action(|e| {
-                            if e.is_prompt() {
-                                Some(Action::OpenPrompt)
-                            } else if e.is_cancel() {
-                                Some(Action::Cancel)
-                            } else {
-                                None
-                            }
-                        }),
+                        Err(event) => event.to_action(|e| e.to_open().or_else(|| e.to_cancel())),
                     };
                 }
             };
@@ -50,6 +43,7 @@ impl Element<CanEnd> for Root {
                 Task::Prompt(p) => p.handle(state, event),
                 Task::Show(s) => s.handle(state, event),
                 Task::Confirm(c) => c.handle(state, event),
+                Task::Switcher(s) => s.handle(state, event),
             };
 
             match res {
@@ -76,13 +70,25 @@ impl Element<CanEnd> for Root {
                         },
                     }));
                 }
+                Action::OpenSwitcher => {
+                    self.tasks.clear(); // Prompt overrides all
+                    self.tasks.push(Task::Switcher(Switcher {
+                        selected: 0,
+                        options: state.buffers.keys().collect(),
+                    }));
+                }
                 Action::Cancel => self.tasks.push(Task::Confirm(Confirm {
                     label: Label("Are you sure you wish to quit? (y/n)".to_string()),
                     action: Action::Quit,
                 })),
                 Action::Show(text) => self.tasks.push(Task::Show(Show { label: Label(text) })),
                 Action::Quit => return Ok(Resp::end(None)),
-                action => todo!("Unhandled action {action:?}"),
+                action => {
+                    return self
+                        .panes
+                        .handle(state, Event::Action(action))
+                        .map(|r| r.into_can_end());
+                }
             }
         }
 
@@ -95,16 +101,19 @@ impl Visual for Root {
     fn render(&self, state: &State, frame: &mut Rect) {
         frame.fill(' ');
 
-        let task_has_focus = self.tasks.last().is_some();
+        let task_has_focus = matches!(self.tasks.last(), Some(Task::Prompt(_)));
 
         // Display status bar
         frame
             .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
-            .with_border(if task_has_focus {
-                &state.theme.focus_border
-            } else {
-                &state.theme.border
-            })
+            .with_border(
+                if task_has_focus {
+                    &state.theme.focus_border
+                } else {
+                    &state.theme.border
+                },
+                Some("Prompt (press alt + enter)"),
+            )
             .with(|frame| {
                 if let Some(Task::Prompt(p)) = self.tasks.last() {
                     p.render(state, frame);
@@ -120,9 +129,10 @@ impl Visual for Root {
 
         if let Some(task) = self.tasks.last() {
             match task {
+                Task::Prompt(_) => {} // Prompt isn't rendered, it's always rendered above
                 Task::Show(s) => s.render(state, frame),
                 Task::Confirm(c) => c.render(state, frame),
-                _ => {}
+                Task::Switcher(s) => s.render(state, frame),
             }
         }
     }

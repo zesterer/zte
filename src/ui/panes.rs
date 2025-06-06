@@ -14,7 +14,8 @@ impl Doc {
     pub fn new(state: &mut State, buffer: BufferId) -> Self {
         Self {
             buffer,
-            cursor: state.buffers[buffer].cursors.insert(Cursor::default()),
+            // TODO: Don't index directly
+            cursor: state.buffers[buffer].begin_session(),
         }
     }
 }
@@ -34,6 +35,15 @@ impl Element for Doc {
                 .or_else(|| e.to_move().map(Action::Move))
                 .or_else(|| e.to_pane_move().map(Action::PaneMove))
         }) {
+            Some(Action::SwitchBuffer(new_buffer)) => {
+                buffer.end_session(self.cursor);
+                self.buffer = new_buffer;
+                let Some(buffer) = state.buffers.get_mut(self.buffer) else {
+                    return Err(event);
+                };
+                self.cursor = buffer.begin_session();
+                Ok(Resp::handled(None))
+            }
             Some(Action::Char(c)) => {
                 buffer.insert(cursor.pos, c);
                 Ok(Resp::handled(None))
@@ -68,6 +78,19 @@ impl Visual for Doc {
 #[derive(Clone)]
 pub enum Pane {
     Doc(Doc),
+}
+
+impl Pane {
+    fn title(&self, state: &State) -> Option<String> {
+        match self {
+            Self::Doc(doc) => {
+                let Some(buffer) = state.buffers.get(doc.buffer) else {
+                    return None;
+                };
+                Some(buffer.path.display().to_string())
+            }
+        }
+    }
 }
 
 pub struct Panes {
@@ -127,9 +150,11 @@ impl Visual for Panes {
             } else {
                 &state.theme.border
             };
+
+            // Draw pane contents
             frame
                 .rect([x0, 0], [x1 - x0, frame.size()[1]])
-                .with_border(border_theme)
+                .with_border(border_theme, pane.title(state).as_deref())
                 .with_focus(is_selected)
                 .with(|frame| match pane {
                     Pane::Doc(doc) => doc.render(state, frame),

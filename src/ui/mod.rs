@@ -7,7 +7,7 @@ mod status;
 pub use self::{
     input::Input,
     panes::Panes,
-    prompt::{Confirm, Prompt, Show},
+    prompt::{Confirm, Prompt, Show, Switcher},
     root::Root,
     status::Status,
 };

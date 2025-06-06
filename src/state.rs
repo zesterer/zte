@@ -45,6 +45,14 @@ impl Buffer {
             }
         });
     }
+
+    pub fn begin_session(&mut self) -> CursorId {
+        self.cursors.insert(Cursor::default())
+    }
+
+    pub fn end_session(&mut self, cursor: CursorId) {
+        self.cursors.remove(cursor);
+    }
 }
 
 pub struct State {

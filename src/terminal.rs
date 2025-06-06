@@ -74,7 +74,7 @@ impl<'a> Rect<'a> {
         }
     }
 
-    pub fn with_border(&mut self, theme: &theme::BorderTheme) -> Rect {
+    pub fn with_border(&mut self, theme: &theme::BorderTheme, title: Option<&str>) -> Rect {
         let edge = self.size().map(|e| e.saturating_sub(1));
         for col in 0..edge[0] {
             self.get_mut([col, 0]).map(|c| {
@@ -112,6 +112,19 @@ impl<'a> Rect<'a> {
             c.c = theme.bottom_right;
             c.fg = theme.fg;
         });
+        if let Some(title) = title {
+            for (i, c) in [theme.join_right, ' ']
+                .into_iter()
+                .chain(title.chars())
+                .chain([' ', theme.join_left])
+                .enumerate()
+            {
+                self.get_mut([2 + i, 0]).map(|cell| {
+                    cell.fg = theme.fg;
+                    cell.c = c
+                });
+            }
+        }
         self.rect([1, 1], self.size().map(|e| e.saturating_sub(2)))
     }
 
