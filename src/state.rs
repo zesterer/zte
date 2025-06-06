@@ -99,7 +99,13 @@ impl Buffer {
             }
             Dir::Up => {
                 let mut coord = self.text.to_coord(cursor.pos);
-                cursor.pos = self.text.to_pos([cursor.desired_col, coord[1] - 1]);
+                // Special case: pressing 'up' at the top of the screen resets the cursor to the beginning
+                if coord[1] <= 0 {
+                    cursor.pos = 0;
+                    cursor.reset_desired_col(&self.text);
+                } else {
+                    cursor.pos = self.text.to_pos([cursor.desired_col, coord[1] - 1]);
+                }
             }
             Dir::Down => {
                 let mut coord = self.text.to_coord(cursor.pos);

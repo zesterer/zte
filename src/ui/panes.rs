@@ -10,7 +10,7 @@ pub struct Doc {
     buffer: BufferId,
     // Remember the cursor we use for each buffer
     cursors: HashMap<BufferId, CursorId>,
-    // x/y location in the buffer that the centre of pane is trying to focus on
+    // x/y location in the buffer that the pane is trying to focus on
     focus: [isize; 2],
 }
 
@@ -33,7 +33,9 @@ impl Doc {
         let Some(cursor) = buffer.cursors.get(self.cursors[&self.buffer]) else {
             return;
         };
-        self.focus = buffer.text.to_coord(cursor.pos);
+        let cursor_coord = buffer.text.to_coord(cursor.pos);
+        self.focus[0] = self.focus[0].clamp(cursor_coord[0] - 20, cursor_coord[0] - 4);
+        self.focus[1] = self.focus[1].clamp(cursor_coord[1] - 20, cursor_coord[1] - 4);
     }
 
     pub fn close(self, state: &mut State) {
@@ -80,10 +82,12 @@ impl Element for Doc {
                 } else {
                     buffer.insert(cursor.pos, c);
                 }
+                self.refocus(state);
                 Ok(Resp::handled(None))
             }
             Some(Action::Move(dir)) => {
                 buffer.move_cursor(self.cursors[&self.buffer], dir);
+                self.refocus(state);
                 Ok(Resp::handled(None))
             }
             _ => Err(event),
@@ -99,13 +103,36 @@ impl Visual for Doc {
         let Some(cursor) = buffer.cursors.get(self.cursors[&self.buffer]) else {
             return;
         };
-
-        // Set cursor position
         let cursor_coord = buffer.text.to_coord(cursor.pos);
-        frame.set_cursor(cursor_coord, CursorStyle::BlinkingBar);
 
-        for (i, line) in buffer.text.lines().enumerate() {
-            frame.text([0, i], line);
+        let line_num_w = buffer.text.lines().count().ilog10() as usize + 1;
+
+        for (i, (line_num, line)) in buffer
+            .text
+            .lines()
+            .enumerate()
+            .skip(self.focus[1].max(0) as usize)
+            .enumerate()
+            .take(frame.size()[1])
+        {
+            // Margin
+            frame
+                .rect([0, i], [line_num_w + 2, 1])
+                .with_bg(state.theme.margin_bg)
+                .with_fg(state.theme.margin_line_num)
+                .fill(' ')
+                .text([1, 0], format!("{:>line_num_w$}", line_num + 1).chars());
+
+            // Line
+            {
+                let mut frame = frame.rect([line_num_w + 2, i], [!0, 1]);
+                frame.text([0, 0], line);
+
+                // Set cursor position
+                if cursor_coord[1] == line_num as isize {
+                    frame.set_cursor([cursor_coord[0], 0], CursorStyle::BlinkingBar);
+                }
+            }
         }
     }
 }

@@ -35,6 +35,8 @@ impl Default for BorderTheme {
 pub struct Theme {
     pub ui_bg: Color,
     pub select_bg: Color,
+    pub margin_bg: Color,
+    pub margin_line_num: Color,
     pub border: BorderTheme,
     pub focus_border: BorderTheme,
 }
@@ -44,6 +46,8 @@ impl Default for Theme {
         Self {
             ui_bg: Color::AnsiValue(235),
             select_bg: Color::AnsiValue(23),
+            margin_bg: Color::Reset,
+            margin_line_num: Color::AnsiValue(245),
             border: BorderTheme::default(),
             focus_border: BorderTheme {
                 fg: Color::White,
