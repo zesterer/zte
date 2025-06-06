@@ -27,7 +27,7 @@ impl Default for BorderTheme {
             bottom_right: '╯',
             join_left: '├',
             join_right: '┤',
-            fg: Color::DarkGrey,
+            fg: Color::AnsiValue(244),
         }
     }
 }

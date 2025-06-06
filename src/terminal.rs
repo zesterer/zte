@@ -207,8 +207,11 @@ impl<'a> Rect<'a> {
         self.rect([0, 0], self.size())
     }
 
-    pub fn set_cursor(&mut self, cursor: [usize; 2], style: CursorStyle) -> Rect {
-        if self.has_focus {
+    pub fn set_cursor(&mut self, cursor: [isize; 2], style: CursorStyle) -> Rect {
+        if self.has_focus
+            && (0..=self.size()[0] as isize).contains(&cursor[0])
+            && (0..self.size()[1] as isize).contains(&cursor[1])
+        {
             self.fb.cursor = Some((
                 [
                     self.origin[0] + cursor[0] as u16,

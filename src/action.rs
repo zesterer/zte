@@ -66,6 +66,7 @@ impl RawEvent {
                     Some(c)
                 }
                 KeyCode::Backspace if modifiers == KeyModifiers::NONE => Some('\x08'),
+                KeyCode::Delete if modifiers == KeyModifiers::NONE => Some('\x7F'),
                 KeyCode::Enter if modifiers == KeyModifiers::NONE => Some('\n'),
                 _ => None,
             },
@@ -109,19 +110,7 @@ impl RawEvent {
         }
     }
 
-    pub fn is_go(&self) -> bool {
-        matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Enter,
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        )
-    }
-
-    pub fn to_open(&self) -> Option<Action> {
+    pub fn to_open_prompt(&self) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -132,7 +121,13 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenPrompt)
-        } else if matches!(
+        } else {
+            None
+        }
+    }
+
+    pub fn to_open_switcher(&self) -> Option<Action> {
+        if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Char('b'),

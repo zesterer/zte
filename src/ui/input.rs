@@ -56,7 +56,7 @@ impl Visual for Input {
                 .rect([self.preamble.chars().count(), 0], frame.size())
                 .with(|frame| {
                     frame.text([0, 0], &self.text);
-                    frame.set_cursor([self.cursor, 0], CursorStyle::BlinkingBar);
+                    frame.set_cursor([self.cursor as isize, 0], CursorStyle::BlinkingBar);
                 });
         });
     }

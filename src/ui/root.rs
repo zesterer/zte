@@ -34,7 +34,9 @@ impl Element<CanEnd> for Root {
                 None => {
                     break match self.panes.handle(state, event) {
                         Ok(resp) => resp.action,
-                        Err(event) => event.to_action(|e| e.to_open().or_else(|| e.to_cancel())),
+                        Err(event) => {
+                            event.to_action(|e| e.to_open_prompt().or_else(|| e.to_cancel()))
+                        }
                     };
                 }
             };

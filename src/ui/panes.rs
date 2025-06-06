@@ -1,13 +1,17 @@
 use super::*;
 use crate::{
-    state::{BufferId, Cursor, CursorId},
+    state::{Buffer, BufferId, Cursor, CursorId},
     terminal::CursorStyle,
 };
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Doc {
     buffer: BufferId,
-    cursor: CursorId,
+    // Remember the cursor we use for each buffer
+    cursors: HashMap<BufferId, CursorId>,
+    // x/y location in the buffer that the centre of pane is trying to focus on
+    focus: [isize; 2],
 }
 
 impl Doc {
@@ -15,7 +19,26 @@ impl Doc {
         Self {
             buffer,
             // TODO: Don't index directly
-            cursor: state.buffers[buffer].begin_session(),
+            cursors: [(buffer, state.buffers[buffer].start_session())]
+                .into_iter()
+                .collect(),
+            focus: [0, 0],
+        }
+    }
+
+    fn refocus(&mut self, state: &mut State) {
+        let Some(buffer) = state.buffers.get_mut(self.buffer) else {
+            return;
+        };
+        let Some(cursor) = buffer.cursors.get(self.cursors[&self.buffer]) else {
+            return;
+        };
+        self.focus = buffer.text.to_coord(cursor.pos);
+    }
+
+    pub fn close(self, state: &mut State) {
+        for (buffer, cursor) in self.cursors {
+            state.buffers[buffer].end_session(cursor);
         }
     }
 }
@@ -25,27 +48,42 @@ impl Element for Doc {
         let Some(buffer) = state.buffers.get_mut(self.buffer) else {
             return Err(event);
         };
-        let Some(cursor) = buffer.cursors.get(self.cursor) else {
-            return Err(event);
-        };
 
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
                 .or_else(|| e.to_move().map(Action::Move))
                 .or_else(|| e.to_pane_move().map(Action::PaneMove))
+                .or_else(|| e.to_open_switcher())
         }) {
+            action @ Some(Action::OpenSwitcher) => Ok(Resp::handled(action)),
             Some(Action::SwitchBuffer(new_buffer)) => {
-                buffer.end_session(self.cursor);
                 self.buffer = new_buffer;
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);
                 };
-                self.cursor = buffer.begin_session();
+                // Start a new cursor session for this buffer if one doesn't exist
+                self.cursors
+                    .entry(self.buffer)
+                    .or_insert_with(|| buffer.start_session());
+                self.refocus(state);
                 Ok(Resp::handled(None))
             }
             Some(Action::Char(c)) => {
-                buffer.insert(cursor.pos, c);
+                let Some(cursor) = buffer.cursors.get(self.cursors[&self.buffer]) else {
+                    return Err(event);
+                };
+                if c == '\x08' {
+                    buffer.backspace(cursor.pos);
+                } else if c == '\x7F' {
+                    buffer.delete(cursor.pos);
+                } else {
+                    buffer.insert(cursor.pos, c);
+                }
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Move(dir)) => {
+                buffer.move_cursor(self.cursors[&self.buffer], dir);
                 Ok(Resp::handled(None))
             }
             _ => Err(event),
@@ -58,19 +96,16 @@ impl Visual for Doc {
         let Some(buffer) = state.buffers.get(self.buffer) else {
             return;
         };
-        let Some(cursor) = buffer.cursors.get(self.cursor) else {
+        let Some(cursor) = buffer.cursors.get(self.cursors[&self.buffer]) else {
             return;
         };
 
-        let mut n = 0;
-        for (i, line) in buffer.chars.split(|c| *c == '\n').enumerate() {
+        // Set cursor position
+        let cursor_coord = buffer.text.to_coord(cursor.pos);
+        frame.set_cursor(cursor_coord, CursorStyle::BlinkingBar);
+
+        for (i, line) in buffer.text.lines().enumerate() {
             frame.text([0, i], line);
-
-            if (n..=n + line.len()).contains(&cursor.pos) {
-                frame.set_cursor([cursor.pos - n, i], CursorStyle::BlinkingBar);
-            }
-
-            n += line.len() + 1;
         }
     }
 }
