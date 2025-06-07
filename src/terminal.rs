@@ -187,19 +187,20 @@ impl<'a> Rect<'a> {
 
     pub fn text<C: Borrow<char>>(
         &mut self,
-        origin: [usize; 2],
+        origin: [isize; 2],
         text: impl IntoIterator<Item = C>,
     ) -> Rect {
         for (idx, c) in text.into_iter().enumerate() {
-            if origin[0] + idx >= self.size()[0] {
-                break;
-            } else {
+            if (0..self.size()[0] as isize).contains(&(origin[0] + idx as isize)) && origin[1] >= 0
+            {
                 let cell = Cell {
                     c: *c.borrow(),
                     fg: self.fg,
                     bg: self.bg,
                 };
-                if let Some(c) = self.get_mut([origin[0] + idx, origin[1]]) {
+                if let Some(c) =
+                    self.get_mut([(origin[0] + idx as isize) as usize, origin[1] as usize])
+                {
                     *c = cell;
                 }
             }
@@ -349,7 +350,12 @@ impl<'a> Terminal<'a> {
                                 stdout.queue(style::SetBackgroundColor(bg)).unwrap();
                             }
 
-                            stdout.queue(style::Print(self.fb[0].cells[pos].c)).unwrap();
+                            // Convert non-printable chars
+                            let c = match self.fb[0].cells[pos].c {
+                                c if c.is_whitespace() => ' ',
+                                c => c,
+                            };
+                            stdout.queue(style::Print(c)).unwrap();
 
                             // Move cursor
                             cursor_pos[0] += 1;

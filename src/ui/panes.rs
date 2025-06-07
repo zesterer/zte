@@ -12,6 +12,8 @@ pub struct Doc {
     cursors: HashMap<BufferId, CursorId>,
     // x/y location in the buffer that the pane is trying to focus on
     focus: [isize; 2],
+    // Remember the last known size for things like scrolling
+    last_size: [usize; 2],
 }
 
 impl Doc {
@@ -23,6 +25,7 @@ impl Doc {
                 .into_iter()
                 .collect(),
             focus: [0, 0],
+            last_size: [1, 1],
         }
     }
 
@@ -34,13 +37,20 @@ impl Doc {
             return;
         };
         let cursor_coord = buffer.text.to_coord(cursor.pos);
-        self.focus[0] = self.focus[0].clamp(cursor_coord[0] - 20, cursor_coord[0] - 4);
-        self.focus[1] = self.focus[1].clamp(cursor_coord[1] - 20, cursor_coord[1] - 4);
+        for i in 0..2 {
+            self.focus[i] = self.focus[i].clamp(
+                cursor_coord[i] - self.last_size[i] as isize + 1,
+                cursor_coord[i],
+            );
+        }
     }
 
     pub fn close(self, state: &mut State) {
         for (buffer, cursor) in self.cursors {
-            state.buffers[buffer].end_session(cursor);
+            let Some(buffer) = state.buffers.get_mut(buffer) else {
+                continue;
+            };
+            buffer.end_session(cursor);
         }
     }
 }
@@ -54,7 +64,7 @@ impl Element for Doc {
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
-                .or_else(|| e.to_move().map(Action::Move))
+                .or_else(|| e.to_move())
                 .or_else(|| e.to_pane_move().map(Action::PaneMove))
                 .or_else(|| e.to_open_switcher())
         }) {
@@ -72,21 +82,24 @@ impl Element for Doc {
                 Ok(Resp::handled(None))
             }
             Some(Action::Char(c)) => {
-                let Some(cursor) = buffer.cursors.get(self.cursors[&self.buffer]) else {
-                    return Err(event);
-                };
+                let cursor_id = self.cursors[&self.buffer];
                 if c == '\x08' {
-                    buffer.backspace(cursor.pos);
+                    buffer.backspace(cursor_id);
                 } else if c == '\x7F' {
-                    buffer.delete(cursor.pos);
+                    buffer.delete(cursor_id);
                 } else {
-                    buffer.insert(cursor.pos, c);
+                    buffer.enter(cursor_id, c);
                 }
                 self.refocus(state);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(dir)) => {
-                buffer.move_cursor(self.cursors[&self.buffer], dir);
+            Some(Action::Move(dir, page, retain_base)) => {
+                let dist = if page {
+                    self.last_size.map(|s| s.saturating_sub(3).max(1))
+                } else {
+                    [1, 1]
+                };
+                buffer.move_cursor(self.cursors[&self.buffer], dir, dist, retain_base);
                 self.refocus(state);
                 Ok(Resp::handled(None))
             }
@@ -96,7 +109,7 @@ impl Element for Doc {
 }
 
 impl Visual for Doc {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         let Some(buffer) = state.buffers.get(self.buffer) else {
             return;
         };
@@ -105,11 +118,20 @@ impl Visual for Doc {
         };
         let cursor_coord = buffer.text.to_coord(cursor.pos);
 
-        let line_num_w = buffer.text.lines().count().ilog10() as usize + 1;
+        let line_num_w = buffer.text.lines().count().max(1).ilog10() as usize + 1;
+        let margin_w = line_num_w + 2;
 
-        for (i, (line_num, line)) in buffer
+        self.last_size = [frame.size()[0] - margin_w, frame.size()[1]];
+
+        let mut pos = 0;
+        for (i, (line_num, (line_pos, line))) in buffer
             .text
             .lines()
+            .map(move |line| {
+                let line_pos = pos;
+                pos += line.len();
+                (line_pos, line)
+            })
             .enumerate()
             .skip(self.focus[1].max(0) as usize)
             .enumerate()
@@ -117,7 +139,7 @@ impl Visual for Doc {
         {
             // Margin
             frame
-                .rect([0, i], [line_num_w + 2, 1])
+                .rect([0, i], [margin_w, 1])
                 .with_bg(state.theme.margin_bg)
                 .with_fg(state.theme.margin_line_num)
                 .fill(' ')
@@ -125,14 +147,37 @@ impl Visual for Doc {
 
             // Line
             {
-                let mut frame = frame.rect([line_num_w + 2, i], [!0, 1]);
-                frame.text([0, 0], line);
+                let mut frame = frame.rect([margin_w, i], [!0, 1]);
+                for i in 0..frame.size()[0] {
+                    let coord = self.focus[0] + i as isize;
+                    if (0..line.len() as isize).contains(&coord) {
+                        let pos = line_pos + coord as usize;
+                        let selected = cursor.selection().map_or(false, |s| s.contains(&pos));
+                        let (fg, c) = match line[coord as usize] {
+                            '\n' if selected => (state.theme.whitespace, '⮠'),
+                            c => (state.theme.text, c),
+                        };
+                        frame
+                            .with_bg(if selected {
+                                state.theme.select_bg
+                            } else {
+                                Color::Reset
+                            })
+                            .with_fg(fg)
+                            .text([i as isize, 0], &[c]);
+                    }
+                }
 
                 // Set cursor position
                 if cursor_coord[1] == line_num as isize {
-                    frame.set_cursor([cursor_coord[0], 0], CursorStyle::BlinkingBar);
+                    frame.set_cursor(
+                        [cursor_coord[0] - self.focus[0], 0],
+                        CursorStyle::BlinkingBar,
+                    );
                 }
             }
+
+            pos += line.len();
         }
     }
 }
@@ -200,10 +245,12 @@ impl Element for Panes {
 }
 
 impl Visual for Panes {
-    fn render(&self, state: &State, frame: &mut Rect) {
-        for (i, pane) in self.panes.iter().enumerate() {
-            let boundary = |i| frame.size()[0] * i / self.panes.len();
+    fn render(&mut self, state: &State, frame: &mut Rect) {
+        let n = self.panes.len();
+        let frame_w = frame.size()[0];
+        let boundary = |i| frame_w * i / n;
 
+        for (i, pane) in self.panes.iter_mut().enumerate() {
             let (x0, x1) = (boundary(i), boundary(i + 1));
 
             let is_selected = self.selected == i;

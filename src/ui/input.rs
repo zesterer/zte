@@ -16,11 +16,7 @@ impl Input {
 
 impl Element for Input {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
-        match event.to_action(|e| {
-            e.to_char()
-                .map(Action::Char)
-                .or_else(|| e.to_move().map(Action::Move))
-        }) {
+        match event.to_action(|e| e.to_char().map(Action::Char).or_else(|| e.to_move())) {
             Some(Action::Char('\x08')) => {
                 self.cursor = self.cursor.saturating_sub(1);
                 if self.text.len() > self.cursor {
@@ -33,11 +29,11 @@ impl Element for Input {
                 self.cursor += 1;
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(Dir::Left)) => {
+            Some(Action::Move(Dir::Left, _, _)) => {
                 self.cursor = self.cursor.saturating_sub(1);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(Dir::Right)) => {
+            Some(Action::Move(Dir::Right, _, _)) => {
                 self.cursor = (self.cursor + 1).min(self.text.len());
                 Ok(Resp::handled(None))
             }
@@ -47,7 +43,7 @@ impl Element for Input {
 }
 
 impl Visual for Input {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         frame.with(|frame| {
             frame.fill(' ');
             frame.text([0, 0], self.preamble.chars());

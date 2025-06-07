@@ -51,7 +51,7 @@ impl Element<CanEnd> for Prompt {
 }
 
 impl Visual for Prompt {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         frame.with(|f| self.input.render(state, f));
     }
 }
@@ -70,7 +70,7 @@ impl Element<CanEnd> for Show {
 }
 
 impl Visual for Show {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         let lines = self.label.lines().count();
         self.label.render(
             state,
@@ -99,7 +99,7 @@ impl Element<CanEnd> for Confirm {
 }
 
 impl Visual for Confirm {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         let lines = self.label.lines().count();
         self.label.render(
             state,
@@ -118,16 +118,12 @@ pub struct Switcher {
 
 impl Element<CanEnd> for Switcher {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event> {
-        match event.to_action(|e| {
-            e.to_cancel()
-                .or_else(|| e.to_go())
-                .or_else(|| e.to_move().map(Action::Move))
-        }) {
-            Some(Action::Move(Dir::Up)) => {
+        match event.to_action(|e| e.to_cancel().or_else(|| e.to_go()).or_else(|| e.to_move())) {
+            Some(Action::Move(Dir::Up, false, _)) => {
                 self.selected = (self.selected + self.options.len() - 1) % self.options.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(Dir::Down)) => {
+            Some(Action::Move(Dir::Down, false, _)) => {
                 self.selected = (self.selected + 1) % self.options.len();
                 Ok(Resp::handled(None))
             }
@@ -146,7 +142,7 @@ impl Element<CanEnd> for Switcher {
 }
 
 impl Visual for Switcher {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         for (i, buffer) in self.options.iter().enumerate() {
             let Some(buffer) = state.buffers.get(*buffer) else {
                 continue;

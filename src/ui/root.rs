@@ -100,7 +100,7 @@ impl Element<CanEnd> for Root {
 }
 
 impl Visual for Root {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         frame.fill(' ');
 
         let task_has_focus = matches!(self.tasks.last(), Some(Task::Prompt(_)));
@@ -117,7 +117,7 @@ impl Visual for Root {
                 Some("Prompt (press alt + enter)"),
             )
             .with(|frame| {
-                if let Some(Task::Prompt(p)) = self.tasks.last() {
+                if let Some(Task::Prompt(p)) = self.tasks.last_mut() {
                     p.render(state, frame);
                 }
             });
@@ -129,7 +129,7 @@ impl Visual for Root {
                 self.panes.render(state, frame);
             });
 
-        if let Some(task) = self.tasks.last() {
+        if let Some(task) = self.tasks.last_mut() {
             match task {
                 Task::Prompt(_) => {} // Prompt isn't rendered, it's always rendered above
                 Task::Show(s) => s.render(state, frame),

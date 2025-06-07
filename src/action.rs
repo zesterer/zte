@@ -13,7 +13,7 @@ pub enum Dir {
 pub enum Action {
     Char(char),             // Insert a character
     Backspace,              // Backspace a character
-    Move(Dir),              // Move the cursor
+    Move(Dir, bool, bool),  // Move the cursor (dir, page, retain_base)
     PaneMove(Dir),          // Move panes
     Cancel,                 // Cancels the current context
     Go,                     // Search, accept, or select the current option
@@ -92,22 +92,34 @@ impl RawEvent {
         }
     }
 
-    pub fn to_move(&self) -> Option<Dir> {
-        match &self.0 {
-            TerminalEvent::Key(KeyEvent {
-                code,
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Press | KeyEventKind::Repeat,
-                ..
-            }) => match code {
-                KeyCode::Left => Some(Dir::Left),
-                KeyCode::Right => Some(Dir::Right),
-                KeyCode::Up => Some(Dir::Up),
-                KeyCode::Down => Some(Dir::Down),
-                _ => None,
-            },
-            _ => None,
-        }
+    pub fn to_move(&self) -> Option<Action> {
+        let TerminalEvent::Key(KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press | KeyEventKind::Repeat,
+            ..
+        }) = &self.0
+        else {
+            return None;
+        };
+
+        let retain_base = match *modifiers {
+            KeyModifiers::NONE => false,
+            KeyModifiers::SHIFT => true,
+            _ => return None,
+        };
+
+        let (dir, page) = match code {
+            KeyCode::PageUp => (Dir::Up, true),
+            KeyCode::PageDown => (Dir::Down, true),
+            KeyCode::Left => (Dir::Left, false),
+            KeyCode::Right => (Dir::Right, false),
+            KeyCode::Up => (Dir::Up, false),
+            KeyCode::Down => (Dir::Down, false),
+            _ => return None,
+        };
+
+        Some(Action::Move(dir, page, retain_base))
     }
 
     pub fn to_open_prompt(&self) -> Option<Action> {

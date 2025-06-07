@@ -4,7 +4,7 @@ use crate::{
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use slotmap::{HopSlotMap, new_key_type};
-use std::{io, path::PathBuf};
+use std::{io, ops::Range, path::PathBuf};
 
 new_key_type! {
     pub struct BufferId;
@@ -13,6 +13,7 @@ new_key_type! {
 
 #[derive(Copy, Clone, Default)]
 pub struct Cursor {
+    pub base: usize,
     pub pos: usize,
     // Used to 'remember' the desired column when skipping over shorter lines
     desired_col: isize,
@@ -21,6 +22,14 @@ pub struct Cursor {
 impl Cursor {
     fn reset_desired_col(&mut self, text: &Text) {
         self.desired_col = text.to_coord(self.pos)[0];
+    }
+
+    pub fn selection(&self) -> Option<Range<usize>> {
+        if self.base == self.pos {
+            None
+        } else {
+            Some(self.base.min(self.pos)..self.base.max(self.pos))
+        }
     }
 }
 
@@ -31,16 +40,17 @@ pub struct Text {
 impl Text {
     pub fn to_coord(&self, pos: usize) -> [isize; 2] {
         let mut n = 0;
-        let mut i = 0;
+        let mut last_n = 0;
+        let mut i: usize = 0;
         for line in self.lines() {
-            if (n..n + line.len() + 1).contains(&pos) {
-                return [(pos - n) as isize, i as isize];
-            } else {
-                n += line.len() + 1;
-                i += 1;
+            last_n = n;
+            i += 1;
+            if (n..n + line.len()).contains(&pos) {
+                break;
             }
+            n += line.len();
         }
-        [0, i as isize]
+        [(pos - last_n) as isize, i.saturating_sub(1) as isize]
     }
 
     pub fn to_pos(&self, mut coord: [isize; 2]) -> usize {
@@ -50,16 +60,41 @@ impl Text {
         let mut pos = 0;
         for (i, line) in self.lines().enumerate() {
             if i as isize == coord[1] {
-                return pos + coord[0].clamp(0, line.len() as isize) as usize;
+                return pos + coord[0].clamp(0, line.len().saturating_sub(1) as isize) as usize;
             } else {
-                pos += line.len() + 1;
+                pos += line.len();
             }
         }
         pos.min(self.chars.len())
     }
 
+    /// Return an iterator over the lines of the text.
+    ///
+    /// Guarantees:
+    /// - If you sum the lengths of each line, it will be the same as the length (in characters) of the text
     pub fn lines(&self) -> impl Iterator<Item = &[char]> {
-        self.chars.split(|c| *c == '\n')
+        let mut start = 0;
+        let mut i = 0;
+        let mut finished = false;
+        core::iter::from_fn(move || {
+            loop {
+                let Some(c) = self.chars.get(i) else {
+                    return if finished {
+                        None
+                    } else {
+                        let line = &self.chars[start..];
+                        finished = true;
+                        Some(line)
+                    };
+                };
+                i += 1;
+                if *c == '\n' {
+                    let line = &self.chars[start..i];
+                    start = i;
+                    return Some(line);
+                }
+            }
+        })
     }
 }
 
@@ -84,17 +119,23 @@ impl Buffer {
         })
     }
 
-    pub fn move_cursor(&mut self, cursor_id: CursorId, dir: Dir) {
+    pub fn move_cursor(
+        &mut self,
+        cursor_id: CursorId,
+        dir: Dir,
+        dist: [usize; 2],
+        retain_base: bool,
+    ) {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
         match dir {
             Dir::Left => {
-                cursor.pos = cursor.pos.saturating_sub(1);
+                cursor.pos = cursor.pos.saturating_sub(dist[0]);
                 cursor.reset_desired_col(&self.text);
             }
             Dir::Right => {
-                cursor.pos = (cursor.pos + 1).min(self.text.chars.len());
+                cursor.pos = (cursor.pos + dist[0]).min(self.text.chars.len());
                 cursor.reset_desired_col(&self.text);
             }
             Dir::Up => {
@@ -104,19 +145,30 @@ impl Buffer {
                     cursor.pos = 0;
                     cursor.reset_desired_col(&self.text);
                 } else {
-                    cursor.pos = self.text.to_pos([cursor.desired_col, coord[1] - 1]);
+                    cursor.pos = self
+                        .text
+                        .to_pos([cursor.desired_col, coord[1] - dist[1] as isize]);
                 }
             }
             Dir::Down => {
                 let mut coord = self.text.to_coord(cursor.pos);
-                cursor.pos = self.text.to_pos([cursor.desired_col, coord[1] + 1]);
+                cursor.pos = self
+                    .text
+                    .to_pos([cursor.desired_col, coord[1] + dist[1] as isize]);
             }
         };
+
+        if !retain_base {
+            cursor.base = cursor.pos;
+        }
     }
 
     pub fn insert(&mut self, pos: usize, c: char) {
         self.text.chars.insert(pos.min(self.text.chars.len()), c);
         self.cursors.values_mut().for_each(|cursor| {
+            if cursor.base >= pos {
+                cursor.base += 1;
+            }
             if cursor.pos >= pos {
                 cursor.pos += 1;
                 cursor.reset_desired_col(&self.text);
@@ -124,35 +176,69 @@ impl Buffer {
         });
     }
 
-    pub fn remove(&mut self, pos: usize) {
+    pub fn enter(&mut self, cursor_id: CursorId, c: char) {
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return;
+        };
+        if let Some(selection) = cursor.selection() {
+            self.remove(selection);
+            self.enter(cursor_id, c);
+        } else {
+            self.insert(cursor.pos, c);
+        }
+    }
+
+    // Assumes range is well-formed
+    pub fn remove(&mut self, range: Range<usize>) {
         // TODO: Bell if false?
-        if self.text.chars.len() > pos {
-            self.text.chars.remove(pos);
-            self.cursors.values_mut().for_each(|cursor| {
-                if cursor.pos >= pos {
-                    cursor.pos = cursor.pos.saturating_sub(1);
-                    cursor.reset_desired_col(&self.text);
-                }
-            });
+        self.text.chars.drain(range.clone());
+        self.cursors.values_mut().for_each(|cursor| {
+            if cursor.base >= range.start {
+                cursor.base = cursor
+                    .base
+                    .saturating_sub(range.end - range.start)
+                    .max(range.start);
+            }
+            if cursor.pos >= range.start {
+                cursor.pos = cursor
+                    .pos
+                    .saturating_sub(range.end - range.start)
+                    .max(range.start);
+                cursor.reset_desired_col(&self.text);
+            }
+        });
+    }
+
+    pub fn backspace(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return;
+        };
+        if let Some(selection) = cursor.selection() {
+            self.remove(selection);
+        } else {
+            if let Some(pos) = cursor.pos.checked_sub(1) {
+                self.remove(pos..pos + 1);
+            }
         }
     }
 
-    pub fn backspace(&mut self, pos: usize) {
-        if let Some(pos) = pos.checked_sub(1) {
-            self.remove(pos);
+    pub fn delete(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return;
+        };
+        if let Some(selection) = cursor.selection() {
+            self.remove(selection);
+        } else {
+            self.remove(cursor.pos..cursor.pos + 1);
         }
-    }
-
-    pub fn delete(&mut self, pos: usize) {
-        self.remove(pos);
     }
 
     pub fn start_session(&mut self) -> CursorId {
         self.cursors.insert(Cursor::default())
     }
 
-    pub fn end_session(&mut self, cursor: CursorId) {
-        self.cursors.remove(cursor);
+    pub fn end_session(&mut self, cursor_id: CursorId) {
+        self.cursors.remove(cursor_id);
     }
 }
 

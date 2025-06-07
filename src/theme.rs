@@ -39,6 +39,8 @@ pub struct Theme {
     pub margin_line_num: Color,
     pub border: BorderTheme,
     pub focus_border: BorderTheme,
+    pub text: Color,
+    pub whitespace: Color,
 }
 
 impl Default for Theme {
@@ -53,6 +55,8 @@ impl Default for Theme {
                 fg: Color::White,
                 ..BorderTheme::default()
             },
+            text: Color::Reset,
+            whitespace: Color::AnsiValue(245),
         }
     }
 }

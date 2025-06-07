@@ -63,7 +63,7 @@ pub trait Element<CanEnd = CannotEnd> {
 }
 
 pub trait Visual {
-    fn render(&self, state: &State, frame: &mut Rect);
+    fn render(&mut self, state: &State, frame: &mut Rect);
 }
 
 pub struct Label(String);
@@ -76,10 +76,10 @@ impl std::ops::Deref for Label {
 }
 
 impl Visual for Label {
-    fn render(&self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
         frame.with_bg(state.theme.ui_bg).fill(' ').with(|frame| {
             for (idx, line) in self.lines().enumerate() {
-                frame.text([0, idx], line.chars());
+                frame.text([0, idx as isize], line.chars());
             }
         });
     }
