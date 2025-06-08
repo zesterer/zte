@@ -65,12 +65,7 @@ impl Element<CanEnd> for Root {
             match action {
                 Action::OpenPrompt => {
                     self.tasks.clear(); // Prompt overrides all
-                    self.tasks.push(Task::Prompt(Prompt {
-                        input: Input {
-                            preamble: "> ",
-                            ..Input::default()
-                        },
-                    }));
+                    self.tasks.push(Task::Prompt(Prompt::new()));
                 }
                 Action::OpenSwitcher => {
                     self.tasks.clear(); // Prompt overrides all
@@ -106,24 +101,20 @@ impl Visual for Root {
         let task_has_focus = matches!(self.tasks.last(), Some(Task::Prompt(_)));
 
         // Display status bar
-        frame
-            .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
-            .with_border(
-                if task_has_focus {
-                    &state.theme.focus_border
-                } else {
-                    &state.theme.border
-                },
-                Some("Prompt (press alt + enter)"),
-            )
-            .with(|frame| {
-                if let Some(Task::Prompt(p)) = self.tasks.last_mut() {
-                    p.render(state, frame);
-                }
-            });
+        let status_size = if let Some(Task::Prompt(p)) = self.tasks.last_mut() {
+            frame
+                .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
+                .with(|frame| p.render(state, frame));
+            3
+        } else {
+            0
+        };
 
         frame
-            .rect([0, 0], [frame.size()[0], frame.size()[1].saturating_sub(3)])
+            .rect(
+                [0, 0],
+                [frame.size()[0], frame.size()[1].saturating_sub(status_size)],
+            )
             .with_focus(!task_has_focus)
             .with(|frame| {
                 self.panes.render(state, frame);

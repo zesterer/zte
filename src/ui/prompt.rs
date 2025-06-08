@@ -1,14 +1,24 @@
 use super::*;
-use crate::state::BufferId;
-use std::str::FromStr;
+use crate::state::{Buffer, BufferId, CursorId};
 
 pub struct Prompt {
-    pub input: Input,
+    buffer: Buffer,
+    cursor_id: CursorId,
+    input: Input,
 }
 
 impl Prompt {
+    pub fn new() -> Self {
+        let mut buffer = Buffer::default();
+        Self {
+            cursor_id: buffer.start_session(),
+            buffer,
+            input: Input::prompt(),
+        }
+    }
+
     pub fn get_action(&self) -> Option<Action> {
-        match self.input.get_text().as_str() {
+        match self.buffer.text.to_string().as_str() {
             // The root sees 'cancel' as an initiator for quitting
             "q" | "quit" => Some(Action::Cancel),
             "version" => Some(Action::Show(format!(
@@ -41,18 +51,21 @@ impl Element<CanEnd> for Prompt {
                 } else {
                     Ok(Resp::end(Action::Show(format!(
                         "unknown command `{}`",
-                        self.input.get_text()
+                        self.buffer.text.to_string()
                     ))))
                 }
             }
-            _ => self.input.handle(state, event).map(Resp::into_can_end),
+            _ => self
+                .input
+                .handle(&mut self.buffer, self.cursor_id, event)
+                .map(Resp::into_can_end),
         }
     }
 }
 
 impl Visual for Prompt {
     fn render(&mut self, state: &State, frame: &mut Rect) {
-        frame.with(|f| self.input.render(state, f));
+        frame.with(|f| self.input.render(state, &self.buffer, self.cursor_id, f));
     }
 }
 
@@ -62,9 +75,9 @@ pub struct Show {
 
 impl Element<CanEnd> for Show {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event> {
-        match event.to_action(|e| e.to_cancel()) {
-            Some(Action::Cancel) => Ok(Resp::end(None)),
-            _ => Err(event),
+        match event.to_action(|e| e.to_continue()) {
+            Some(Action::Continue) => Ok(Resp::end(None)),
+            _ => Ok(Resp::handled(None)),
         }
     }
 }
@@ -147,6 +160,10 @@ impl Visual for Switcher {
             let Some(buffer) = state.buffers.get(*buffer) else {
                 continue;
             };
+            let buffer_name = match &buffer.path {
+                Some(path) => path.display().to_string(),
+                None => format!("<Untitled>"),
+            };
             frame
                 .rect(
                     [
@@ -161,7 +178,7 @@ impl Visual for Switcher {
                     state.theme.ui_bg
                 })
                 .fill(' ')
-                .text([0, 0], buffer.path.display().to_string().chars());
+                .text([0, 0], buffer_name.chars());
         }
     }
 }

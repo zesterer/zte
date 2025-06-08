@@ -1,8 +1,4 @@
-use crate::{
-    Action, Args, Color, Dir, Error, Event, theme,
-    ui::{self, Element as _, Resp},
-};
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crate::{Args, Dir, Error, theme};
 use slotmap::{HopSlotMap, new_key_type};
 use std::{io, ops::Range, path::PathBuf};
 
@@ -33,8 +29,15 @@ impl Cursor {
     }
 }
 
+#[derive(Default)]
 pub struct Text {
     chars: Vec<char>,
+}
+
+impl ToString for Text {
+    fn to_string(&self) -> String {
+        self.chars.iter().copied().collect()
+    }
 }
 
 impl Text {
@@ -53,7 +56,7 @@ impl Text {
         [(pos - last_n) as isize, i.saturating_sub(1) as isize]
     }
 
-    pub fn to_pos(&self, mut coord: [isize; 2]) -> usize {
+    pub fn to_pos(&self, coord: [isize; 2]) -> usize {
         if coord[1] < 0 {
             return 0;
         }
@@ -98,14 +101,15 @@ impl Text {
     }
 }
 
+#[derive(Default)]
 pub struct Buffer {
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
     pub text: Text,
     pub cursors: HopSlotMap<CursorId, Cursor>,
 }
 
 impl Buffer {
-    pub fn new(path: PathBuf) -> Result<Self, Error> {
+    pub fn from_file(path: PathBuf) -> Result<Self, Error> {
         let chars = match std::fs::read_to_string(&path) {
             Ok(s) => s.chars().collect(),
             // If the file doesn't exist, create a new file
@@ -113,7 +117,7 @@ impl Buffer {
             Err(err) => return Err(err.into()),
         };
         Ok(Self {
-            path,
+            path: Some(path),
             text: Text { chars },
             cursors: HopSlotMap::default(),
         })
@@ -139,7 +143,7 @@ impl Buffer {
                 cursor.reset_desired_col(&self.text);
             }
             Dir::Up => {
-                let mut coord = self.text.to_coord(cursor.pos);
+                let coord = self.text.to_coord(cursor.pos);
                 // Special case: pressing 'up' at the top of the screen resets the cursor to the beginning
                 if coord[1] <= 0 {
                     cursor.pos = 0;
@@ -151,7 +155,7 @@ impl Buffer {
                 }
             }
             Dir::Down => {
-                let mut coord = self.text.to_coord(cursor.pos);
+                let coord = self.text.to_coord(cursor.pos);
                 cursor.pos = self
                     .text
                     .to_pos([cursor.desired_col, coord[1] + dist[1] as isize]);
@@ -258,7 +262,7 @@ impl TryFrom<Args> for State {
         };
 
         for path in args.paths {
-            this.buffers.insert(Buffer::new(path)?);
+            this.buffers.insert(Buffer::from_file(path)?);
         }
 
         Ok(this)

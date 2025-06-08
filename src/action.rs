@@ -17,7 +17,8 @@ pub enum Action {
     PaneMove(Dir),          // Move panes
     PaneOpen(Dir),          // Create a new pane
     PaneClose,              // Close the current pane
-    Cancel,                 // Cancels the current context
+    Cancel,                 // Cancels the current action
+    Continue,               // Continue past an info-only element (like a help screen)
     Go,                     // Search, accept, or select the current option
     Yes,                    // A binary confirmation is answered 'yes'
     No,                     // A binary confirmation is answered 'no'
@@ -229,6 +230,22 @@ impl RawEvent {
             })
         ) {
             Some(Action::Cancel)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_continue(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' '),
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::Continue)
         } else {
             None
         }

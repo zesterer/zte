@@ -1,3 +1,4 @@
+mod doc;
 mod input;
 mod panes;
 mod prompt;
@@ -5,6 +6,7 @@ mod root;
 mod status;
 
 pub use self::{
+    doc::Doc,
     input::Input,
     panes::Panes,
     prompt::{Confirm, Prompt, Show, Switcher},
