@@ -121,7 +121,7 @@ impl Visual for Doc {
         let line_num_w = buffer.text.lines().count().max(1).ilog10() as usize + 1;
         let margin_w = line_num_w + 2;
 
-        self.last_size = [frame.size()[0] - margin_w, frame.size()[1]];
+        self.last_size = [frame.size()[0].saturating_sub(margin_w), frame.size()[1]];
 
         let mut pos = 0;
         for (i, (line_num, (line_pos, line))) in buffer
@@ -184,12 +184,14 @@ impl Visual for Doc {
 
 #[derive(Clone)]
 pub enum Pane {
+    Empty,
     Doc(Doc),
 }
 
 impl Pane {
     fn title(&self, state: &State) -> Option<String> {
         match self {
+            Self::Empty => None,
             Self::Doc(doc) => {
                 let Some(buffer) = state.buffers.get(doc.buffer) else {
                     return None;
@@ -219,7 +221,12 @@ impl Panes {
 
 impl Element for Panes {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
-        match event.to_action(|e| e.to_pane_move().map(Action::PaneMove)) {
+        match event.to_action(|e| {
+            e.to_pane_move()
+                .map(Action::PaneMove)
+                .or_else(|| e.to_pane_open().map(Action::PaneOpen))
+                .or_else(|| e.to_pane_close())
+        }) {
             Some(Action::PaneMove(Dir::Left)) => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();
                 Ok(Resp::handled(None))
@@ -228,11 +235,38 @@ impl Element for Panes {
                 self.selected = (self.selected + 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
+            Some(Action::PaneClose) => {
+                if self.selected < self.panes.len() {
+                    match self.panes.remove(self.selected) {
+                        Pane::Empty => {}
+                        Pane::Doc(doc) => doc.close(state),
+                    }
+                    self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
+                    Ok(Resp::handled(None))
+                } else {
+                    Err(event)
+                }
+            }
+            Some(Action::PaneOpen(dir)) => {
+                let new_idx = match dir {
+                    Dir::Left => self.selected.saturating_sub(1).clamp(0, self.panes.len()),
+                    Dir::Right => (self.selected + 1).min(self.panes.len()),
+                    Dir::Up | Dir::Down => return Err(event),
+                };
+                let pane = match state.buffers.keys().next() {
+                    Some(b) => Pane::Doc(Doc::new(state, b)),
+                    None => Pane::Empty,
+                };
+                self.panes.insert(new_idx, pane);
+                self.selected = new_idx;
+                Ok(Resp::handled(None))
+            }
             // Pass anything else through to the active pane
             err => {
                 if let Some(pane) = self.panes.get_mut(self.selected) {
                     // Pass to pane
                     match pane {
+                        Pane::Empty => Err(event),
                         Pane::Doc(doc) => doc.handle(state, event),
                     }
                 } else {
@@ -266,6 +300,7 @@ impl Visual for Panes {
                 .with_border(border_theme, pane.title(state).as_deref())
                 .with_focus(is_selected)
                 .with(|frame| match pane {
+                    Pane::Empty => {}
                     Pane::Doc(doc) => doc.render(state, frame),
                 });
         }
