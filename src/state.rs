@@ -123,6 +123,14 @@ impl Buffer {
         })
     }
 
+    pub fn clear(&mut self) {
+        self.text.chars.clear();
+        // Reset cursors
+        self.cursors.values_mut().for_each(|cursor| {
+            *cursor = Cursor::default();
+        });
+    }
+
     pub fn move_cursor(
         &mut self,
         cursor_id: CursorId,

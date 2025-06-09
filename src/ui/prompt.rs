@@ -47,9 +47,10 @@ impl Element<CanEnd> for Prompt {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             Some(Action::Go) => {
                 if let Some(action) = self.get_action() {
-                    Ok(Resp::end(action))
+                    self.buffer.clear();
+                    Ok(Resp::handled(action))
                 } else {
-                    Ok(Resp::end(Action::Show(format!(
+                    Ok(Resp::handled(Action::Show(format!(
                         "unknown command `{}`",
                         self.buffer.text.to_string()
                     ))))
@@ -75,8 +76,18 @@ pub struct Show {
 
 impl Element<CanEnd> for Show {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<CanEnd>, Event> {
-        match event.to_action(|e| e.to_continue()) {
+        match event.to_action(|e| {
+            e.to_cancel()
+                .or_else(|| e.to_continue())
+                .or_else(|| e.to_char().map(Action::Char))
+        }) {
+            // Shows cannot be cancelled, so pass the cancel along to the parent task
+            Some(Action::Cancel) => Ok(Resp::end(Some(Action::Cancel))),
+            // A continue ends the show
             Some(Action::Continue) => Ok(Resp::end(None)),
+            // Pass attempts to type to the parent prompt task
+            // TODO: Don't assume that a `Show` is always the child of the prompt
+            Some(Action::Char(c)) => Ok(Resp::end(Some(Action::Char(c)))),
             _ => Ok(Resp::handled(None)),
         }
     }

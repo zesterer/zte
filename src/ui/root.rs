@@ -54,7 +54,11 @@ impl Element<CanEnd> for Root {
                     if resp.should_end() {
                         self.tasks.truncate(task_idx);
                     }
-                    break resp.action;
+                    if let Some(action) = resp.action {
+                        event = Event::Action(action);
+                    } else {
+                        break None;
+                    }
                 }
                 Err(e) => event = e,
             }
@@ -101,7 +105,7 @@ impl Visual for Root {
         let task_has_focus = matches!(self.tasks.last(), Some(Task::Prompt(_)));
 
         // Display status bar
-        let status_size = if let Some(Task::Prompt(p)) = self.tasks.last_mut() {
+        let status_size = if let Some(Task::Prompt(p)) = self.tasks.first_mut() {
             frame
                 .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
                 .with(|frame| p.render(state, frame));
