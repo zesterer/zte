@@ -43,12 +43,12 @@ impl Element for Input {
     }
 }
 
-impl Visual for Input {    
+impl Visual for Input {
     fn render(&self, state: &State, frame: &mut Rect) {
         frame.with(|frame| {
             frame.fill(' ');
             frame.text([0, 0], self.preamble.chars());
-            
+
             frame.rect([self.preamble.chars().count(), 0], frame.size()).with(|frame| {
                 frame.text([0, 0], &self.text);
                 frame.set_cursor([self.cursor, 0], CursorStyle::BlinkingBar);

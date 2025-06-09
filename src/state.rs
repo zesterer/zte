@@ -26,7 +26,7 @@ pub struct FileView {
 }
 
 pub struct File {
-    views: HopSlotMap<ViewId, FileView>,
+    pub views: HopSlotMap<ViewId, FileView>,
 }
 
 pub struct ConsoleView {

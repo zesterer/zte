@@ -1,21 +1,70 @@
 use super::*;
+use strum::{EnumIter, Display, IntoEnumIterator};
 use std::str::FromStr;
 
-pub enum Command {
-    Quit,
-    Help,
-    Version,
+macro_rules! commands {
+    ($({
+        name: $name:ident,
+        args: ($($args:ty),* $(,)?),
+        aliases: [$($aliases:literal),* $(,)?],
+        info: $info:literal,
+        handler: $handler:path $(,)?
+    }),* $(,)?) => {
+        #[derive(EnumIter, Display)]
+        pub enum Command { $($name),* }
+        
+        impl Command {
+            pub fn aliases(&self) -> &'static [&'static str] {
+                match self {
+                    $(Self::$name => &[$($aliases,)*],)*
+                }
+            }
+        }
+    };
+}
+
+commands! {
+    {
+        name: Quit,
+        args: (),
+        aliases: ["quit", "q"],
+        info: "Quit the editor",
+        handler: exec_quit,
+    },
+    {
+        name: Version,
+        args: (),
+        aliases: ["version"],
+        info: "Show the editor version",
+        handler: exec_version,
+    },
+
+    {
+        name: Help,
+        args: (Option<String>),
+        aliases: ["help", "?"],
+        info: "List commands or show help for a specific command",
+        handler: exec_help,
+    },
+    {
+        name: Open,
+        args: (Option<PathBuf>),
+        aliases: ["open", "o"],
+        info: "Open or switch to the buffer of a file",
+        handler: exec_help,
+    },
+
 }
 
 impl FromStr for Command {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "q" | "quit" => Ok(Command::Quit),
-            "version" => Ok(Command::Version),
-            "?" | "help" => Ok(Command::Help),
-            _ => Err(()),
+        for c in Self::iter() {
+            if c.aliases().contains(&s) {
+                return Ok(c);
+            }
         }
+        Err(())
     }
 }
 
@@ -25,11 +74,32 @@ pub struct Prompt {
 
 impl Prompt {
     pub fn get_action(&self) -> Option<Action> {
-        match self.input.get_text().as_str() {
-            "quit" => Some(Action::Quit),
-            "version" => Some(Action::Show(format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))),
-            "help" => Some(Action::Show(format!("Temporary help info:\n- quit\n- version\n- help"))),
-            _ => None,
+        let input = self.input.get_text();
+        let mut args = input.as_str().split_whitespace();
+        
+        if let Some(cmd) = args.next().and_then(|cmd| cmd.parse().ok()) {
+            match cmd {
+                Command::Quit => Some(Action::Quit),
+                Command::Version => Some(Action::Show(format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))),
+                Command::Help => {
+                    use std::fmt::Write as _;
+                    
+                    let mut s = format!("Commands:\n");
+                    for c in Command::iter() {
+                        write!(s, "- {c}").unwrap();
+                        let aliases = c.aliases();
+                        match c.aliases() {
+                            [] => {},
+                            aliases => write!(s, " ({})", aliases.join(", ")).unwrap(),
+                        }
+                        writeln!(s, "").unwrap();
+                    }
+                    Some(Action::Show(s))                    
+                },
+                Command::Open => Some(Action::Show(format!("Open a file into a new buffer."))),
+            }
+        } else {
+            None
         }
     }
 }

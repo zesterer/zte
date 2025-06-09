@@ -1,4 +1,5 @@
 mod action;
+mod file;
 mod ui;
 mod terminal;
 mod state;
