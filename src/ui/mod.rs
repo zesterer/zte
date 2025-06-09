@@ -20,39 +20,48 @@ use crate::{
 };
 
 pub enum CannotEnd {}
-pub struct CanEnd;
 
-pub struct Resp<CanEnd = CannotEnd> {
-    should_end: Option<CanEnd>,
-    pub action: Option<Action>,
+pub struct Resp<End = CannotEnd> {
+    ended: Option<End>,
+    pub event: Option<Event>,
 }
 
-impl Resp<CanEnd> {
-    pub fn end(action: impl Into<Option<Action>>) -> Self {
-        Self {
-            should_end: Some(CanEnd),
-            action: action.into(),
-        }
-    }
-
-    pub fn should_end(&self) -> bool {
-        self.should_end.is_some()
-    }
-}
-
-impl<T> Resp<T> {
-    pub fn handled(action: impl Into<Option<Action>>) -> Self {
-        Self {
-            should_end: None,
-            action: action.into(),
-        }
-    }
-
-    pub fn into_can_end(self) -> Resp<CanEnd> {
+impl Resp<CannotEnd> {
+    pub fn into_can_end<End>(self) -> Resp<End> {
         Resp {
-            should_end: None,
-            action: self.action,
+            ended: None,
+            event: self.event,
         }
+    }
+}
+
+impl<End> Resp<End> {
+    pub fn end(event: Option<Event>) -> Self
+    where
+        End: Default,
+    {
+        Self::end_with(Default::default(), event)
+    }
+
+    pub fn end_with(end: End, event: Option<Event>) -> Self {
+        Self {
+            ended: Some(end),
+            event: event.into(),
+        }
+    }
+
+    pub fn handled(event: Option<Event>) -> Self {
+        Self {
+            ended: None,
+            event: event.into(),
+        }
+    }
+
+    pub fn is_end(&self) -> bool {
+        self.ended.is_some()
+    }
+    pub fn into_ended(mut self) -> Option<End> {
+        self.ended
     }
 }
 
@@ -77,12 +86,104 @@ impl std::ops::Deref for Label {
     }
 }
 
+impl Label {
+    pub fn requested_height(&self) -> usize {
+        self.0.lines().count()
+    }
+}
+
 impl Visual for Label {
     fn render(&mut self, state: &State, frame: &mut Rect) {
-        frame.with_bg(state.theme.ui_bg).fill(' ').with(|frame| {
+        frame.with(|frame| {
             for (idx, line) in self.lines().enumerate() {
                 frame.text([0, idx as isize], line.chars());
             }
         });
+    }
+}
+
+/// List selection
+pub struct Options<T> {
+    pub selected: usize,
+    // (score, option)
+    pub options: Vec<T>,
+    pub ranking: Vec<usize>,
+}
+
+impl<T> Options<T> {
+    pub fn new(options: impl IntoIterator<Item = T>) -> Self {
+        let (ranking, options) = options.into_iter().enumerate().unzip();
+        Self {
+            selected: 0,
+            options,
+            ranking,
+        }
+    }
+
+    pub fn apply_scoring<F: FnMut(&T) -> Option<u32>>(&mut self, mut f: F) {
+        let mut ranking = self
+            .options
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| Some((i, f(o)?)))
+            .collect::<Vec<_>>();
+        ranking.sort_by_key(|(_, score)| *score);
+        self.ranking = ranking.into_iter().map(|(i, _)| i).collect();
+    }
+
+    pub fn requested_height(&self) -> usize {
+        2 + self.ranking.len()
+    }
+}
+
+impl<T> Element<T> for Options<T> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
+        match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
+            Some(Action::Move(Dir::Up, false, _)) => {
+                self.selected = (self.selected + self.ranking.len() - 1) % self.ranking.len();
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Move(Dir::Down, false, _)) => {
+                self.selected = (self.selected + 1) % self.ranking.len();
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Go) => {
+                if self.selected < self.ranking.len() {
+                    Ok(Resp::end_with(
+                        self.options.remove(self.ranking[self.selected]),
+                        None,
+                    ))
+                } else {
+                    Err(event)
+                }
+            }
+            _ => Err(event),
+        }
+    }
+}
+
+impl<T: Visual> Visual for Options<T> {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
+        let mut frame = frame.with_border(
+            if frame.has_focus() {
+                &state.theme.focus_border
+            } else {
+                &state.theme.border
+            },
+            None,
+        );
+
+        for (i, idx) in self.ranking.iter().enumerate() {
+            let option = &mut self.options[*idx];
+            frame
+                .rect([0, i], [frame.size()[0], 1])
+                .with_bg(if self.selected == i {
+                    state.theme.select_bg
+                } else {
+                    Color::Reset
+                })
+                .fill(' ')
+                .with(|f| option.render(state, f));
+        }
     }
 }

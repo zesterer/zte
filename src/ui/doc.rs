@@ -49,7 +49,7 @@ impl Element for Doc {
         };
 
         match event.to_action(|e| e.to_open_switcher()) {
-            action @ Some(Action::OpenSwitcher) => Ok(Resp::handled(action)),
+            action @ Some(Action::OpenSwitcher) => Ok(Resp::handled(action.map(Into::into))),
             Some(Action::SwitchBuffer(new_buffer)) => {
                 self.buffer = new_buffer;
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {

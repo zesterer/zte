@@ -152,10 +152,12 @@ impl Input {
                             c => (state.theme.text, c),
                         };
                         frame
-                            .with_bg(if selected {
+                            .with_bg(if !selected {
+                                Color::Reset
+                            } else if frame.has_focus() {
                                 state.theme.select_bg
                             } else {
-                                Color::Reset
+                                state.theme.unfocus_select_bg
                             })
                             .with_fg(fg)
                             .text([i as isize, 0], &[c]);

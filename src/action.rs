@@ -11,22 +11,22 @@ pub enum Dir {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Char(char),             // Insert a character
-    Backspace,              // Backspace a character
-    Move(Dir, bool, bool),  // Move the cursor (dir, page, retain_base)
-    PaneMove(Dir),          // Move panes
-    PaneOpen(Dir),          // Create a new pane
-    PaneClose,              // Close the current pane
-    Cancel,                 // Cancels the current action
-    Continue,               // Continue past an info-only element (like a help screen)
-    Go,                     // Search, accept, or select the current option
-    Yes,                    // A binary confirmation is answered 'yes'
-    No,                     // A binary confirmation is answered 'no'
-    Quit,                   // Quit the application
-    OpenPrompt,             // Open the command prompt
-    OpenSwitcher,           // Open the buffer switcher
-    Show(String),           // Display some arbitrary text to the user
-    SwitchBuffer(BufferId), // Switch the current pane to the given buffer
+    Char(char),                   // Insert a character
+    Backspace,                    // Backspace a character
+    Move(Dir, bool, bool),        // Move the cursor (dir, page, retain_base)
+    PaneMove(Dir),                // Move panes
+    PaneOpen(Dir),                // Create a new pane
+    PaneClose,                    // Close the current pane
+    Cancel,                       // Cancels the current action
+    Continue,                     // Continue past an info-only element (like a help screen)
+    Go,                           // Search, accept, or select the current option
+    Yes,                          // A binary confirmation is answered 'yes'
+    No,                           // A binary confirmation is answered 'no'
+    Quit,                         // Quit the application
+    OpenPrompt,                   // Open the command prompt
+    OpenSwitcher,                 // Open the buffer switcher
+    Show(Option<String>, String), // Display an optionally titled informational text box to the user
+    SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
 }
 
 #[derive(Debug)]
@@ -35,6 +35,12 @@ pub enum Event {
     Action(Action),
     // The incoming event is a raw user input.
     Raw(RawEvent),
+}
+
+impl From<Action> for Event {
+    fn from(action: Action) -> Self {
+        Self::Action(action)
+    }
 }
 
 impl Event {

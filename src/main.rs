@@ -50,7 +50,7 @@ fn main() -> Result<(), Error> {
                 // Have the UI handle events
                 if ui
                     .handle(&mut state, Event::from_raw(ev))
-                    .map_or(false, |r| r.should_end())
+                    .map_or(false, |r| r.into_ended().is_some())
                 {
                     return Ok(());
                 }

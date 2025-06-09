@@ -14,6 +14,17 @@ pub enum Task {
     Switcher(Switcher),
 }
 
+impl Task {
+    pub fn requested_height(&self) -> usize {
+        match self {
+            Self::Prompt(p) => p.requested_height(),
+            Self::Show(s) => s.requested_height(),
+            Self::Confirm(c) => c.requested_height(),
+            Self::Switcher(s) => s.requested_height(),
+        }
+    }
+}
+
 impl Root {
     pub fn new(state: &mut State, buffers: &[BufferId]) -> Self {
         Self {
@@ -24,8 +35,8 @@ impl Root {
     }
 }
 
-impl Element<CanEnd> for Root {
-    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<CanEnd>, Event> {
+impl Element<()> for Root {
+    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<()>, Event> {
         // Pass the event down through the list of tasks until we meet one that can handle it
         let mut task_idx = self.tasks.len();
         let action = loop {
@@ -33,10 +44,8 @@ impl Element<CanEnd> for Root {
                 Some(task_idx) => task_idx,
                 None => {
                     break match self.panes.handle(state, event) {
-                        Ok(resp) => resp.action,
-                        Err(event) => {
-                            event.to_action(|e| e.to_open_prompt().or_else(|| e.to_cancel()))
-                        }
+                        Ok(resp) => resp.event,
+                        Err(event) => Some(event),
                     };
                 }
             };
@@ -51,21 +60,23 @@ impl Element<CanEnd> for Root {
             match res {
                 Ok(resp) => {
                     // If the task has requested that it should end, kill it and all of its children
-                    if resp.should_end() {
+                    if resp.is_end() {
                         self.tasks.truncate(task_idx);
                     }
-                    if let Some(action) = resp.action {
-                        event = Event::Action(action);
+                    event = if let Some(event) = resp.event {
+                        event
                     } else {
                         break None;
-                    }
+                    };
                 }
                 Err(e) => event = e,
             }
         };
 
         // Handle 'top-level' actions
-        if let Some(action) = action {
+        if let Some(action) =
+            action.and_then(|e| e.to_action(|e| e.to_open_prompt().or_else(|| e.to_cancel())))
+        {
             match action {
                 Action::OpenPrompt => {
                     self.tasks.clear(); // Prompt overrides all
@@ -73,16 +84,17 @@ impl Element<CanEnd> for Root {
                 }
                 Action::OpenSwitcher => {
                     self.tasks.clear(); // Prompt overrides all
-                    self.tasks.push(Task::Switcher(Switcher {
-                        selected: 0,
-                        options: state.buffers.keys().collect(),
-                    }));
+                    self.tasks
+                        .push(Task::Switcher(Switcher::new(state.buffers.keys())));
                 }
                 Action::Cancel => self.tasks.push(Task::Confirm(Confirm {
                     label: Label("Are you sure you wish to quit? (y/n)".to_string()),
                     action: Action::Quit,
                 })),
-                Action::Show(text) => self.tasks.push(Task::Show(Show { label: Label(text) })),
+                Action::Show(title, text) => self.tasks.push(Task::Show(Show {
+                    title,
+                    label: Label(text),
+                })),
                 Action::Quit => return Ok(Resp::end(None)),
                 action => {
                     return self
@@ -102,35 +114,36 @@ impl Visual for Root {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         frame.fill(' ');
 
-        let task_has_focus = matches!(self.tasks.last(), Some(Task::Prompt(_)));
+        let task_has_focus = !self.tasks.is_empty();
 
-        // Display status bar
-        let status_size = if let Some(Task::Prompt(p)) = self.tasks.first_mut() {
+        // Determine how much space the active task should use
+        let task_h = self.tasks.last().map_or(0, |t| t.requested_height());
+
+        // Render active task
+        if let Some(task) = self.tasks.last_mut() {
             frame
-                .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
-                .with(|frame| p.render(state, frame));
-            3
-        } else {
-            0
-        };
+                .rect(
+                    [0, frame.size()[1].saturating_sub(task_h)],
+                    [frame.size()[0], task_h],
+                )
+                .with_focus(task_has_focus)
+                .with(|frame| match task {
+                    Task::Prompt(p) => p.render(state, frame),
+                    Task::Show(s) => s.render(state, frame),
+                    Task::Confirm(c) => c.render(state, frame),
+                    Task::Switcher(s) => s.render(state, frame),
+                });
+        }
 
+        // Render panes
         frame
             .rect(
                 [0, 0],
-                [frame.size()[0], frame.size()[1].saturating_sub(status_size)],
+                [frame.size()[0], frame.size()[1].saturating_sub(task_h)],
             )
             .with_focus(!task_has_focus)
             .with(|frame| {
                 self.panes.render(state, frame);
             });
-
-        if let Some(task) = self.tasks.last_mut() {
-            match task {
-                Task::Prompt(_) => {} // Prompt isn't rendered, it's always rendered above
-                Task::Show(s) => s.render(state, frame),
-                Task::Confirm(c) => c.render(state, frame),
-                Task::Switcher(s) => s.render(state, frame),
-            }
-        }
     }
 }
