@@ -143,11 +143,19 @@ impl Buffer {
         };
         match dir {
             Dir::Left => {
-                cursor.pos = cursor.pos.saturating_sub(dist[0]);
+                cursor.pos = if !retain_base && cursor.base < cursor.pos {
+                    cursor.base
+                } else {
+                    cursor.pos.saturating_sub(dist[0])
+                };
                 cursor.reset_desired_col(&self.text);
             }
             Dir::Right => {
-                cursor.pos = (cursor.pos + dist[0]).min(self.text.chars.len());
+                cursor.pos = if !retain_base && cursor.base > cursor.pos {
+                    cursor.base
+                } else {
+                    (cursor.pos + dist[0]).min(self.text.chars.len())
+                };
                 cursor.reset_desired_col(&self.text);
             }
             Dir::Up => {
