@@ -1,6 +1,10 @@
 use crate::{Args, Dir, Error, theme};
 use slotmap::{HopSlotMap, new_key_type};
-use std::{io, ops::Range, path::PathBuf};
+use std::{
+    io,
+    ops::Range,
+    path::{Path, PathBuf},
+};
 
 new_key_type! {
     pub struct BufferId;
@@ -103,6 +107,7 @@ impl Text {
 
 #[derive(Default)]
 pub struct Buffer {
+    pub dir: Option<PathBuf>,
     pub path: Option<PathBuf>,
     pub text: Text,
     pub cursors: HopSlotMap<CursorId, Cursor>,
@@ -110,17 +115,33 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn from_file(path: PathBuf) -> Result<Self, Error> {
-        let chars = match std::fs::read_to_string(&path) {
-            Ok(s) => s.chars().collect(),
+        let (dir, chars) = match std::fs::read_to_string(&path) {
+            Ok(s) => {
+                let mut path = path.canonicalize()?;
+                path.pop();
+                (Some(path), s.chars().collect())
+            }
             // If the file doesn't exist, create a new file
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                (path.parent().map(Path::to_owned), Vec::new())
+            }
             Err(err) => return Err(err.into()),
         };
         Ok(Self {
+            dir,
             path: Some(path),
             text: Text { chars },
             cursors: HopSlotMap::default(),
         })
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        Some(
+            match self.path.as_ref()?.file_name().and_then(|n| n.to_str()) {
+                Some(name) => name,
+                None => "<error>",
+            },
+        )
     }
 
     pub fn clear(&mut self) {
@@ -183,28 +204,34 @@ impl Buffer {
         }
     }
 
-    pub fn insert(&mut self, pos: usize, c: char) {
-        self.text.chars.insert(pos.min(self.text.chars.len()), c);
+    pub fn insert(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) {
+        let mut n = 0;
+        for c in chars {
+            self.text
+                .chars
+                .insert((pos + n).min(self.text.chars.len()), c);
+            n += 1;
+        }
         self.cursors.values_mut().for_each(|cursor| {
             if cursor.base >= pos {
-                cursor.base += 1;
+                cursor.base += n;
             }
             if cursor.pos >= pos {
-                cursor.pos += 1;
+                cursor.pos += n;
                 cursor.reset_desired_col(&self.text);
             }
         });
     }
 
-    pub fn enter(&mut self, cursor_id: CursorId, c: char) {
+    pub fn enter(&mut self, cursor_id: CursorId, chars: impl IntoIterator<Item = char>) {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
-            self.enter(cursor_id, c);
+            self.enter(cursor_id, chars);
         } else {
-            self.insert(cursor.pos, c);
+            self.insert(cursor.pos, chars);
         }
     }
 

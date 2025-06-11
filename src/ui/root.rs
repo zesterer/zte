@@ -12,6 +12,7 @@ pub enum Task {
     Show(Show),
     Confirm(Confirm),
     Switcher(Switcher),
+    Opener(Opener),
 }
 
 impl Task {
@@ -21,6 +22,7 @@ impl Task {
             Self::Show(s) => s.requested_height(),
             Self::Confirm(c) => c.requested_height(),
             Self::Switcher(s) => s.requested_height(),
+            Self::Opener(o) => o.requested_height(),
         }
     }
 }
@@ -55,6 +57,7 @@ impl Element<()> for Root {
                 Task::Show(s) => s.handle(state, event),
                 Task::Confirm(c) => c.handle(state, event),
                 Task::Switcher(s) => s.handle(state, event),
+                Task::Opener(o) => o.handle(state, event),
             };
 
             match res {
@@ -83,9 +86,13 @@ impl Element<()> for Root {
                     self.tasks.push(Task::Prompt(Prompt::new()));
                 }
                 Action::OpenSwitcher => {
-                    self.tasks.clear(); // Prompt overrides all
+                    self.tasks.clear(); // Overrides all
                     self.tasks
                         .push(Task::Switcher(Switcher::new(state.buffers.keys())));
+                }
+                Action::OpenOpener(path) => {
+                    self.tasks.clear(); // Overrides all
+                    self.tasks.push(Task::Opener(Opener::new(path)));
                 }
                 Action::Cancel => self.tasks.push(Task::Confirm(Confirm {
                     label: Label("Are you sure you wish to quit? (y/n)".to_string()),
@@ -132,6 +139,7 @@ impl Visual for Root {
                     Task::Show(s) => s.render(state, frame),
                     Task::Confirm(c) => c.render(state, frame),
                     Task::Switcher(s) => s.render(state, frame),
+                    Task::Opener(o) => o.render(state, frame),
                 });
         }
 

@@ -2,17 +2,17 @@
 
 ## Features
 
-- [ ] Buffers
-- [ ] Buffer switching
-- [ ] Prompt
-- [ ] Cursor selection
-- [ ] Basic cursor movement
-- [ ] Multiple panes
-- [ ] Pane creation/deletion
+- [x] Buffers
+- [x] Buffer switching
+- [x] Prompt
+- [x] Cursor selection
+- [x] Basic cursor movement
+- [x] Multiple panes
+- [x] Pane creation/deletion
+- [x] Opener
 
 ## Todo
 
-- [ ] Opener
 - [ ] Find
 - [ ] Replace
 - [ ] Project search

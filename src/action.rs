@@ -1,5 +1,6 @@
 use crate::{state::BufferId, terminal::TerminalEvent};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub enum Dir {
@@ -24,9 +25,11 @@ pub enum Action {
     No,                           // A binary confirmation is answered 'no'
     Quit,                         // Quit the application
     OpenPrompt,                   // Open the command prompt
-    OpenSwitcher,                 // Open the buffer switcher
     Show(Option<String>, String), // Display an optionally titled informational text box to the user
+    OpenSwitcher,                 // Open the buffer switcher
+    OpenOpener(PathBuf),          // Open the file opener
     SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
+    OpenFile(PathBuf),            // Open the file and switch the current pane to it
 }
 
 #[derive(Debug)]
@@ -196,6 +199,22 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenSwitcher)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_open_opener(&self, path: PathBuf) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('o'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenOpener(path))
         } else {
             None
         }

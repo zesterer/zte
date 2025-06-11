@@ -9,7 +9,7 @@ pub use self::{
     doc::Doc,
     input::Input,
     panes::Panes,
-    prompt::{Confirm, Prompt, Show, Switcher},
+    prompt::{Confirm, Opener, Prompt, Show, Switcher},
     root::Root,
     status::Status,
 };
@@ -120,6 +120,15 @@ impl<T> Options<T> {
         }
     }
 
+    pub fn set_options<F: FnMut(&T) -> Option<u32>>(
+        &mut self,
+        options: impl IntoIterator<Item = T>,
+        mut f: F,
+    ) {
+        self.options = options.into_iter().collect();
+        self.apply_scoring(f);
+    }
+
     pub fn apply_scoring<F: FnMut(&T) -> Option<u32>>(&mut self, mut f: F) {
         let mut ranking = self
             .options
@@ -127,8 +136,9 @@ impl<T> Options<T> {
             .enumerate()
             .filter_map(|(i, o)| Some((i, f(o)?)))
             .collect::<Vec<_>>();
-        ranking.sort_by_key(|(_, score)| *score);
+        ranking.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
         self.ranking = ranking.into_iter().map(|(i, _)| i).collect();
+        self.selected = 0;
     }
 
     pub fn requested_height(&self) -> usize {
@@ -136,7 +146,7 @@ impl<T> Options<T> {
     }
 }
 
-impl<T> Element<T> for Options<T> {
+impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
             Some(Action::Move(Dir::Up, false, _)) => {
@@ -150,7 +160,7 @@ impl<T> Element<T> for Options<T> {
             Some(Action::Go) => {
                 if self.selected < self.ranking.len() {
                     Ok(Resp::end_with(
-                        self.options.remove(self.ranking[self.selected]),
+                        self.options[self.ranking[self.selected]].clone(),
                         None,
                     ))
                 } else {

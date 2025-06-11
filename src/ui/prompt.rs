@@ -1,5 +1,6 @@
 use super::*;
 use crate::state::{Buffer, BufferId, CursorId};
+use std::{fs, path::PathBuf};
 
 pub struct Prompt {
     buffer: Buffer,
@@ -188,7 +189,7 @@ impl Switcher {
             options: Options::new(buffers),
             cursor_id: buffer.start_session(),
             buffer,
-            input: Input::prompt(),
+            input: Input::filter(),
         }
     }
 
@@ -215,10 +216,13 @@ impl Element<()> for Switcher {
                         let Some(buffer) = state.buffers.get(*b) else {
                             return None;
                         };
-                        match buffer.path.as_ref() {
-                            Some(path) if path.display().to_string().contains(&filter) => Some(1),
-                            Some(_) => None,
-                            None => Some(0),
+                        let name = buffer.name()?;
+                        if name.starts_with(&filter) {
+                            Some(2)
+                        } else if name.contains(&filter) {
+                            Some(1)
+                        } else {
+                            None
                         }
                     });
                     res
@@ -244,10 +248,174 @@ impl Visual for BufferId {
         let Some(buffer) = state.buffers.get(*self) else {
             return;
         };
-        let buffer_name = match &buffer.path {
-            Some(path) => path.display().to_string(),
-            None => format!("<Untitled>"),
+        frame.text([0, 0], buffer.name().unwrap_or("<unknown>").chars());
+    }
+}
+
+pub struct Opener {
+    pub options: Options<FileOption>,
+    // Filter
+    pub buffer: Buffer,
+    pub cursor_id: CursorId,
+    pub input: Input,
+}
+
+impl Opener {
+    pub fn new(path: PathBuf) -> Self {
+        let mut buffer = Buffer::default();
+        let cursor_id = buffer.start_session();
+        match path.display().to_string().as_str() {
+            s @ "/" => buffer.enter(cursor_id, s.chars()),
+            s => buffer.enter(cursor_id, s.chars().chain(['/'])),
+        }
+        let mut this = Self {
+            options: Options::new([]),
+            cursor_id,
+            buffer,
+            input: Input::filter(),
         };
-        frame.text([0, 0], buffer_name.chars());
+        this.update_completions();
+        this
+    }
+
+    pub fn requested_height(&self) -> usize {
+        self.options.requested_height() + 3
+    }
+
+    fn set_string(&mut self, s: &str) {
+        self.buffer.clear();
+        self.buffer.enter(self.cursor_id, s.chars());
+        self.update_completions();
+    }
+
+    fn update_completions(&mut self) {
+        let path_str = self.buffer.text.to_string();
+        let (dir, filter) = match path_str.rsplit_once('/') {
+            Some(("", filter)) => ("/", filter),
+            Some((dir, filter)) => (dir, filter),
+            None => ("/", path_str.as_str()),
+        };
+        let filter = filter.to_lowercase();
+        match fs::read_dir(dir) {
+            Ok(entries) => {
+                let options = entries
+                    .filter_map(|e| e.ok())
+                    .filter_map(|entry| {
+                        Some(FileOption {
+                            path: entry.path(),
+                            kind: if entry.file_type().ok()?.is_dir() {
+                                FileKind::Dir
+                            } else if entry.file_type().ok()?.is_file() {
+                                FileKind::File
+                            } else {
+                                FileKind::Unknown
+                            },
+                            is_link: entry.file_type().ok()?.is_symlink(),
+                        })
+                    })
+                    .chain([FileOption {
+                        path: [dir, &filter].into_iter().collect(),
+                        kind: FileKind::New,
+                        is_link: false,
+                    }]);
+                // TODO
+                self.options.set_options(options, |e| {
+                    let name = e.path.file_name()?.to_str()?.to_lowercase();
+                    if matches!(e.kind, FileKind::New) {
+                        // Special-case: the 'new file' entry always matches last
+                        Some(0)
+                    } else if name == filter {
+                        Some(3)
+                    } else if name.starts_with(&filter) {
+                        Some(2)
+                    } else if name.contains(&filter) {
+                        Some(1)
+                    } else {
+                        None
+                    }
+                })
+            }
+            Err(err) => self.options.set_options(Vec::new(), |_| None),
+        }
+    }
+}
+
+impl Element<()> for Opener {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
+        let path_str = self.buffer.text.to_string();
+        match event.to_action(|e| e.to_cancel().or_else(|| e.to_char().map(Action::Char))) {
+            Some(Action::Cancel) => Ok(Resp::end(None)),
+            // Backspace removes the entire path segment!
+            Some(Action::Char('\x08')) if path_str.ends_with("/") => {
+                if path_str != "/" {
+                    self.set_string(
+                        path_str
+                            .trim_end_matches("/")
+                            .trim_end_matches(|c| c != '/'),
+                    );
+                }
+                Ok(Resp::handled(None))
+            }
+            _ => match self.options.handle(state, event).map(Resp::into_ended) {
+                // Selecting a directory enters the directory
+                Ok(Some(file)) if matches!(file.kind, FileKind::Dir) => {
+                    self.set_string(&format!("{}/", file.path.display()));
+                    Ok(Resp::handled(None))
+                }
+                Ok(Some(file)) => Ok(Resp::end(Some(Action::OpenFile(file.path).into()))),
+                Ok(None) => Ok(Resp::handled(None)),
+                Err(event) => {
+                    let res = self
+                        .input
+                        .handle(&mut self.buffer, self.cursor_id, event)
+                        .map(Resp::into_can_end);
+                    self.update_completions();
+                    res
+                }
+            },
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+enum FileKind {
+    Unknown,
+    Dir,
+    File,
+    New,
+}
+
+#[derive(Clone)]
+pub struct FileOption {
+    pub path: PathBuf,
+    pub kind: FileKind,
+    pub is_link: bool,
+}
+
+impl Visual for FileOption {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
+        let name = match self.path.file_name().and_then(|n| n.to_str()) {
+            Some(name) if matches!(self.kind, FileKind::Dir) => format!("{}/", name),
+            Some(name) => name.to_string(),
+            None => format!("<unknown>"),
+        };
+        frame
+            .with_fg(match self.kind {
+                FileKind::Dir => state.theme.option_dir,
+                FileKind::File | FileKind::Unknown => state.theme.option_file,
+                FileKind::New => state.theme.option_new,
+            })
+            .text([0, 0], name.chars());
+    }
+}
+
+impl Visual for Opener {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
+        frame
+            .rect([0, 0], [frame.size()[0], frame.size()[1].saturating_sub(3)])
+            .with(|f| self.options.render(state, f));
+        frame
+            .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
+            .with(|f| self.input.render(state, &self.buffer, self.cursor_id, f));
     }
 }

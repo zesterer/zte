@@ -42,6 +42,9 @@ pub struct Theme {
     pub focus_border: BorderTheme,
     pub text: Color,
     pub whitespace: Color,
+    pub option_dir: Color,
+    pub option_file: Color,
+    pub option_new: Color,
 }
 
 impl Default for Theme {
@@ -59,6 +62,9 @@ impl Default for Theme {
             },
             text: Color::Reset,
             whitespace: Color::AnsiValue(245),
+            option_dir: Color::AnsiValue(178),
+            option_file: Color::Reset,
+            option_new: Color::AnsiValue(148),
         }
     }
 }

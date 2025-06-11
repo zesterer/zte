@@ -9,6 +9,7 @@ enum Mode {
     #[default]
     Doc,
     Prompt,
+    Filter,
 }
 
 #[derive(Clone, Default)]
@@ -24,6 +25,13 @@ impl Input {
     pub fn prompt() -> Self {
         Self {
             mode: Mode::Prompt,
+            ..Self::default()
+        }
+    }
+
+    pub fn filter() -> Self {
+        Self {
+            mode: Mode::Filter,
             ..Self::default()
         }
     }
@@ -54,7 +62,7 @@ impl Input {
                 } else if c == '\x7F' {
                     buffer.delete(cursor_id);
                 } else {
-                    buffer.enter(cursor_id, c);
+                    buffer.enter(cursor_id, [c]);
                 }
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
@@ -80,11 +88,7 @@ impl Input {
         cursor_id: CursorId,
         frame: &mut Rect,
     ) {
-        let title = if let Some(path) = &buffer.path {
-            Some(path.display().to_string())
-        } else {
-            None
-        };
+        let title = buffer.name();
 
         // Add frame
         let mut frame = frame.with_border(
@@ -104,6 +108,7 @@ impl Input {
         let line_num_w = buffer.text.lines().count().max(1).ilog10() as usize + 1;
         let margin_w = match self.mode {
             Mode::Prompt => 2,
+            Mode::Filter => 0,
             Mode::Doc => line_num_w + 2,
         };
 
@@ -125,6 +130,7 @@ impl Input {
         {
             // Margin
             match self.mode {
+                Mode::Filter => frame.rect([0, 0], frame.size()),
                 Mode::Prompt => frame
                     .rect([0, i], [1, 1])
                     .with_bg(state.theme.margin_bg)
