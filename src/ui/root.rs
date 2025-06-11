@@ -77,13 +77,17 @@ impl Element<()> for Root {
         };
 
         // Handle 'top-level' actions
-        if let Some(action) =
-            action.and_then(|e| e.to_action(|e| e.to_open_prompt().or_else(|| e.to_cancel())))
-        {
+        if let Some(action) = action.and_then(|e| {
+            e.to_action(|e| {
+                e.to_open_prompt()
+                    .or_else(|| e.to_cancel())
+                    .or_else(|| e.to_command_start())
+            })
+        }) {
             match action {
                 Action::OpenPrompt => {
                     self.tasks.clear(); // Prompt overrides all
-                    self.tasks.push(Task::Prompt(Prompt::new()));
+                    self.tasks.push(Task::Prompt(Prompt::new("")));
                 }
                 Action::OpenSwitcher => {
                     self.tasks.clear(); // Overrides all
@@ -93,6 +97,11 @@ impl Element<()> for Root {
                 Action::OpenOpener(path) => {
                     self.tasks.clear(); // Overrides all
                     self.tasks.push(Task::Opener(Opener::new(path)));
+                }
+                Action::CommandStart(cmd) => {
+                    self.tasks.clear(); // Prompt overrides all
+                    self.tasks
+                        .push(Task::Prompt(Prompt::new(&format!("{cmd} "))));
                 }
                 Action::Cancel => self.tasks.push(Task::Confirm(Confirm {
                     label: Label("Are you sure you wish to quit? (y/n)".to_string()),

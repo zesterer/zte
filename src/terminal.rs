@@ -185,12 +185,8 @@ impl<'a> Rect<'a> {
         self.rect([0, 0], self.size())
     }
 
-    pub fn text<C: Borrow<char>>(
-        &mut self,
-        origin: [isize; 2],
-        text: impl IntoIterator<Item = C>,
-    ) -> Rect {
-        for (idx, c) in text.into_iter().enumerate() {
+    pub fn text(&mut self, origin: [isize; 2], text: &str) -> Rect {
+        for (idx, c) in text.chars().enumerate() {
             if (0..self.size()[0] as isize).contains(&(origin[0] + idx as isize)) && origin[1] >= 0
             {
                 let cell = Cell {

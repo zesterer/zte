@@ -9,24 +9,29 @@ pub struct Prompt {
 }
 
 impl Prompt {
-    pub fn new() -> Self {
+    pub fn new(init: &str) -> Self {
         let mut buffer = Buffer::default();
+        let cursor_id = buffer.start_session();
+        buffer.enter(cursor_id, init.chars());
         Self {
-            cursor_id: buffer.start_session(),
             buffer,
+            cursor_id,
             input: Input::prompt(),
         }
     }
 
-    pub fn get_action(&self) -> Option<Action> {
-        match self.buffer.text.to_string().as_str() {
+    pub fn parse_action(&self) -> Result<Action, String> {
+        let cmd = self.buffer.text.to_string();
+        let mut args = cmd.as_str().split_whitespace();
+
+        match args.next() {
             // The root sees 'cancel' as an initiator for quitting
-            "q" | "quit" => Some(Action::Cancel),
-            "version" => Some(Action::Show(
+            Some("q" | "quit") => Ok(Action::Cancel),
+            Some("version") => Ok(Action::Show(
                 Some(format!("Version")),
                 format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
             )),
-            "?" | "help" => Some(Action::Show(
+            Some("?" | "help") => Ok(Action::Show(
                 Some(format!("Help")),
                 format!(
                     "Temporary help info:\n\
@@ -37,9 +42,20 @@ impl Prompt {
                 - help"
                 ),
             )),
-            "pane_move_left" => Some(Action::PaneMove(Dir::Left)),
-            "pane_move_right" => Some(Action::PaneMove(Dir::Right)),
-            _ => None,
+            Some("pane_move_left") => Ok(Action::PaneMove(Dir::Left)),
+            Some("pane_move_right") => Ok(Action::PaneMove(Dir::Right)),
+            Some("goto_line") => {
+                // Subtract 1 due to zero indexing
+                let line = args
+                    .next()
+                    .ok_or_else(|| "Expected argument".to_string())?
+                    .parse::<isize>()
+                    .map_err(|_| "Expected integer".to_string())?
+                    - 1;
+                Ok(Action::GotoLine(line))
+            }
+            Some(cmd) => Err(format!("Unknown command `{cmd}`")),
+            None => Err(format!("No command entered")),
         }
     }
 
@@ -50,22 +66,20 @@ impl Prompt {
 
 impl Element<()> for Prompt {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
-        match event.to_action(|e| e.to_go().or_else(|| e.to_cancel())) {
+        match event.to_action(|e| {
+            e.to_go()
+                .or_else(|| e.to_cancel().or_else(|| e.to_command_start()))
+        }) {
             Some(Action::Cancel) => Ok(Resp::end(None)),
-            Some(Action::Go) => {
-                if let Some(action) = self.get_action() {
+            Some(Action::Go) => match self.parse_action() {
+                Ok(action) => {
                     self.buffer.clear();
                     Ok(Resp::end(Some(action.into())))
-                } else {
-                    Ok(Resp::handled(Some(
-                        Action::Show(
-                            Some(format!("Error")),
-                            format!("unknown command `{}`", self.buffer.text.to_string()),
-                        )
-                        .into(),
-                    )))
                 }
-            }
+                Err(err) => Ok(Resp::handled(Some(
+                    Action::Show(Some(format!("Error")), err).into(),
+                ))),
+            },
             _ => self
                 .input
                 .handle(&mut self.buffer, self.cursor_id, event)
@@ -248,7 +262,7 @@ impl Visual for BufferId {
         let Some(buffer) = state.buffers.get(*self) else {
             return;
         };
-        frame.text([0, 0], buffer.name().unwrap_or("<unknown>").chars());
+        frame.text([0, 0], buffer.name().unwrap_or("<unknown>"));
     }
 }
 
@@ -313,11 +327,15 @@ impl Opener {
                             is_link: entry.file_type().ok()?.is_symlink(),
                         })
                     })
-                    .chain([FileOption {
-                        path: [dir, &filter].into_iter().collect(),
-                        kind: FileKind::New,
-                        is_link: false,
-                    }]);
+                    .chain(if filter != "" {
+                        Some(FileOption {
+                            path: [dir, &filter].into_iter().collect(),
+                            kind: FileKind::New,
+                            is_link: false,
+                        })
+                    } else {
+                        None
+                    });
                 // TODO
                 self.options.set_options(options, |e| {
                     let name = e.path.file_name()?.to_str()?.to_lowercase();
@@ -395,9 +413,15 @@ pub struct FileOption {
 impl Visual for FileOption {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         let name = match self.path.file_name().and_then(|n| n.to_str()) {
-            Some(name) if matches!(self.kind, FileKind::Dir) => format!("{}/", name),
-            Some(name) => name.to_string(),
-            None => format!("<unknown>"),
+            Some(name) if matches!(self.kind, FileKind::Dir) => format!("{name}/"),
+            Some(name) => format!("{name}"),
+            None => format!("Unknown"),
+        };
+        let desc = match self.kind {
+            FileKind::Dir => "Directory",
+            FileKind::Unknown => "Unknown filesystem item",
+            FileKind::File => "File",
+            FileKind::New => "Create new file",
         };
         frame
             .with_fg(match self.kind {
@@ -405,7 +429,10 @@ impl Visual for FileOption {
                 FileKind::File | FileKind::Unknown => state.theme.option_file,
                 FileKind::New => state.theme.option_new,
             })
-            .text([0, 0], name.chars());
+            .text([0, 0], &name);
+        frame.with_fg(state.theme.margin_line_num).with(|f| {
+            f.text([f.size()[0] as isize / 2, 0], &desc);
+        });
     }
 }
 

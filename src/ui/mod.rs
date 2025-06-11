@@ -96,7 +96,7 @@ impl Visual for Label {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         frame.with(|frame| {
             for (idx, line) in self.lines().enumerate() {
-                frame.text([0, idx as isize], line.chars());
+                frame.text([0, idx as isize], &line);
             }
         });
     }

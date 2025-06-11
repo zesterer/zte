@@ -77,6 +77,11 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
+            Some(Action::GotoLine(line)) => {
+                buffer.goto_line_cursor(cursor_id, line);
+                self.refocus(buffer, cursor_id);
+                Ok(Resp::handled(None))
+            }
             _ => Err(event),
         }
     }
@@ -136,13 +141,13 @@ impl Input {
                     .with_bg(state.theme.margin_bg)
                     .with_fg(state.theme.margin_line_num)
                     .fill(' ')
-                    .text([0, 0], ">".chars()),
+                    .text([0, 0], ">"),
                 Mode::Doc => frame
                     .rect([0, i], [margin_w, 1])
                     .with_bg(state.theme.margin_bg)
                     .with_fg(state.theme.margin_line_num)
                     .fill(' ')
-                    .text([1, 0], format!("{:>line_num_w$}", line_num + 1).chars()),
+                    .text([1, 0], &format!("{:>line_num_w$}", line_num + 1)),
             };
 
             // Line
@@ -166,7 +171,7 @@ impl Input {
                                 state.theme.unfocus_select_bg
                             })
                             .with_fg(fg)
-                            .text([i as isize, 0], &[c]);
+                            .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
                     }
                 }
 

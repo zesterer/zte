@@ -123,7 +123,12 @@ impl Buffer {
             }
             // If the file doesn't exist, create a new file
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                (path.parent().map(Path::to_owned), Vec::new())
+                let dir = path
+                    .parent()
+                    .filter(|p| p.to_str() != Some(""))
+                    .map(Path::to_owned)
+                    .or_else(|| std::env::current_dir().ok());
+                (dir, Vec::new())
             }
             Err(err) => return Err(err.into()),
         };
@@ -150,6 +155,15 @@ impl Buffer {
         self.cursors.values_mut().for_each(|cursor| {
             *cursor = Cursor::default();
         });
+    }
+
+    pub fn goto_line_cursor(&mut self, cursor_id: CursorId, line: isize) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        cursor.pos = self.text.to_pos([0, line]);
+        cursor.reset_desired_col(&self.text);
+        cursor.base = cursor.pos;
     }
 
     pub fn move_cursor(

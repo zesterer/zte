@@ -30,6 +30,8 @@ pub enum Action {
     OpenOpener(PathBuf),          // Open the file opener
     SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
     OpenFile(PathBuf),            // Open the file and switch the current pane to it
+    CommandStart(&'static str),   // Start a new command
+    GotoLine(isize),              // Go to the specified file line
 }
 
 #[derive(Debug)]
@@ -215,6 +217,22 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenOpener(path))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_command_start(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('l'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::CommandStart("goto_line"))
         } else {
             None
         }
