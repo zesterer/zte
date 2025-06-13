@@ -232,9 +232,9 @@ impl Element<()> for Switcher {
                         };
                         let name = buffer.name()?;
                         if name.starts_with(&filter) {
-                            Some(2)
-                        } else if name.contains(&filter) {
                             Some(1)
+                        } else if name.contains(&filter) {
+                            Some(2)
                         } else {
                             None
                         }
@@ -341,19 +341,19 @@ impl Opener {
                     let name = e.path.file_name()?.to_str()?.to_lowercase();
                     if matches!(e.kind, FileKind::New) {
                         // Special-case: the 'new file' entry always matches last
-                        Some(0)
+                        Some((3, name.chars().count()))
                     } else if name == filter {
-                        Some(3)
+                        Some((0, name.chars().count()))
                     } else if name.starts_with(&filter) {
-                        Some(2)
+                        Some((1, name.chars().count()))
                     } else if name.contains(&filter) {
-                        Some(1)
+                        Some((2, name.chars().count()))
                     } else {
                         None
                     }
                 })
             }
-            Err(err) => self.options.set_options(Vec::new(), |_| None),
+            Err(err) => self.options.set_options::<_, ()>(Vec::new(), |_| None),
         }
     }
 }

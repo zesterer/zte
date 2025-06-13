@@ -120,7 +120,7 @@ impl<T> Options<T> {
         }
     }
 
-    pub fn set_options<F: FnMut(&T) -> Option<u32>>(
+    pub fn set_options<F: FnMut(&T) -> Option<S>, S: Ord + Copy>(
         &mut self,
         options: impl IntoIterator<Item = T>,
         mut f: F,
@@ -129,14 +129,14 @@ impl<T> Options<T> {
         self.apply_scoring(f);
     }
 
-    pub fn apply_scoring<F: FnMut(&T) -> Option<u32>>(&mut self, mut f: F) {
+    pub fn apply_scoring<F: FnMut(&T) -> Option<S>, S: Ord + Copy>(&mut self, mut f: F) {
         let mut ranking = self
             .options
             .iter()
             .enumerate()
             .filter_map(|(i, o)| Some((i, f(o)?)))
             .collect::<Vec<_>>();
-        ranking.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
+        ranking.sort_by_key(|(_, score)| *score);
         self.ranking = ranking.into_iter().map(|(i, _)| i).collect();
         self.selected = 0;
     }
