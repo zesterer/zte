@@ -1,4 +1,4 @@
-use crate::Color;
+use crate::{Color, highlight::TokenKind};
 
 pub struct BorderTheme {
     pub left: char,
@@ -45,6 +45,12 @@ pub struct Theme {
     pub option_dir: Color,
     pub option_file: Color,
     pub option_new: Color,
+
+    pub hl_token_whitespace: Color,
+    pub hl_token_ident: Color,
+    pub hl_token_keyword: Color,
+    pub hl_token_number: Color,
+    pub hl_token_type: Color,
 }
 
 impl Default for Theme {
@@ -65,6 +71,24 @@ impl Default for Theme {
             option_dir: Color::AnsiValue(178),
             option_file: Color::Reset,
             option_new: Color::AnsiValue(148),
+
+            hl_token_whitespace: Color::Reset,
+            hl_token_ident: Color::AnsiValue(187),
+            hl_token_keyword: Color::AnsiValue(46),
+            hl_token_number: Color::AnsiValue(45),
+            hl_token_type: Color::AnsiValue(203),
+        }
+    }
+}
+
+impl Theme {
+    pub fn token_color(&self, token: TokenKind) -> Color {
+        match token {
+            TokenKind::Whitespace => self.hl_token_whitespace,
+            TokenKind::Ident => self.hl_token_ident,
+            TokenKind::Keyword => self.hl_token_keyword,
+            TokenKind::Number => self.hl_token_number,
+            TokenKind::Type => self.hl_token_type,
         }
     }
 }

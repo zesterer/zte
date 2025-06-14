@@ -1,4 +1,8 @@
-use crate::{Args, Dir, Error, theme};
+use crate::{
+    Args, Dir, Error,
+    highlight::{Highlighter, Highlights},
+    theme,
+};
 use slotmap::{HopSlotMap, new_key_type};
 use std::{
     io,
@@ -107,19 +111,20 @@ impl Text {
 
 #[derive(Default)]
 pub struct Buffer {
+    pub text: Text,
+    pub highlights: Option<Highlights>,
+    pub cursors: HopSlotMap<CursorId, Cursor>,
     pub dir: Option<PathBuf>,
     pub path: Option<PathBuf>,
-    pub text: Text,
-    pub cursors: HopSlotMap<CursorId, Cursor>,
 }
 
 impl Buffer {
     pub fn from_file(path: PathBuf) -> Result<Self, Error> {
-        let (dir, chars) = match std::fs::read_to_string(&path) {
+        let (dir, chars, s) = match std::fs::read_to_string(&path) {
             Ok(s) => {
                 let mut path = path.canonicalize()?;
                 path.pop();
-                (Some(path), s.chars().collect())
+                (Some(path), s.chars().collect(), s)
             }
             // If the file doesn't exist, create a new file
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -128,15 +133,16 @@ impl Buffer {
                     .filter(|p| p.to_str() != Some(""))
                     .map(Path::to_owned)
                     .or_else(|| std::env::current_dir().ok());
-                (dir, Vec::new())
+                (dir, Vec::new(), String::new())
             }
             Err(err) => return Err(err.into()),
         };
         Ok(Self {
+            text: Text { chars },
+            highlights: Highlighter::from_file_name(&path).map(|h| h.highlight(&s)),
+            cursors: HopSlotMap::default(),
             dir,
             path: Some(path),
-            text: Text { chars },
-            cursors: HopSlotMap::default(),
         })
     }
 
@@ -149,8 +155,16 @@ impl Buffer {
         )
     }
 
+    fn update_highlights(&mut self) {
+        self.highlights = self
+            .highlights
+            .take()
+            .map(|hl| hl.highlighter.highlight(&self.text.to_string()));
+    }
+
     pub fn clear(&mut self) {
         self.text.chars.clear();
+        self.update_highlights();
         // Reset cursors
         self.cursors.values_mut().for_each(|cursor| {
             *cursor = Cursor::default();
@@ -226,6 +240,7 @@ impl Buffer {
                 .insert((pos + n).min(self.text.chars.len()), c);
             n += 1;
         }
+        self.update_highlights();
         self.cursors.values_mut().for_each(|cursor| {
             if cursor.base >= pos {
                 cursor.base += n;
@@ -253,6 +268,7 @@ impl Buffer {
     pub fn remove(&mut self, range: Range<usize>) {
         // TODO: Bell if false?
         self.text.chars.drain(range.clone());
+        self.update_highlights();
         self.cursors.values_mut().for_each(|cursor| {
             if cursor.base >= range.start {
                 cursor.base = cursor

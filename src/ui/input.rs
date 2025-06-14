@@ -160,7 +160,18 @@ impl Input {
                         let selected = cursor.selection().map_or(false, |s| s.contains(&pos));
                         let (fg, c) = match line[coord as usize] {
                             '\n' if selected => (state.theme.whitespace, '⮠'),
-                            c => (state.theme.text, c),
+                            c => {
+                                if let Some(fg) = buffer
+                                    .highlights
+                                    .as_ref()
+                                    .and_then(|hl| hl.get_at(pos))
+                                    .map(|tok| state.theme.token_color(tok))
+                                {
+                                    (fg, c)
+                                } else {
+                                    (state.theme.text, c)
+                                }
+                            }
                         };
                         frame
                             .with_bg(if !selected {
