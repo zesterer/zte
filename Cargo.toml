@@ -9,6 +9,7 @@ slotmap = "1.0"
 crossterm = "0.27"
 thiserror = "1.0"
 chumsky = { version = "0.10.1", features = ["pratt"] }
+unicode-display-width = "0.3.0"
 
 [profile.dev]
 opt-level = 2

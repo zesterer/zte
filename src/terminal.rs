@@ -354,7 +354,8 @@ impl<'a> Terminal<'a> {
                             stdout.queue(style::Print(c)).unwrap();
 
                             // Move cursor
-                            cursor_pos[0] += 1;
+                            cursor_pos[0] +=
+                                unicode_display_width::width(c.encode_utf8(&mut [0; 4])) as u16;
                         }
                     }
                 }

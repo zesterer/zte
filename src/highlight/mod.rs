@@ -2,11 +2,36 @@ use std::{ops::Range, path::Path};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TokenKind {
+    /// Non-structural whitespace
     Whitespace,
+    /// Identifiers and names
     Ident,
+    /// Syntax keywords
     Keyword,
+    /// Numeric literals
     Number,
+    /// Types or type definitions
     Type,
+    /// Comments, which have no effect on the code
+    Comment,
+    /// Documentation or doc comments
+    Doc,
+    /// Operators that perform work on operands
+    Operator,
+    /// Structural tokens (parentheses, braces, brackets, etc.)
+    Delimiter,
+    /// A field or method of another value (i.e: a named thing not present in the current namespace)
+    Property,
+    /// A special attribute or decorator attached to some other code
+    Attribute,
+    /// A macro, that transforms the code in some manner
+    Macro,
+    /// A string literal
+    String,
+    /// Misc special syntax (defined per-language)
+    Special,
+    /// A program constant or other statically-known name
+    Constant,
 }
 
 pub struct Highlighter {
@@ -26,32 +51,88 @@ impl Highlighter {
             .map(|p| Regex::parser().parse(p.as_ref()).unwrap())
             .collect();
 
-        Self {
-            entries,
-            /*regex: meta::Regex::new_many(&patterns).unwrap(),*/ matchers,
-        }
+        Self { entries, matchers }
     }
 
     pub fn from_file_name(file_name: &Path) -> Option<Self> {
         match file_name.extension()?.to_str()? {
             "rs" => Some(Self::rust()),
+            "md" => Some(Self::markdown()),
             _ => None,
         }
     }
 
-    pub fn rust() -> Self {
+    pub fn markdown() -> Self {
         Self::new_from_regex([
-            (
-                TokenKind::Keyword,
-                r"\b[(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(loop)(mod)]\b",
-            ),
-            (TokenKind::Ident, r"[a-z_][A-Za-z0-9_]*"),
-            (TokenKind::Type, r"[A-Z_][A-Za-z0-9_]*"),
-            (TokenKind::Number, r"[0-9][A-Za-z0-9_]*"),
+            // Links
+            (TokenKind::String, r"\[[^\]]*\](\([^\)]*\))?"),
+            // Header
+            (TokenKind::Doc, r"^#+[[:space:]][^$]*$"),
+            // List item
+            (TokenKind::Operator, r"^[[:space:]]?[\-([0-9]+[\)\.])]"),
+            // Bold
+            (TokenKind::Property, r"\*\*[^(\*\*)]*\*\*"),
+            // Italics
+            (TokenKind::Attribute, r"\*[^\*]*\*"),
+            // Code block
+            (TokenKind::Operator, r"^```[^(^```)]*^```"),
+            // Inline code
+            (TokenKind::Constant, r"`[^`$]*[`$]"),
+            // HTML
+            (TokenKind::Special, r"<[^<>]*>"),
         ])
     }
 
-    fn highlight_str(&self, mut s: &str) -> Vec<(Range<usize>, TokenKind)> {
+    pub fn rust() -> Self {
+        Self::new_from_regex([
+            (TokenKind::Doc, r"\/\/[\/!][^\n]*$"),
+            (TokenKind::Comment, r"\/\/[^$]*$"),
+            // Multi-line comment
+            (TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/"),
+            (
+                TokenKind::Keyword,
+                r"\b[(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(mut)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(async)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
+            ),
+            (TokenKind::Constant, r"\b[(true)(false)]\b"),
+            // Flow-control operators count as keywords
+            (TokenKind::Keyword, r"\b[(\.await)\?]\b"),
+            // Macro invocations: println!
+            (TokenKind::Macro, r"\b[A-Za-z_][A-Za-z0-9_]*!"),
+            // Meta-variables
+            (TokenKind::Macro, r"\$[A-Za-z_][A-Za-z0-9_]*\b"),
+            (TokenKind::Constant, r"\b[A-Z][A-Z0-9_]+\b"),
+            (TokenKind::Type, r"\b[A-Z][A-Za-z0-9_]*\b"),
+            // Primitives
+            (
+                TokenKind::Type,
+                r"\b[(u8)(u16)(u32)(u64)(u128)(i8)(i16)(i32)(i64)(i128)(usize)(isize)(bool)(str)(char)]\b",
+            ),
+            // "foo" or b"foo" or r#"foo"#
+            (TokenKind::String, r#"b?r?(#*)@("[(\\")[^("~)]]*("~))"#),
+            // Characters
+            (
+                TokenKind::String,
+                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]'"#,
+            ),
+            (
+                TokenKind::Operator,
+                r"[(&(mut)?)(\+=?)(\-=?)(\*=?)(\/=?)(%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
+            ),
+            // Fields and methods: a.foo
+            (TokenKind::Property, r"\.[a-z_][A-Za-z0-9_]*"),
+            // Paths: std::foo::bar
+            (TokenKind::Property, r"[A-Za-z_][A-Za-z0-9_]*::"),
+            // Lifetimes
+            (TokenKind::Special, r"'[a-z_][A-Za-z0-9_]*\b"),
+            (TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b"),
+            (TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*"),
+            (TokenKind::Delimiter, r"[\{\}\(\)\[\]]"),
+            (TokenKind::Macro, r"[\{\}\(\)\[\]]"),
+            (TokenKind::Attribute, r"#!?\[[^\]]*\]"),
+        ])
+    }
+
+    fn highlight_str(&self, mut s: &[char]) -> Vec<(Range<usize>, TokenKind)> {
         let mut tokens = Vec::new();
         let mut i = 0;
         loop {
@@ -63,8 +144,8 @@ impl Highlighter {
             {
                 tokens.push((i..i + n, self.entries[idx]));
                 n
-            } else if let Some((n, _)) = s.char_indices().nth(1) {
-                n
+            } else if !s.is_empty() {
+                1
             } else {
                 break;
             };
@@ -74,7 +155,7 @@ impl Highlighter {
         tokens
     }
 
-    pub fn highlight(self, s: &str) -> Highlights {
+    pub fn highlight(self, s: &[char]) -> Highlights {
         let tokens = self.highlight_str(s);
         Highlights {
             highlighter: self,
@@ -107,32 +188,40 @@ impl Highlights {
 pub enum Regex {
     Whitespace,
     WordBoundary,
+    LineStart,
+    LineEnd,
+    LastDelim,
     Range(char, char),
     Char(char),
     Set(Vec<Self>),
+    NegSet(Vec<Self>),
     Group(Vec<Self>),
-    // (at_least, _)
-    Many(usize, Box<Self>),
+    // (at_least, at_most, _)
+    Many(usize, usize, Box<Self>),
+    // (delimiter, x) - delimit x with `delimiter` on either side (used for raw strings)
+    Delim(Box<Self>, Box<Self>),
 }
 
 struct State<'a> {
-    s: &'a str,
+    s: &'a [char],
     pos: usize,
+    delim: Option<&'a [char]>,
 }
 
 impl State<'_> {
     fn peek(&self) -> Option<char> {
-        self.s[self.pos..].chars().next()
+        self.s.get(self.pos).copied()
     }
 
     fn prev(&self) -> Option<char> {
-        self.s[..self.pos].chars().rev().next()
+        self.s[..self.pos].last().copied()
+        // self.s.get(self.pos.saturating_sub(1)).copied()
     }
 
-    fn skip(&mut self) {
-        if let Some(c) = self.peek() {
-            self.pos += c.len_utf8();
-        }
+    fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
+        self.peek().filter(|c| f(*c))?;
+        self.pos += 1;
+        Some(())
     }
 
     fn attempt(&mut self, r: &Regex) -> Option<()> {
@@ -152,25 +241,31 @@ impl State<'_> {
                 (is_word(self.prev().unwrap_or(' ')) != is_word(self.peek().unwrap_or(' ')))
                     .then_some(())
             }
-            Regex::Char(c) => {
-                if self.peek()? == *c {
-                    self.skip();
+            Regex::LineStart => self.prev().map_or(true, |c| c == '\n').then_some(()),
+            Regex::LineEnd => self.peek().map_or(true, |c| c == '\n').then_some(()),
+            Regex::LastDelim => {
+                if self.s[self.pos..].starts_with(self.delim?) {
+                    self.pos += self.delim.unwrap().len();
                     Some(())
                 } else {
                     None
                 }
             }
+            Regex::Char(x) => self.skip_if(|c| c == *x),
             Regex::Whitespace => {
                 let mut once = false;
-                while let Some(c) = self.peek() {
-                    if c.is_ascii_whitespace() {
-                        self.skip();
-                        once = true;
-                    } else {
-                        break;
-                    }
+                while self.skip_if(|c| c.is_ascii_whitespace()).is_some() {
+                    once = true;
                 }
                 once.then_some(())
+            }
+            Regex::NegSet(xs) => {
+                if xs.iter().all(|x| self.attempt(x).is_none()) {
+                    self.skip_if(|_| true)?;
+                    Some(())
+                } else {
+                    None
+                }
             }
             Regex::Set(xs) => xs.iter().find_map(|x| self.attempt(x)),
             Regex::Group(xs) => {
@@ -179,72 +274,101 @@ impl State<'_> {
                 }
                 Some(())
             }
-            Regex::Range(a, b) => {
-                if (a..=b).contains(&&self.peek()?) {
-                    self.skip();
-                    Some(())
-                } else {
-                    None
-                }
-            }
-            Regex::Many(at_least, x) => {
+            Regex::Range(a, b) => self.skip_if(|c| (a..=b).contains(&&c)),
+            Regex::Many(at_least, at_most, x) => {
                 let mut times = 0;
                 loop {
-                    if self.attempt(x).is_none() {
+                    let pos = self.pos;
+                    if times >= *at_most {
+                        break;
+                    } else if self.attempt(x).is_none() {
                         break;
                     }
+                    assert_ne!(pos, self.pos, "{x:?}");
                     times += 1;
                 }
 
                 if times >= *at_least { Some(()) } else { None }
             }
-            r => todo!("{r:?}"),
+            Regex::Delim(d, r) => {
+                let old_pos = self.pos;
+                self.go(d)?;
+                let old_delim = self.delim.replace(&self.s[old_pos..self.pos]);
+                let res = self.go(r);
+                self.delim = old_delim;
+                res
+            }
         }
     }
 }
 
 impl Regex {
-    fn matches(&self, s: &str) -> Option<usize> {
-        let mut s = State { s, pos: 0 };
+    fn matches(&self, s: &[char]) -> Option<usize> {
+        let mut s = State {
+            s,
+            pos: 0,
+            delim: None,
+        };
         s.go(self).map(|_| s.pos)
     }
 }
 
-use chumsky::{pratt::postfix, prelude::*};
+use chumsky::{
+    pratt::{infix, left, postfix},
+    prelude::*,
+};
 
 impl Regex {
     fn parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
         recursive(|regex| {
-            let char_ = any().filter(|c: &char| c.is_alphanumeric() || *c == '_');
+            let metachars = r"{}[]()^$.|*+-?\/@~";
+            let char_ = choice((
+                none_of(metachars),
+                // Escaped meta characters
+                just('\\').ignore_then(one_of(metachars)),
+                just("\\n").to('\n'),
+            ));
 
             let range = char_
                 .then_ignore(just('-'))
                 .then(char_)
                 .map(|(a, b)| Self::Range(a, b));
 
+            let items = regex.clone().repeated().collect();
+
             let atom = choice((
                 range,
                 char_.map(Self::Char),
                 just("\\b").to(Self::WordBoundary),
+                just("^").to(Self::LineStart),
+                just("$").to(Self::LineEnd),
+                just("~").to(Self::LastDelim),
                 // Classes
                 just("[[:space:]]").map(|_| Self::Whitespace),
-                regex
+                items
                     .clone()
-                    .repeated()
-                    .collect()
+                    .delimited_by(just("[^"), just(']'))
+                    .map(Regex::NegSet),
+                items
+                    .clone()
                     .delimited_by(just('['), just(']'))
                     .map(Regex::Set),
-                regex
+                items
                     .clone()
-                    .repeated()
-                    .collect()
                     .delimited_by(just('('), just(')'))
                     .map(Regex::Group),
             ));
 
             atom.pratt((
-                postfix(0, just('*'), |r, _, _| Self::Many(0, Box::new(r))),
-                postfix(0, just('+'), |r, _, _| Self::Many(1, Box::new(r))),
+                postfix(1, just('*'), |r, _, _| Self::Many(0, !0, Box::new(r))),
+                postfix(1, just('+'), |r, _, _| Self::Many(1, !0, Box::new(r))),
+                postfix(1, just('?'), |r, _, _| Self::Many(0, 1, Box::new(r))),
+                // Non-standard: `x@y` parses `x` and then `y`. `y` can use `~` to refer to the extra string that was
+                // parsed by `x`. This supports nesting and is intended for context-sensitive patterns like Rust raw
+                // strings.
+                infix(left(0), just('@'), |d, _, r, _| {
+                    Self::Delim(Box::new(d), Box::new(r))
+                }),
             ))
         })
         .repeated()

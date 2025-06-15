@@ -51,6 +51,16 @@ pub struct Theme {
     pub hl_token_keyword: Color,
     pub hl_token_number: Color,
     pub hl_token_type: Color,
+    pub hl_token_comment: Color,
+    pub hl_token_operator: Color,
+    pub hl_token_delimiter: Color,
+    pub hl_token_doc: Color,
+    pub hl_token_attribute: Color,
+    pub hl_token_property: Color,
+    pub hl_token_macro: Color,
+    pub hl_token_string: Color,
+    pub hl_token_special: Color,
+    pub hl_token_constant: Color,
 }
 
 impl Default for Theme {
@@ -73,10 +83,20 @@ impl Default for Theme {
             option_new: Color::AnsiValue(148),
 
             hl_token_whitespace: Color::Reset,
-            hl_token_ident: Color::AnsiValue(187),
-            hl_token_keyword: Color::AnsiValue(46),
+            hl_token_ident: Color::AnsiValue(7),
+            hl_token_keyword: Color::AnsiValue(112),
             hl_token_number: Color::AnsiValue(45),
-            hl_token_type: Color::AnsiValue(203),
+            hl_token_type: Color::AnsiValue(210),
+            hl_token_comment: Color::AnsiValue(145),
+            hl_token_operator: Color::AnsiValue(111),
+            hl_token_delimiter: Color::AnsiValue(37),
+            hl_token_doc: Color::AnsiValue(180),
+            hl_token_attribute: Color::AnsiValue(146),
+            hl_token_property: Color::AnsiValue(152),
+            hl_token_macro: Color::AnsiValue(117),
+            hl_token_string: Color::AnsiValue(179),
+            hl_token_special: Color::AnsiValue(160),
+            hl_token_constant: Color::AnsiValue(81),
         }
     }
 }
@@ -89,6 +109,16 @@ impl Theme {
             TokenKind::Keyword => self.hl_token_keyword,
             TokenKind::Number => self.hl_token_number,
             TokenKind::Type => self.hl_token_type,
+            TokenKind::Comment => self.hl_token_comment,
+            TokenKind::Operator => self.hl_token_operator,
+            TokenKind::Delimiter => self.hl_token_delimiter,
+            TokenKind::Doc => self.hl_token_doc,
+            TokenKind::Attribute => self.hl_token_attribute,
+            TokenKind::Property => self.hl_token_property,
+            TokenKind::Macro => self.hl_token_macro,
+            TokenKind::String => self.hl_token_string,
+            TokenKind::Special => self.hl_token_special,
+            TokenKind::Constant => self.hl_token_constant,
         }
     }
 }

@@ -456,6 +456,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "unicode-display-width"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a43273b656140aa2bb8e65351fe87c255f0eca706b2538a9bd4a590a3490bf3"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -648,4 +657,5 @@ dependencies = [
  "crossterm",
  "slotmap",
  "thiserror",
+ "unicode-display-width",
 ]

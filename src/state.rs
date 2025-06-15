@@ -49,6 +49,11 @@ impl ToString for Text {
 }
 
 impl Text {
+    // TODO: Remove this
+    pub fn chars(&self) -> &[char] {
+        &self.chars
+    }
+
     pub fn to_coord(&self, pos: usize) -> [isize; 2] {
         let mut n = 0;
         let mut last_n = 0;
@@ -138,8 +143,8 @@ impl Buffer {
             Err(err) => return Err(err.into()),
         };
         Ok(Self {
+            highlights: Highlighter::from_file_name(&path).map(|h| h.highlight(&chars)),
             text: Text { chars },
-            highlights: Highlighter::from_file_name(&path).map(|h| h.highlight(&s)),
             cursors: HopSlotMap::default(),
             dir,
             path: Some(path),
@@ -159,7 +164,7 @@ impl Buffer {
         self.highlights = self
             .highlights
             .take()
-            .map(|hl| hl.highlighter.highlight(&self.text.to_string()));
+            .map(|hl| hl.highlighter.highlight(self.text.chars()));
     }
 
     pub fn clear(&mut self) {
