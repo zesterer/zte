@@ -55,7 +55,12 @@ impl Input {
         cursor_id: CursorId,
         event: Event,
     ) -> Result<Resp, Event> {
-        match event.to_action(|e| e.to_char().map(Action::Char).or_else(|| e.to_move())) {
+        match event.to_action(|e| {
+            e.to_char()
+                .map(Action::Char)
+                .or_else(|| e.to_move())
+                .or_else(|| e.to_select_token())
+        }) {
             Some(Action::Char(c)) => {
                 if c == '\x08' {
                     buffer.backspace(cursor_id);
@@ -80,6 +85,10 @@ impl Input {
             Some(Action::GotoLine(line)) => {
                 buffer.goto_line_cursor(cursor_id, line);
                 self.refocus(buffer, cursor_id);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::SelectToken) => {
+                buffer.select_token_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
             _ => Err(event),
@@ -165,7 +174,7 @@ impl Input {
                                     .highlights
                                     .as_ref()
                                     .and_then(|hl| hl.get_at(pos))
-                                    .map(|tok| state.theme.token_color(tok))
+                                    .map(|tok| state.theme.token_color(tok.kind))
                                 {
                                     (fg, c)
                                 } else {

@@ -185,6 +185,36 @@ impl Buffer {
         cursor.base = cursor.pos;
     }
 
+    pub fn select_token_cursor(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        if let Some(tok) = self
+            .highlights
+            .as_ref()
+            // Choose the longest token that the cursor is touching
+            .and_then(|hl| {
+                let a = hl.get_at(cursor.pos);
+                let b = hl.get_at(cursor.pos.saturating_sub(1));
+                a.zip(b)
+                    .map(|(a, b)| {
+                        if a.range.end - a.range.start > b.range.end - b.range.start {
+                            a
+                        } else {
+                            b
+                        }
+                    })
+                    .or(a)
+                    .or(b)
+            })
+        {
+            cursor.base = tok.range.start;
+            cursor.pos = tok.range.end;
+        } else {
+            // TODO: Bell
+        }
+    }
+
     pub fn move_cursor(
         &mut self,
         cursor_id: CursorId,

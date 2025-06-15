@@ -85,8 +85,12 @@ impl Highlighter {
 
     pub fn rust() -> Self {
         Self::new_from_regex([
-            (TokenKind::Doc, r"\/\/[\/!][^\n]*$"),
-            (TokenKind::Comment, r"\/\/[^$]*$"),
+            // Both kinds of comments match multiple lines
+            (
+                TokenKind::Doc,
+                r"\/\/[\/!][^\n]*$(\n[[:space:]]\/\/[\/!][^\n]*$)*",
+            ),
+            (TokenKind::Comment, r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*"),
             // Multi-line comment
             (TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/"),
             (
@@ -105,7 +109,7 @@ impl Highlighter {
             // Primitives
             (
                 TokenKind::Type,
-                r"\b[(u8)(u16)(u32)(u64)(u128)(i8)(i16)(i32)(i64)(i128)(usize)(isize)(bool)(str)(char)]\b",
+                r"\b[(u8)(u16)(u32)(u64)(u128)(i8)(i16)(i32)(i64)(i128)(usize)(isize)(bool)(str)(char)(f16)(f32)(f64)(f128)]\b",
             ),
             // "foo" or b"foo" or r#"foo"#
             (TokenKind::String, r#"b?r?(#*)@("[(\\")[^("~)]]*("~))"#),
@@ -132,7 +136,7 @@ impl Highlighter {
         ])
     }
 
-    fn highlight_str(&self, mut s: &[char]) -> Vec<(Range<usize>, TokenKind)> {
+    fn highlight_str(&self, mut s: &[char]) -> Vec<Token> {
         let mut tokens = Vec::new();
         let mut i = 0;
         loop {
@@ -142,7 +146,10 @@ impl Highlighter {
                 .enumerate()
                 .find_map(|(i, r)| Some((i, r.matches(s)?)))
             {
-                tokens.push((i..i + n, self.entries[idx]));
+                tokens.push(Token {
+                    kind: self.entries[idx],
+                    range: i..i + n,
+                });
                 n
             } else if !s.is_empty() {
                 1
@@ -166,21 +173,31 @@ impl Highlighter {
 
 pub struct Highlights {
     pub highlighter: Highlighter,
-    tokens: Vec<(Range<usize>, TokenKind)>,
+    tokens: Vec<Token>,
+}
+
+#[derive(Clone)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub range: Range<usize>,
 }
 
 impl Highlights {
     pub fn insert(&mut self, at: usize, s: &str) {}
 
-    pub fn get_at(&self, pos: usize) -> Option<TokenKind> {
+    pub fn get_at(&self, pos: usize) -> Option<&Token> {
         let idx = self.tokens
-            .binary_search_by_key(&pos, |(r, _)| r.start)
+            .binary_search_by_key(&pos, |tok| tok.range.start)
             // .ok()?
             .unwrap_or_else(|p| p.saturating_sub(1))
             // .saturating_sub(1)
         ;
-        let (r, tok) = self.tokens.get(idx)?;
-        if r.contains(&pos) { Some(*tok) } else { None }
+        let tok = self.tokens.get(idx)?;
+        if tok.range.contains(&pos) {
+            Some(tok)
+        } else {
+            None
+        }
     }
 }
 
@@ -279,16 +296,12 @@ impl State<'_> {
                 let mut times = 0;
                 loop {
                     let pos = self.pos;
-                    if times >= *at_most {
-                        break;
-                    } else if self.attempt(x).is_none() {
-                        break;
+                    if times >= *at_most || self.attempt(x).is_none() {
+                        break (times >= *at_least).then_some(());
                     }
                     assert_ne!(pos, self.pos, "{x:?}");
                     times += 1;
                 }
-
-                if times >= *at_least { Some(()) } else { None }
             }
             Regex::Delim(d, r) => {
                 let old_pos = self.pos;

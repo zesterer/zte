@@ -32,6 +32,7 @@ pub enum Action {
     OpenFile(PathBuf),            // Open the file and switch the current pane to it
     CommandStart(&'static str),   // Start a new command
     GotoLine(isize),              // Go to the specified file line
+    SelectToken,                  // Fully select the token under the cursor
 }
 
 #[derive(Debug)]
@@ -172,6 +173,22 @@ impl RawEvent {
         };
 
         Some(Action::Move(dir, page, retain_base))
+    }
+
+    pub fn to_select_token(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char(' '),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::SelectToken)
+        } else {
+            None
+        }
     }
 
     pub fn to_open_prompt(&self) -> Option<Action> {
