@@ -36,17 +36,19 @@ impl Input {
         }
     }
 
+    pub fn focus(&mut self, coord: [isize; 2]) {
+        for i in 0..2 {
+            self.focus[i] =
+                self.focus[i].clamp(coord[i] - self.last_size[i] as isize + 1, coord[i]);
+        }
+    }
+
     pub fn refocus(&mut self, buffer: &mut Buffer, cursor_id: CursorId) {
         let Some(cursor) = buffer.cursors.get(cursor_id) else {
             return;
         };
         let cursor_coord = buffer.text.to_coord(cursor.pos);
-        for i in 0..2 {
-            self.focus[i] = self.focus[i].clamp(
-                cursor_coord[i] - self.last_size[i] as isize + 1,
-                cursor_coord[i],
-            );
-        }
+        self.focus(cursor_coord);
     }
 
     pub fn handle(
@@ -60,6 +62,7 @@ impl Input {
                 .map(Action::Char)
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_select_token())
+                .or_else(|| e.to_indent())
         }) {
             Some(Action::Char(c)) => {
                 if c == '\x08' {
@@ -82,6 +85,10 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
+            Some(Action::Indent(forward)) => {
+                buffer.indent(cursor_id, forward);
+                Ok(Resp::handled(None))
+            }
             Some(Action::GotoLine(line)) => {
                 buffer.goto_line_cursor(cursor_id, line);
                 self.refocus(buffer, cursor_id);
@@ -98,12 +105,12 @@ impl Input {
     pub fn render(
         &mut self,
         state: &State,
+        title: Option<&str>,
         buffer: &Buffer,
         cursor_id: CursorId,
+        search: Option<&Search>,
         frame: &mut Rect,
     ) {
-        let title = buffer.name();
-
         // Add frame
         let mut frame = frame.with_border(
             if frame.has_focus() {
@@ -182,14 +189,21 @@ impl Input {
                                 }
                             }
                         };
+                        let bg = if let Some(s) = search {
+                            match s.contains(pos) {
+                                Some(true) => state.theme.select_bg,
+                                Some(false) => state.theme.unfocus_select_bg,
+                                None => Color::Reset,
+                            }
+                        } else if !selected {
+                            Color::Reset
+                        } else if frame.has_focus() {
+                            state.theme.select_bg
+                        } else {
+                            state.theme.unfocus_select_bg
+                        };
                         frame
-                            .with_bg(if !selected {
-                                Color::Reset
-                            } else if frame.has_focus() {
-                                state.theme.select_bg
-                            } else {
-                                state.theme.unfocus_select_bg
-                            })
+                            .with_bg(bg)
                             .with_fg(fg)
                             .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
                     }
@@ -208,19 +222,3 @@ impl Input {
         }
     }
 }
-
-// impl Visual for Input {
-//     fn render(&mut self, state: &State, frame: &mut Rect) {
-//         frame.with(|frame| {
-//             frame.fill(' ');
-//             frame.text([0, 0], self.preamble.chars());
-
-//             frame
-//                 .rect([self.preamble.chars().count(), 0], frame.size())
-//                 .with(|frame| {
-//                     frame.text([0, 0], &self.text);
-//                     frame.set_cursor([self.cursor as isize, 0], CursorStyle::BlinkingBar);
-//                 });
-//         });
-//     }
-// }

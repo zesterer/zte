@@ -13,7 +13,7 @@ pub enum Dir {
 #[derive(Clone, Debug)]
 pub enum Action {
     Char(char),                   // Insert a character
-    Backspace,                    // Backspace a character
+    Indent(bool),                 // Indent (indent vs deindent)
     Move(Dir, bool, bool),        // Move the cursor (dir, page, retain_base)
     PaneMove(Dir),                // Move panes
     PaneOpen(Dir),                // Create a new pane
@@ -28,6 +28,7 @@ pub enum Action {
     Show(Option<String>, String), // Display an optionally titled informational text box to the user
     OpenSwitcher,                 // Open the buffer switcher
     OpenOpener(PathBuf),          // Open the file opener
+    OpenFinder,                   // Open the finder
     SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
     OpenFile(PathBuf),            // Open the file and switch the current pane to it
     CommandStart(&'static str),   // Start a new command
@@ -191,6 +192,20 @@ impl RawEvent {
         }
     }
 
+    pub fn to_indent(&self) -> Option<Action> {
+        if let TerminalEvent::Key(KeyEvent {
+            code: c @ (KeyCode::Tab | KeyCode::BackTab),
+            modifiers: KeyModifiers::NONE | KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            ..
+        }) = &self.0
+        {
+            Some(Action::Indent(*c == KeyCode::Tab))
+        } else {
+            None
+        }
+    }
+
     pub fn to_open_prompt(&self) -> Option<Action> {
         if matches!(
             &self.0,
@@ -234,6 +249,22 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenOpener(path))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_open_finder(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('f'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenFinder)
         } else {
             None
         }

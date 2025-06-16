@@ -6,9 +6,9 @@ mod root;
 mod status;
 
 pub use self::{
-    doc::Doc,
+    doc::{Doc, Search},
     input::Input,
-    panes::Panes,
+    panes::{Pane, Panes},
     prompt::{Confirm, Opener, Prompt, Show, Switcher},
     root::Root,
     status::Status,

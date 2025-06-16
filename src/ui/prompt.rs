@@ -90,7 +90,10 @@ impl Element<()> for Prompt {
 
 impl Visual for Prompt {
     fn render(&mut self, state: &State, frame: &mut Rect) {
-        frame.with(|f| self.input.render(state, &self.buffer, self.cursor_id, f));
+        frame.with(|f| {
+            self.input
+                .render(state, None, &self.buffer, self.cursor_id, None, f)
+        });
     }
 }
 
@@ -253,7 +256,10 @@ impl Visual for Switcher {
             .with(|f| self.options.render(state, f));
         frame
             .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
-            .with(|f| self.input.render(state, &self.buffer, self.cursor_id, f));
+            .with(|f| {
+                self.input
+                    .render(state, None, &self.buffer, self.cursor_id, None, f)
+            });
     }
 }
 
@@ -443,6 +449,9 @@ impl Visual for Opener {
             .with(|f| self.options.render(state, f));
         frame
             .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
-            .with(|f| self.input.render(state, &self.buffer, self.cursor_id, f));
+            .with(|f| {
+                self.input
+                    .render(state, None, &self.buffer, self.cursor_id, None, f)
+            });
     }
 }

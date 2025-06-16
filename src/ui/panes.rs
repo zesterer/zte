@@ -1,7 +1,6 @@
 use super::*;
 use crate::state::BufferId;
 
-#[derive(Clone)]
 pub enum Pane {
     Empty,
     Doc(Doc),
@@ -21,6 +20,10 @@ impl Panes {
                 .map(|b| Pane::Doc(Doc::new(state, *b)))
                 .collect(),
         }
+    }
+
+    pub fn selected_mut(&mut self) -> Option<&mut Pane> {
+        self.panes.get_mut(self.selected)
     }
 }
 

@@ -35,6 +35,18 @@ impl Cursor {
             Some(self.base.min(self.pos)..self.base.max(self.pos))
         }
     }
+
+    pub fn place_at(&mut self, pos: usize) {
+        self.base = pos;
+        self.pos = pos;
+        // TODO: Reset desired position
+    }
+
+    pub fn select(&mut self, range: Range<usize>) {
+        self.base = range.start;
+        self.pos = range.end;
+        // TODO: Reset desired position
+    }
 }
 
 #[derive(Default)]
@@ -208,10 +220,29 @@ impl Buffer {
                     .or(b)
             })
         {
-            cursor.base = tok.range.start;
-            cursor.pos = tok.range.end;
+            cursor.select(tok.range.clone());
         } else {
             // TODO: Bell
+        }
+    }
+
+    fn indent_at(&mut self, pos: usize) {
+        const TAB_ALIGN: usize = 4;
+
+        let coord = self.text.to_coord(pos).map(|e| e.max(0) as usize);
+        let next_up = |x: usize, n: usize| (x / n + 1) * n;
+        let n = next_up(coord[0], TAB_ALIGN) - coord[0];
+        self.insert(pos, (0..n).map(|_| ' '));
+    }
+
+    pub fn indent(&mut self, cursor_id: CursorId, forward: bool) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        if let Some(range) = cursor.selection() {
+        } else {
+            let pos = cursor.pos;
+            self.indent_at(pos);
         }
     }
 
