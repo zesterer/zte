@@ -268,7 +268,7 @@ impl Visual for BufferId {
         let Some(buffer) = state.buffers.get(*self) else {
             return;
         };
-        frame.text([0, 0], buffer.name().unwrap_or("<unknown>"));
+        frame.text([0, 0], buffer.name().as_deref().unwrap_or("<unknown>"));
     }
 }
 

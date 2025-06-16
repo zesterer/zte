@@ -34,6 +34,7 @@ pub enum Action {
     CommandStart(&'static str),   // Start a new command
     GotoLine(isize),              // Go to the specified file line
     SelectToken,                  // Fully select the token under the cursor
+    Save,                         // Save the current buffer
 }
 
 #[derive(Debug)]
@@ -345,6 +346,22 @@ impl RawEvent {
     pub fn to_no(&self) -> Option<Action> {
         if matches!(self.to_char(), Some('n' | 'N')) {
             Some(Action::No)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_save(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('s'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::Save)
         } else {
             None
         }

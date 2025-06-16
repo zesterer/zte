@@ -192,7 +192,7 @@ impl Input {
                         let bg = if let Some(s) = search {
                             match s.contains(pos) {
                                 Some(true) => state.theme.select_bg,
-                                Some(false) => state.theme.unfocus_select_bg,
+                                Some(false) => state.theme.search_result_bg,
                                 None => Color::Reset,
                             }
                         } else if !selected {

@@ -128,6 +128,7 @@ impl Text {
 
 #[derive(Default)]
 pub struct Buffer {
+    pub unsaved: bool,
     pub text: Text,
     pub highlights: Option<Highlights>,
     pub cursors: HopSlotMap<CursorId, Cursor>,
@@ -137,11 +138,11 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn from_file(path: PathBuf) -> Result<Self, Error> {
-        let (dir, chars, s) = match std::fs::read_to_string(&path) {
+        let (unsaved, dir, chars, s) = match std::fs::read_to_string(&path) {
             Ok(s) => {
                 let mut path = path.canonicalize()?;
                 path.pop();
-                (Some(path), s.chars().collect(), s)
+                (false, Some(path), s.chars().collect(), s)
             }
             // If the file doesn't exist, create a new file
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -150,11 +151,12 @@ impl Buffer {
                     .filter(|p| p.to_str() != Some(""))
                     .map(Path::to_owned)
                     .or_else(|| std::env::current_dir().ok());
-                (dir, Vec::new(), String::new())
+                (true, dir, Vec::new(), String::new())
             }
             Err(err) => return Err(err.into()),
         };
         Ok(Self {
+            unsaved,
             highlights: Highlighter::from_file_name(&path).map(|h| h.highlight(&chars)),
             text: Text { chars },
             cursors: HopSlotMap::default(),
@@ -163,11 +165,22 @@ impl Buffer {
         })
     }
 
-    pub fn name(&self) -> Option<&str> {
+    pub fn save(&mut self) -> Result<(), Error> {
+        if self.unsaved {
+            std::fs::write(
+                self.path.as_ref().expect("buffer must have path to save"),
+                self.text.to_string(),
+            )?;
+            self.unsaved = false;
+        }
+        Ok(())
+    }
+
+    pub fn name(&self) -> Option<String> {
         Some(
             match self.path.as_ref()?.file_name().and_then(|n| n.to_str()) {
-                Some(name) => name,
-                None => "<error>",
+                Some(name) => format!("{}{name}", if self.unsaved { "* " } else { "" }),
+                None => "<error>".to_string(),
             },
         )
     }
@@ -180,6 +193,8 @@ impl Buffer {
     }
 
     pub fn clear(&mut self) {
+        self.unsaved = true;
+
         self.text.chars.clear();
         self.update_highlights();
         // Reset cursors
@@ -299,6 +314,8 @@ impl Buffer {
     }
 
     pub fn insert(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) {
+        self.unsaved = true;
+
         let mut n = 0;
         for c in chars {
             self.text
@@ -332,6 +349,8 @@ impl Buffer {
 
     // Assumes range is well-formed
     pub fn remove(&mut self, range: Range<usize>) {
+        self.unsaved = true;
+
         // TODO: Bell if false?
         self.text.chars.drain(range.clone());
         self.update_highlights();
@@ -409,6 +428,17 @@ impl TryFrom<Args> for State {
 }
 
 impl State {
+    pub fn open_or_get(&mut self, path: PathBuf) -> Result<BufferId, Error> {
+        let true_path = path.canonicalize()?;
+        if let Some((buffer_id, _)) = self.buffers.iter().find(|(_, b)| {
+            b.path.as_ref().and_then(|p| p.canonicalize().ok()).as_ref() == Some(&true_path)
+        }) {
+            Ok(buffer_id)
+        } else {
+            Ok(self.buffers.insert(Buffer::from_file(path)?))
+        }
+    }
+
     pub fn tick(&mut self) {
         self.tick += 1;
     }

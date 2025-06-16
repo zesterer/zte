@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    state::{Buffer, BufferId, CursorId},
+    state::{Buffer, BufferId, Cursor, CursorId},
     terminal::CursorStyle,
 };
 use std::{collections::HashMap, path::PathBuf};
@@ -72,20 +72,20 @@ impl Element for Doc {
                 .or_else(|| e.to_open_opener(open_path))
                 .or_else(|| e.to_open_finder())
                 .or_else(|| e.to_move())
+                .or_else(|| e.to_save())
         }) {
             action @ Some(Action::OpenSwitcher) => Ok(Resp::handled(action.map(Into::into))),
             action @ Some(Action::OpenOpener(_)) => Ok(Resp::handled(action.map(Into::into))),
             action @ Some(Action::OpenFinder) => {
-                self.search = Some(Search::new());
+                self.search = Some(Search::new(buffer.cursors[cursor_id]));
                 Ok(Resp::handled(None))
             }
             Some(Action::SwitchBuffer(new_buffer)) => {
                 self.switch_buffer(state, new_buffer);
                 Ok(Resp::handled(None))
             }
-            Some(Action::OpenFile(path)) => match Buffer::from_file(path) {
-                Ok(buffer) => {
-                    let buffer_id = state.buffers.insert(buffer);
+            Some(Action::OpenFile(path)) => match state.open_or_get(path) {
+                Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
                     Ok(Resp::handled(None))
                 }
@@ -93,6 +93,12 @@ impl Element for Doc {
                     Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
                 ))),
             },
+            Some(Action::Save) => {
+                let event = buffer.save().err().map(|err| {
+                    Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+                });
+                Ok(Resp::handled(event))
+            }
             _ => {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);
@@ -122,7 +128,7 @@ impl Visual for Doc {
             .with(|f| {
                 self.input.render(
                     state,
-                    buffer.name(),
+                    buffer.name().as_deref(),
                     buffer,
                     cursor_id,
                     self.search.as_ref(),
@@ -144,6 +150,8 @@ impl Visual for Doc {
 }
 
 pub struct Search {
+    old_cursor: Cursor,
+
     buffer: Buffer,
     cursor_id: CursorId,
     input: Input,
@@ -154,9 +162,11 @@ pub struct Search {
 }
 
 impl Search {
-    fn new() -> Self {
+    fn new(old_cursor: Cursor) -> Self {
         let mut buffer = Buffer::default();
         Self {
+            old_cursor,
+
             cursor_id: buffer.start_session(),
             buffer,
             input: Input::filter(),
@@ -192,7 +202,12 @@ impl Search {
         let res = match event
             .to_action(|e| e.to_cancel().or_else(|| e.to_go()).or_else(|| e.to_move()))
         {
-            Some(Action::Cancel | Action::Go) => return Ok(Resp::end(None)),
+            Some(Action::Cancel) => {
+                buffer.cursors[cursor_id] = self.old_cursor;
+                input.refocus(buffer, cursor_id);
+                return Ok(Resp::end(None));
+            }
+            Some(Action::Go) => return Ok(Resp::end(None)),
             Some(Action::Move(dir, false, _)) => {
                 match dir {
                     Dir::Up => {
