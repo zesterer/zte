@@ -14,7 +14,7 @@ pub enum Dir {
 pub enum Action {
     Char(char),                   // Insert a character
     Indent(bool),                 // Indent (indent vs deindent)
-    Move(Dir, bool, bool),        // Move the cursor (dir, page, retain_base)
+    Move(Dir, bool, bool, bool),     // Move the cursor (dir, page, retain_base, word)
     PaneMove(Dir),                // Move panes
     PaneOpen(Dir),                // Create a new pane
     PaneClose,                    // Close the current pane
@@ -158,11 +158,8 @@ impl RawEvent {
             return None;
         };
 
-        let retain_base = match *modifiers {
-            KeyModifiers::NONE => false,
-            KeyModifiers::SHIFT => true,
-            _ => return None,
-        };
+        let retain_base = modifiers.contains(KeyModifiers::SHIFT);
+        let word = modifiers.contains(KeyModifiers::CONTROL);
 
         let (dir, page) = match code {
             KeyCode::PageUp => (Dir::Up, true),
@@ -174,7 +171,7 @@ impl RawEvent {
             _ => return None,
         };
 
-        Some(Action::Move(dir, page, retain_base))
+        Some(Action::Move(dir, page, retain_base, word))
     }
 
     pub fn to_select_token(&self) -> Option<Action> {

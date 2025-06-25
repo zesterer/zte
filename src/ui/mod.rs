@@ -149,12 +149,12 @@ impl<T> Options<T> {
 impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
-            Some(Action::Move(Dir::Up, false, _)) => {
-                self.selected = (self.selected + self.ranking.len() - 1) % self.ranking.len();
-                Ok(Resp::handled(None))
-            }
-            Some(Action::Move(Dir::Down, false, _)) => {
-                self.selected = (self.selected + 1) % self.ranking.len();
+            Some(Action::Move(dir, false, false, false)) => {
+                match dir {
+                    Dir::Up => self.selected = (self.selected + self.ranking.len() - 1) % self.ranking.len(),
+                    Dir::Down => self.selected = (self.selected + 1) % self.ranking.len(),
+                    _ => return Err(event),
+                }
                 Ok(Resp::handled(None))
             }
             Some(Action::Go) => {

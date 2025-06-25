@@ -35,6 +35,7 @@ impl Default for BorderTheme {
 pub struct Theme {
     pub ui_bg: Color,
     pub select_bg: Color,
+    pub line_select_bg: Color,
     pub unfocus_select_bg: Color,
     pub search_result_bg: Color,
     pub margin_bg: Color,
@@ -69,8 +70,9 @@ impl Default for Theme {
         Self {
             ui_bg: Color::AnsiValue(235),
             select_bg: Color::AnsiValue(23),
+            line_select_bg: Color::AnsiValue(8),
             unfocus_select_bg: Color::AnsiValue(240),
-            search_result_bg: Color::AnsiValue(124),
+            search_result_bg: Color::AnsiValue(66),
             margin_bg: Color::Reset,
             margin_line_num: Color::AnsiValue(245),
             border: BorderTheme::default(),

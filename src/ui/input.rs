@@ -75,13 +75,13 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(dir, page, retain_base)) => {
+            Some(Action::Move(dir, page, retain_base, word)) => {
                 let dist = if page {
                     self.last_size.map(|s| s.saturating_sub(3).max(1))
                 } else {
                     [1, 1]
                 };
-                buffer.move_cursor(cursor_id, dir, dist, retain_base);
+                buffer.move_cursor(cursor_id, dir, dist, retain_base, word);
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
@@ -171,42 +171,49 @@ impl Input {
                 let mut frame = frame.rect([margin_w, i], [!0, 1]);
                 for i in 0..frame.size()[0] {
                     let coord = self.focus[0] + i as isize;
-                    if (0..line.len() as isize).contains(&coord) {
-                        let pos = line_pos + coord as usize;
-                        let selected = cursor.selection().map_or(false, |s| s.contains(&pos));
-                        let (fg, c) = match line[coord as usize] {
-                            '\n' if selected => (state.theme.whitespace, '⮠'),
-                            c => {
-                                if let Some(fg) = buffer
-                                    .highlights
-                                    .as_ref()
-                                    .and_then(|hl| hl.get_at(pos))
-                                    .map(|tok| state.theme.token_color(tok.kind))
-                                {
-                                    (fg, c)
-                                } else {
-                                    (state.theme.text, c)
-                                }
+                    let line_selected = (line_pos..line_pos + line.len()).contains(&cursor.pos);
+                    let pos = if i < line.len() {
+                        Some(line_pos + coord as usize)
+                    } else {
+                        None
+                    };
+                    let selected = cursor.selection().zip(pos).map_or(false, |(s, pos)| s.contains(&pos));
+                    let (fg, c) = match line.get(coord as usize).copied() {
+                        Some('\n') if selected => (state.theme.whitespace, '⮠'),
+                        Some(c) => {
+                            if let Some(fg) = buffer
+                                .highlights
+                                .as_ref()
+                                .and_then(|hl| hl.get_at(pos?))
+                                .map(|tok| state.theme.token_color(tok.kind))
+                            {
+                                (fg, c)
+                            } else {
+                                (state.theme.text, c)
                             }
-                        };
-                        let bg = if let Some(s) = search {
-                            match s.contains(pos) {
-                                Some(true) => state.theme.select_bg,
-                                Some(false) => state.theme.search_result_bg,
-                                None => Color::Reset,
+                        }
+                        None => (Color::Reset, ' '),
+                    };
+                    let bg = match search.map(|s| s.contains(pos?)) {
+                        Some(Some(true)) => state.theme.select_bg,
+                        Some(Some(false)) => state.theme.search_result_bg,
+                        Some(None) if line_selected && frame.has_focus() => state.theme.line_select_bg,
+                        _ => if selected {
+                            if frame.has_focus() {
+                                state.theme.select_bg
+                            } else {
+                                state.theme.unfocus_select_bg
                             }
-                        } else if !selected {
-                            Color::Reset
-                        } else if frame.has_focus() {
-                            state.theme.select_bg
+                        } else if line_selected && frame.has_focus() {
+                            state.theme.line_select_bg
                         } else {
-                            state.theme.unfocus_select_bg
-                        };
-                        frame
-                            .with_bg(bg)
-                            .with_fg(fg)
-                            .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
-                    }
+                            Color::Reset
+                        },
+                    };
+                    frame
+                        .with_bg(bg)
+                        .with_fg(fg)
+                        .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
                 }
 
                 // Set cursor position

@@ -267,6 +267,7 @@ impl Buffer {
         dir: Dir,
         dist: [usize; 2],
         retain_base: bool,
+        word: bool,
     ) {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
@@ -275,6 +276,14 @@ impl Buffer {
             Dir::Left => {
                 cursor.pos = if !retain_base && cursor.base < cursor.pos {
                     cursor.base
+                } else if let (true, Some(mut pos)) = (word, cursor.pos.checked_sub(1)) {
+                    let class = self.text.chars().get(pos).copied().map(classify);
+                    loop {
+                        pos = match pos.checked_sub(1) {
+                            Some(pos) if self.text.chars().get(pos).copied().map(classify) == class => pos,
+                            _ => break pos,
+                        }
+                    }
                 } else {
                     cursor.pos.saturating_sub(dist[0])
                 };
@@ -283,6 +292,16 @@ impl Buffer {
             Dir::Right => {
                 cursor.pos = if !retain_base && cursor.base > cursor.pos {
                     cursor.base
+                } else if word {
+                    let mut pos = cursor.pos;
+                    let class = self.text.chars().get(pos).copied().map(classify);
+                    loop {
+                        pos = if self.text.chars().get(pos).copied().map(classify) == class {
+                            pos + 1
+                        } else {
+                            break pos
+                        };
+                    }
                 } else {
                     (cursor.pos + dist[0]).min(self.text.chars.len())
                 };
@@ -403,6 +422,16 @@ impl Buffer {
         self.cursors.remove(cursor_id);
     }
 }
+
+// CLassify the character by property
+fn classify(c: char) -> u8 {
+    match c {
+        // c if c.is_ascii_whitespace() => 0,
+        c if c.is_alphanumeric() || c == '_' => 1,
+        _ => 2,
+    }
+}
+
 
 pub struct State {
     pub buffers: HopSlotMap<BufferId, Buffer>,

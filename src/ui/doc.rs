@@ -124,7 +124,7 @@ impl Visual for Doc {
                 [0, 0],
                 [frame.size()[0], frame.size()[1].saturating_sub(search_h)],
             )
-            .with_focus(self.search.is_none())
+            .with_focus(true/*self.search.is_none()*/)
             .with(|f| {
                 self.input.render(
                     state,
@@ -208,7 +208,7 @@ impl Search {
                 return Ok(Resp::end(None));
             }
             Some(Action::Go) => return Ok(Resp::end(None)),
-            Some(Action::Move(dir, false, _)) => {
+            Some(Action::Move(dir, false, false, false)) => {
                 match dir {
                     Dir::Up => {
                         self.selected = (self.selected + self.results.len().saturating_sub(1))
