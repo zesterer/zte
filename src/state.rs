@@ -241,13 +241,35 @@ impl Buffer {
         }
     }
 
-    fn indent_at(&mut self, pos: usize) {
+    fn indent_at(&mut self, mut pos: usize, forward: bool) {
         const TAB_ALIGN: usize = 4;
 
-        let coord = self.text.to_coord(pos).map(|e| e.max(0) as usize);
-        let next_up = |x: usize, n: usize| (x / n + 1) * n;
-        let n = next_up(coord[0], TAB_ALIGN) - coord[0];
-        self.insert(pos, (0..n).map(|_| ' '));
+        if forward {
+            let coord = self.text.to_coord(pos).map(|e| e.max(0) as usize);
+            let next_up = |x: usize, n: usize| (x / n + 1) * n;
+            let n = next_up(coord[0], TAB_ALIGN) - coord[0];
+            self.insert(pos, (0..n).map(|_| ' '));
+        } else {
+            // First, find the next non-space character in the line
+            while self.text.chars().get(pos) == Some(&' ') { pos += 1; }
+
+            // Find the desired column, and hence the number of spaces to remove
+            let coord = self.text.to_coord(pos).map(|e| e.max(0) as usize);
+            let next_down = |x: usize, n: usize| (x.saturating_sub(1) / n) * n;
+            let n = coord[0] - next_down(coord[0], TAB_ALIGN);
+
+            // Keep removing whitespace until we hit the desired column
+            for _ in 0..n {
+                pos = match pos.checked_sub(1) {
+                    Some(pos) if self.text.chars().get(pos) == Some(&' ') => {
+                        self.remove(pos..pos + 1);
+                        pos
+                    },
+                    _ => break,
+                };
+            }
+
+        }
     }
 
     pub fn indent(&mut self, cursor_id: CursorId, forward: bool) {
@@ -255,9 +277,13 @@ impl Buffer {
             return;
         };
         if let Some(range) = cursor.selection() {
+            let line_range = self.text.to_coord(range.start)[1]..=self.text.to_coord(range.end)[1];
+            for line in line_range {
+                self.indent_at(self.text.to_pos([0, line]), forward);
+            }
         } else {
             let pos = cursor.pos;
-            self.indent_at(pos);
+            self.indent_at(pos, forward);
         }
     }
 
@@ -396,8 +422,11 @@ impl Buffer {
         };
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
-        } else {
-            if let Some(pos) = cursor.pos.checked_sub(1) {
+        } else if let Some(pos) = cursor.pos.checked_sub(1) {
+            // If a backspace is performed on a space, a deindent takes place instead
+            if self.text.chars().get(pos) == Some(&' ') {
+                self.indent_at(pos, false);
+            } else {
                 self.remove(pos..pos + 1);
             }
         }
