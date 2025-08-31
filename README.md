@@ -10,14 +10,14 @@
 - [x] Multiple panes
 - [x] Pane creation/deletion
 - [x] Opener
+- [x] Find
+- [x] Search in buffer switcher
+- [x] File saving
+- [x] Syntax highlighting
 
 ## Todo
 
-- [ ] Find
 - [ ] Replace
 - [ ] Project search
-- [ ] Search in buffer switcher
-- [ ] File saving
-- [ ] Syntax highlighting
 - [ ] Auto-indent (and related features)
 - [ ] Undo/redo

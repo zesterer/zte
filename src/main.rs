@@ -27,7 +27,6 @@ pub enum Error {
 
 fn main() -> Result<(), Error> {
     let args = Args::parse();
-    println!("{args:?}");
 
     let mut state = State::try_from(args)?;
     let open_buffers = state.buffers.keys().collect::<Vec<_>>();

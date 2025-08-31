@@ -1,6 +1,6 @@
 use super::*;
 use crate::state::{Buffer, BufferId, CursorId};
-use std::{fs, path::PathBuf};
+use std::{cmp::Reverse, fs, path::PathBuf};
 
 pub struct Prompt {
     buffer: Buffer,
@@ -345,15 +345,21 @@ impl Opener {
                 // TODO
                 self.options.set_options(options, |e| {
                     let name = e.path.file_name()?.to_str()?.to_lowercase();
+                    let modify_time = e
+                        .path
+                        .metadata()
+                        .ok()
+                        .and_then(|m| Some(m.modified().ok()?.elapsed().ok()?.as_secs()))
+                        .unwrap_or(!0);
                     if matches!(e.kind, FileKind::New) {
                         // Special-case: the 'new file' entry always matches last
-                        Some((3, name.chars().count()))
+                        Some((1000, 0, 0))
                     } else if name == filter {
-                        Some((0, name.chars().count()))
+                        Some((0, modify_time, name.chars().count()))
                     } else if name.starts_with(&filter) {
-                        Some((1, name.chars().count()))
+                        Some((1, modify_time, name.chars().count()))
                     } else if name.contains(&filter) {
-                        Some((2, name.chars().count()))
+                        Some((2, modify_time, name.chars().count()))
                     } else {
                         None
                     }

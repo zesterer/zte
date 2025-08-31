@@ -151,7 +151,10 @@ impl<T: Clone> Element<T> for Options<T> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
             Some(Action::Move(dir, false, false, false)) => {
                 match dir {
-                    Dir::Up => self.selected = (self.selected + self.ranking.len() - 1) % self.ranking.len(),
+                    Dir::Up => {
+                        self.selected =
+                            (self.selected + self.ranking.len() - 1) % self.ranking.len()
+                    }
                     Dir::Down => self.selected = (self.selected + 1) % self.ranking.len(),
                     _ => return Err(event),
                 }

@@ -65,19 +65,33 @@ impl Element for Doc {
             return Err(event);
         };
 
-        let open_path = buffer.dir.to_owned().unwrap_or(PathBuf::from("/"));
+        let open_path = buffer
+            .dir
+            .to_owned()
+            .unwrap_or_else(|| std::env::current_dir().expect("no working dir"));
+
+        let selection = buffer.cursors[cursor_id]
+            .selection()
+            .map(|range| buffer.text.chars()[range].iter().copied().collect());
 
         match event.to_action(|e| {
             e.to_open_switcher()
                 .or_else(|| e.to_open_opener(open_path))
-                .or_else(|| e.to_open_finder())
+                .or_else(|| e.to_open_finder(selection))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_save())
         }) {
             action @ Some(Action::OpenSwitcher) => Ok(Resp::handled(action.map(Into::into))),
             action @ Some(Action::OpenOpener(_)) => Ok(Resp::handled(action.map(Into::into))),
-            action @ Some(Action::OpenFinder) => {
-                self.search = Some(Search::new(buffer.cursors[cursor_id]));
+            ref action @ Some(Action::OpenFinder(ref query)) => {
+                self.search = Some(Search::new(
+                    buffer.cursors[cursor_id],
+                    query.clone(),
+                    state,
+                    &mut self.input,
+                    self.buffer,
+                    cursor_id,
+                ));
                 Ok(Resp::handled(None))
             }
             Some(Action::SwitchBuffer(new_buffer)) => {
@@ -124,7 +138,7 @@ impl Visual for Doc {
                 [0, 0],
                 [frame.size()[0], frame.size()[1].saturating_sub(search_h)],
             )
-            .with_focus(true/*self.search.is_none()*/)
+            .with_focus(true /*self.search.is_none()*/)
             .with(|f| {
                 self.input.render(
                     state,
@@ -162,19 +176,35 @@ pub struct Search {
 }
 
 impl Search {
-    fn new(old_cursor: Cursor) -> Self {
+    fn new(
+        old_cursor: Cursor,
+        query: Option<String>,
+        state: &mut State,
+        input: &mut Input,
+        buffer_id: BufferId,
+        cursor_id: CursorId,
+    ) -> Self {
         let mut buffer = Buffer::default();
-        Self {
+        let cursor_id = buffer.start_session();
+
+        // Insert default query
+        buffer.insert(0, query.iter().flat_map(|s| s.chars()));
+
+        let mut this = Self {
             old_cursor,
 
-            cursor_id: buffer.start_session(),
+            cursor_id,
             buffer,
             input: Input::filter(),
 
             selected: 0,
             needle: Vec::new(),
             results: Vec::new(),
-        }
+        };
+
+        this.update(state, input, buffer_id, cursor_id);
+
+        this
     }
 
     pub fn contains(&self, pos: usize) -> Option<bool> {
@@ -187,6 +217,37 @@ impl Search {
             .get(idx)
             .filter(|start| (**start..**start + self.needle.len()).contains(&pos))
             .map(|_| idx == self.selected)
+    }
+
+    fn update(
+        &mut self,
+        state: &mut State,
+        input: &mut Input,
+        buffer_id: BufferId,
+        cursor_id: CursorId,
+    ) {
+        let buffer = &mut state.buffers[buffer_id];
+
+        let needle = self.buffer.text.chars();
+        if self.needle != needle {
+            // The needle has changed!
+            let haystack = buffer.text.chars();
+
+            self.needle = needle.to_vec();
+            self.results = (0..haystack.len().saturating_sub(needle.len()))
+                .filter(|i| haystack[*i..].starts_with(needle))
+                .collect();
+
+            // Select the first entry that comes after the current cursor position
+            self.selected = (0..self.results.len())
+                .find(|i| self.results[*i] >= self.old_cursor.pos)
+                .unwrap_or(0);
+        }
+
+        if let Some(result) = self.results.get(self.selected) {
+            buffer.cursors[cursor_id].select(*result..*result + self.needle.len());
+            input.refocus(buffer, cursor_id);
+        }
     }
 
     fn handle(
@@ -225,21 +286,7 @@ impl Search {
                 .map(Resp::into_can_end),
         };
 
-        let needle = self.buffer.text.chars();
-        if self.needle != needle {
-            let haystack = buffer.text.chars();
-
-            self.selected = 0;
-            self.needle = needle.to_vec();
-            self.results = (0..haystack.len().saturating_sub(needle.len()))
-                .filter(|i| haystack[*i..].starts_with(needle))
-                .collect();
-        }
-
-        if let Some(result) = self.results.get(self.selected) {
-            buffer.cursors[cursor_id].select(*result..*result + self.needle.len());
-            input.refocus(buffer, cursor_id);
-        }
+        self.update(state, input, buffer_id, cursor_id);
 
         res
     }

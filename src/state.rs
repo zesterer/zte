@@ -251,7 +251,9 @@ impl Buffer {
             self.insert(pos, (0..n).map(|_| ' '));
         } else {
             // First, find the next non-space character in the line
-            while self.text.chars().get(pos) == Some(&' ') { pos += 1; }
+            while self.text.chars().get(pos) == Some(&' ') {
+                pos += 1;
+            }
 
             // Find the desired column, and hence the number of spaces to remove
             let coord = self.text.to_coord(pos).map(|e| e.max(0) as usize);
@@ -264,11 +266,10 @@ impl Buffer {
                     Some(pos) if self.text.chars().get(pos) == Some(&' ') => {
                         self.remove(pos..pos + 1);
                         pos
-                    },
+                    }
                     _ => break,
                 };
             }
-
         }
     }
 
@@ -306,7 +307,11 @@ impl Buffer {
                     let class = self.text.chars().get(pos).copied().map(classify);
                     loop {
                         pos = match pos.checked_sub(1) {
-                            Some(pos) if self.text.chars().get(pos).copied().map(classify) == class => pos,
+                            Some(pos)
+                                if self.text.chars().get(pos).copied().map(classify) == class =>
+                            {
+                                pos
+                            }
                             _ => break pos,
                         }
                     }
@@ -325,7 +330,7 @@ impl Buffer {
                         pos = if self.text.chars().get(pos).copied().map(classify) == class {
                             pos + 1
                         } else {
-                            break pos
+                            break pos;
                         };
                     }
                 } else {
@@ -461,7 +466,6 @@ fn classify(c: char) -> u8 {
     }
 }
 
-
 pub struct State {
     pub buffers: HopSlotMap<BufferId, Buffer>,
     pub tick: u64,
@@ -477,8 +481,12 @@ impl TryFrom<Args> for State {
             theme: theme::Theme::default(),
         };
 
-        for path in args.paths {
-            this.buffers.insert(Buffer::from_file(path)?);
+        if args.paths.is_empty() {
+            this.buffers.insert(Buffer::default());
+        } else {
+            for path in args.paths {
+                this.buffers.insert(Buffer::from_file(path)?);
+            }
         }
 
         Ok(this)

@@ -72,7 +72,7 @@ impl Default for Theme {
             select_bg: Color::AnsiValue(23),
             line_select_bg: Color::AnsiValue(8),
             unfocus_select_bg: Color::AnsiValue(240),
-            search_result_bg: Color::AnsiValue(66),
+            search_result_bg: Color::AnsiValue(60),
             margin_bg: Color::Reset,
             margin_line_num: Color::AnsiValue(245),
             border: BorderTheme::default(),

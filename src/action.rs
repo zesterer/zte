@@ -14,7 +14,7 @@ pub enum Dir {
 pub enum Action {
     Char(char),                   // Insert a character
     Indent(bool),                 // Indent (indent vs deindent)
-    Move(Dir, bool, bool, bool),     // Move the cursor (dir, page, retain_base, word)
+    Move(Dir, bool, bool, bool),  // Move the cursor (dir, page, retain_base, word)
     PaneMove(Dir),                // Move panes
     PaneOpen(Dir),                // Create a new pane
     PaneClose,                    // Close the current pane
@@ -28,7 +28,7 @@ pub enum Action {
     Show(Option<String>, String), // Display an optionally titled informational text box to the user
     OpenSwitcher,                 // Open the buffer switcher
     OpenOpener(PathBuf),          // Open the file opener
-    OpenFinder,                   // Open the finder
+    OpenFinder(Option<String>),   // Open the finder, with the given default query
     SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
     OpenFile(PathBuf),            // Open the file and switch the current pane to it
     CommandStart(&'static str),   // Start a new command
@@ -252,7 +252,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_open_finder(&self) -> Option<Action> {
+    pub fn to_open_finder(&self, selection: Option<String>) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -262,7 +262,7 @@ impl RawEvent {
                 ..
             })
         ) {
-            Some(Action::OpenFinder)
+            Some(Action::OpenFinder(selection))
         } else {
             None
         }

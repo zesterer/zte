@@ -177,7 +177,10 @@ impl Input {
                     } else {
                         None
                     };
-                    let selected = cursor.selection().zip(pos).map_or(false, |(s, pos)| s.contains(&pos));
+                    let selected = cursor
+                        .selection()
+                        .zip(pos)
+                        .map_or(false, |(s, pos)| s.contains(&pos));
                     let (fg, c) = match line.get(coord as usize).copied() {
                         Some('\n') if selected => (state.theme.whitespace, '⮠'),
                         Some(c) => {
@@ -197,18 +200,22 @@ impl Input {
                     let bg = match search.map(|s| s.contains(pos?)) {
                         Some(Some(true)) => state.theme.select_bg,
                         Some(Some(false)) => state.theme.search_result_bg,
-                        Some(None) if line_selected && frame.has_focus() => state.theme.line_select_bg,
-                        _ => if selected {
-                            if frame.has_focus() {
-                                state.theme.select_bg
-                            } else {
-                                state.theme.unfocus_select_bg
-                            }
-                        } else if line_selected && frame.has_focus() {
+                        Some(None) if line_selected && frame.has_focus() => {
                             state.theme.line_select_bg
-                        } else {
-                            Color::Reset
-                        },
+                        }
+                        _ => {
+                            if selected {
+                                if frame.has_focus() {
+                                    state.theme.select_bg
+                                } else {
+                                    state.theme.unfocus_select_bg
+                                }
+                            } else if line_selected && frame.has_focus() {
+                                state.theme.line_select_bg
+                            } else {
+                                Color::Reset
+                            }
+                        }
                     };
                     frame
                         .with_bg(bg)
