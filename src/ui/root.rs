@@ -103,10 +103,17 @@ impl Element<()> for Root {
                     self.tasks
                         .push(Task::Prompt(Prompt::new(&format!("{cmd} "))));
                 }
-                Action::Cancel => self.tasks.push(Task::Confirm(Confirm {
-                    label: Label("Are you sure you wish to quit? (y/n)".to_string()),
-                    action: Action::Quit,
-                })),
+                Action::Cancel => {
+                    let unsaved = state.buffers.values().filter(|b| b.unsaved).count();
+                    if unsaved == 0 {
+                        return Ok(Resp::end(None));
+                    } else {
+                        self.tasks.push(Task::Confirm(Confirm {
+                            label: Label(format!("Are you sure you wish to quit? (y/n). Note that {} files are unsaved!", unsaved)),
+                            action: Action::Quit,
+                        }));
+                    }
+                }
                 Action::Show(title, text) => self.tasks.push(Task::Show(Show {
                     title,
                     label: Label(text),

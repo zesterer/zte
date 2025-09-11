@@ -241,6 +241,14 @@ impl Buffer {
         }
     }
 
+    pub fn select_all_cursor(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        cursor.base = 0;
+        cursor.pos = self.text.chars().len();
+    }
+
     fn indent_at(&mut self, mut pos: usize, forward: bool) {
         const TAB_ALIGN: usize = 4;
 
@@ -385,6 +393,18 @@ impl Buffer {
         });
     }
 
+    pub fn insert_after(&mut self, cursor_id: CursorId, chars: impl IntoIterator<Item = char>) {
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return;
+        };
+        let old_cursor = *cursor;
+        self.insert(old_cursor.pos, chars);
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        *cursor = old_cursor;
+    }
+
     pub fn enter(&mut self, cursor_id: CursorId, chars: impl IntoIterator<Item = char>) {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
@@ -445,6 +465,47 @@ impl Buffer {
             self.remove(selection);
         } else {
             self.remove(cursor.pos..cursor.pos + 1);
+        }
+    }
+
+    pub fn newline(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return;
+        };
+        let line_start = self.text.to_pos([0, self.text.to_coord(cursor.pos)[1]]);
+        let is_block = if let Some(last_pos) = cursor
+            .selection()
+            .map_or(cursor.pos, |s| s.start)
+            .checked_sub(1)
+            && let Some(last_char) = self.text.chars().get(last_pos)
+            && let Some((l, r)) = [('(', ')'), ('[', ']'), ('{', '}')]
+                .iter()
+                .find(|(l, _)| l == last_char)
+            && let next_pos = cursor.selection().map_or(cursor.pos, |s| s.end)
+            && let next_char = self.text.chars().get(next_pos)
+        {
+            Some((*r, next_char == Some(r)))
+        } else {
+            None
+        };
+
+        self.enter(cursor_id, ['\n']);
+
+        // Indent to same level as last line
+        if let Some(chars) = self.text.chars().get(line_start..) {
+            let indent = chars
+                .iter()
+                .take_while(|c| [' ', '\t'].contains(c))
+                .copied()
+                .collect::<Vec<_>>();
+            self.enter(cursor_id, indent.iter().copied());
+            // If the last character was the start of a block, perform an additional indent
+            if let Some((r, is_complete)) = is_block {
+                self.indent(cursor_id, true);
+                // If the block was not already completed, complete it (TODO: make configurable!)
+                let tail = if !is_complete { Some(r) } else { None };
+                self.insert_after(cursor_id, core::iter::once('\n').chain(indent).chain(tail));
+            }
         }
     }
 

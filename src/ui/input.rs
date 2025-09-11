@@ -62,6 +62,7 @@ impl Input {
                 .map(Action::Char)
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_select_token())
+                .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
         }) {
             Some(Action::Char(c)) => {
@@ -69,6 +70,8 @@ impl Input {
                     buffer.backspace(cursor_id);
                 } else if c == '\x7F' {
                     buffer.delete(cursor_id);
+                } else if c == '\n' {
+                    buffer.newline(cursor_id);
                 } else {
                     buffer.enter(cursor_id, [c]);
                 }
@@ -96,6 +99,10 @@ impl Input {
             }
             Some(Action::SelectToken) => {
                 buffer.select_token_cursor(cursor_id);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::SelectAll) => {
+                buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
             _ => Err(event),

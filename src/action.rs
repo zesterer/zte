@@ -34,6 +34,7 @@ pub enum Action {
     CommandStart(&'static str),   // Start a new command
     GotoLine(isize),              // Go to the specified file line
     SelectToken,                  // Fully select the token under the cursor
+    SelectAll,                    // Fully select the entire input
     Save,                         // Save the current buffer
 }
 
@@ -185,6 +186,22 @@ impl RawEvent {
             })
         ) {
             Some(Action::SelectToken)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_select_all(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('a'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::SelectAll)
         } else {
             None
         }
