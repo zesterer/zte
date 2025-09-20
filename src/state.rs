@@ -124,6 +124,19 @@ impl Text {
             }
         })
     }
+
+    fn indent_of_line(&self, line: isize) -> &[char] {
+        let line_start = self.to_pos([0, line]);
+        let mut i = 0;
+        while self
+            .chars()
+            .get(line_start + i)
+            .map_or(false, |c| [' ', '\t'].contains(c))
+        {
+            i += 1;
+        }
+        self.chars().get(line_start..line_start + i).unwrap_or(&[])
+    }
 }
 
 #[derive(Default)]
@@ -445,9 +458,17 @@ impl Buffer {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
+        let line_start = self.text.to_pos([0, self.text.to_coord(cursor.pos)[1]]);
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
-        } else if let Some(pos) = cursor.pos.checked_sub(1) {
+        } else
+        /*if line_start != cursor.pos && (line_start..cursor.pos)
+            .all(|p| self.text.chars().get(p).map_or(false, |c| [' ', '\t'].contains(c)))
+        {
+            self.remove(line_start..cursor.pos);
+            self.backspace(cursor_id); // Remove the newline too
+        } else*/
+        if let Some(pos) = cursor.pos.checked_sub(1) {
             // If a backspace is performed on a space, a deindent takes place instead
             if self.text.chars().get(pos) == Some(&' ') {
                 self.indent_at(pos, false);
@@ -472,40 +493,59 @@ impl Buffer {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
-        let line_start = self.text.to_pos([0, self.text.to_coord(cursor.pos)[1]]);
-        let is_block = if let Some(last_pos) = cursor
-            .selection()
-            .map_or(cursor.pos, |s| s.start)
-            .checked_sub(1)
+        let line = self.text.to_coord(cursor.pos)[1];
+        let line_start = self.text.to_pos([0, line]);
+
+        let prev_indent = self.text.indent_of_line(line).to_vec();
+        let next_indent = self.text.indent_of_line(line + 1).to_vec();
+
+        let (close_block, extra_indent, trailing_indent, base_indent) = if let Some(last_pos) =
+            cursor
+                .selection()
+                .map_or(cursor.pos, |s| s.start)
+                .checked_sub(1)
             && let Some(last_char) = self.text.chars().get(last_pos)
             && let Some((l, r)) = [('(', ')'), ('[', ']'), ('{', '}')]
                 .iter()
                 .find(|(l, _)| l == last_char)
             && let next_pos = cursor.selection().map_or(cursor.pos, |s| s.end)
-            && let next_char = self.text.chars().get(next_pos)
+            && let next_char = self
+                .text
+                .chars()
+                .get(next_pos..)
+                .unwrap_or(&[])
+                .iter()
+                .filter(|c| !c.is_ascii_whitespace())
+                .next()
         {
-            Some((*r, next_char == Some(r)))
+            let close_block = next_char != Some(r)
+                && next_indent
+                    .strip_prefix(&*prev_indent)
+                    .map_or(true, |i| i.is_empty());
+            (
+                if close_block { Some(*r) } else { None },
+                true,
+                close_block || self.text.chars().get(next_pos) == Some(r),
+                prev_indent,
+            )
         } else {
-            None
+            (None, false, false, prev_indent)
         };
 
-        self.enter(cursor_id, ['\n']);
-
         // Indent to same level as last line
-        if let Some(chars) = self.text.chars().get(line_start..) {
-            let indent = chars
-                .iter()
-                .take_while(|c| [' ', '\t'].contains(c))
-                .copied()
-                .collect::<Vec<_>>();
-            self.enter(cursor_id, indent.iter().copied());
-            // If the last character was the start of a block, perform an additional indent
-            if let Some((r, is_complete)) = is_block {
-                self.indent(cursor_id, true);
-                // If the block was not already completed, complete it (TODO: make configurable!)
-                let tail = if !is_complete { Some(r) } else { None };
-                self.insert_after(cursor_id, core::iter::once('\n').chain(indent).chain(tail));
-            }
+        self.enter(
+            cursor_id,
+            ['\n'].into_iter().chain(base_indent.iter().copied()),
+        );
+
+        if let Some(r) = close_block {
+            self.insert_after(cursor_id, [r]);
+        }
+        if trailing_indent {
+            self.insert_after(cursor_id, core::iter::once('\n').chain(base_indent));
+        }
+        if extra_indent {
+            self.indent(cursor_id, true);
         }
     }
 

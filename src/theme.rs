@@ -70,7 +70,7 @@ impl Default for Theme {
         Self {
             ui_bg: Color::AnsiValue(235),
             select_bg: Color::AnsiValue(23),
-            line_select_bg: Color::AnsiValue(8),
+            line_select_bg: Color::AnsiValue(238),
             unfocus_select_bg: Color::AnsiValue(240),
             search_result_bg: Color::AnsiValue(60),
             margin_bg: Color::Reset,
