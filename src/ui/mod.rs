@@ -106,6 +106,7 @@ impl Visual for Label {
 
 /// List selection
 pub struct Options<T> {
+    pub focus: usize,
     pub selected: usize,
     // (score, option)
     pub options: Vec<T>,
@@ -116,6 +117,7 @@ impl<T> Options<T> {
     pub fn new(options: impl IntoIterator<Item = T>) -> Self {
         let (ranking, options) = options.into_iter().enumerate().unzip();
         Self {
+            focus: 0,
             selected: 0,
             options,
             ranking,
@@ -188,10 +190,18 @@ impl<T: Visual> Visual for Options<T> {
             None,
         );
 
-        for (i, idx) in self.ranking.iter().enumerate() {
+        self.focus = self
+            .focus
+            .max(
+                self.selected
+                    .saturating_sub(frame.size()[1].saturating_sub(1)),
+            )
+            .min(self.selected);
+
+        for (row, (i, idx)) in self.ranking.iter().enumerate().skip(self.focus).enumerate() {
             let option = &mut self.options[*idx];
             frame
-                .rect([0, i], [frame.size()[0], 1])
+                .rect([0, row], [frame.size()[0], 1])
                 .with_bg(if self.selected == i {
                     state.theme.select_bg
                 } else {

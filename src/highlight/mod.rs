@@ -205,16 +205,14 @@ impl Highlighter {
             // types
             r"\b[(u?int)(float)(double)(bool)(void)([ui]?vec[1-4]*)([ui]?mat[1-4]*)(texture[(2D)(3D)]?(Cube)?)([ui]?sampler[(2D)(3D)]?(Shadow)?)]\b",
             // Builtins
-            r"\b[(dot)(cross)(textureSize)(normalize)(texelFetch)(textureProj)(max)(min)(clamp)(reflect)(mix)(distance)(length)(abs)(pow)(sign)(sin)(cos)(tan)(fract)(mod)]\b",
+            r"\b[(dot)(cross)(textureSize)(normalize)(texelFetch)(textureProj)(max)(min)(clamp)(reflect)(mix)(distance)(length)(abs)(pow)(sign)(sin)(cos)(tan)(fract)(mod)(round)(step)]\b",
         )
     }
 
     pub fn toml() -> Self {
         Self::new_from_regex([
-            // // Links
-            // (TokenKind::String, r"\[[^\]]*\](\([^\)]*\))?"),
             // Header
-            (TokenKind::Doc, r#"^\[[^\]]*\]$"#),
+            (TokenKind::Doc, r#"^\[[^\n\]]*\]$"#),
             // Delimiters
             (TokenKind::Delimiter, r"[\{\}\(\)\[\]]"),
             // Operators
@@ -236,7 +234,7 @@ impl Highlighter {
             // Identifier
             (TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_\-]*\b"),
             // Comments
-            (TokenKind::Comment, r"^#[^$]*$"),
+            (TokenKind::Comment, r"#[^$]*$"),
         ])
     }
 
