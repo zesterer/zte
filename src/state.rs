@@ -325,16 +325,24 @@ impl Buffer {
                 cursor.pos = if !retain_base && cursor.base < cursor.pos {
                     cursor.base
                 } else if let (true, Some(mut pos)) = (word, cursor.pos.checked_sub(1)) {
-                    let class = self.text.chars().get(pos).copied().map(classify);
+                    let mut class = self.text.chars().get(pos).copied().and_then(classify);
                     loop {
-                        pos = match pos.checked_sub(1) {
-                            Some(pos)
-                                if self.text.chars().get(pos).copied().map(classify) == class =>
+                        (class, pos) = if let Some(new_pos) = pos.checked_sub(1) {
+                            let Some(new_class) =
+                                self.text.chars().get(new_pos).copied().map(classify)
+                            else {
+                                break pos;
+                            };
+                            if (class.is_some() && new_class.is_none())
+                                || matches!((class, new_class), (Some(c), Some(n)) if c != n)
                             {
-                                pos
+                                break pos;
+                            } else {
+                                (new_class, new_pos)
                             }
-                            _ => break pos,
-                        }
+                        } else {
+                            break pos;
+                        };
                     }
                 } else {
                     cursor.pos.saturating_sub(dist[0])
@@ -346,12 +354,18 @@ impl Buffer {
                     cursor.base
                 } else if word {
                     let mut pos = cursor.pos;
-                    let class = self.text.chars().get(pos).copied().map(classify);
+                    let mut class = self.text.chars().get(pos).copied().and_then(classify);
                     loop {
-                        pos = if self.text.chars().get(pos).copied().map(classify) == class {
-                            pos + 1
-                        } else {
+                        let Some(new_class) = self.text.chars().get(pos).copied().map(classify)
+                        else {
                             break pos;
+                        };
+                        (class, pos) = if (class.is_some() && new_class.is_none())
+                            || matches!((class, new_class), (Some(c), Some(n)) if c != n)
+                        {
+                            break pos;
+                        } else {
+                            (new_class, pos + 1)
                         };
                     }
                 } else {
@@ -559,11 +573,12 @@ impl Buffer {
 }
 
 // CLassify the character by property
-fn classify(c: char) -> u8 {
+fn classify(c: char) -> Option<u8> {
     match c {
-        // c if c.is_ascii_whitespace() => 0,
-        c if c.is_alphanumeric() || c == '_' => 1,
-        _ => 2,
+        ' ' | '\t' => None,
+        '\n' => Some(0),
+        c if c.is_alphanumeric() || c == '_' => Some(1),
+        _ => Some(2),
     }
 }
 
