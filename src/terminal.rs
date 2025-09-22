@@ -277,6 +277,7 @@ pub struct Terminal<'a> {
     stdout: StdoutLock<'a>,
     size: [u16; 2],
     fb: [Framebuffer; 2],
+    bell: bool,
 }
 
 impl<'a> Terminal<'a> {
@@ -304,6 +305,7 @@ impl<'a> Terminal<'a> {
             stdout: io::stdout().lock(),
             size: [size.columns, size.rows],
             fb: [Framebuffer::default(), Framebuffer::default()],
+            bell: false,
         };
 
         let hook = panic::take_hook();
@@ -322,6 +324,10 @@ impl<'a> Terminal<'a> {
         self.size = size;
     }
 
+    pub fn ring_bell(&mut self) {
+        self.bell = true;
+    }
+
     pub fn update(&mut self, render: impl FnOnce(&mut Rect)) {
         // Reset framebuffer
         if self.fb[0].size != self.size {
@@ -337,6 +343,11 @@ impl<'a> Terminal<'a> {
 
         self.stdout
             .sync_update(|stdout| {
+                if self.bell {
+                    self.bell = false;
+                    stdout.queue(style::Print('\x07')).unwrap();
+                }
+
                 let mut cursor_pos = [0, 0];
                 let mut fg = Color::Reset;
                 let mut bg = Color::Reset;

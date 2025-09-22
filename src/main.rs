@@ -48,11 +48,12 @@ fn main() -> Result<(), Error> {
                 }
 
                 // Have the UI handle events
-                if ui
-                    .handle(&mut state, Event::from_raw(ev))
-                    .map_or(false, |r| r.into_ended().is_some())
-                {
-                    return Ok(());
+                match ui.handle(&mut state, Event::from_raw(ev)) {
+                    Ok(r) if r.is_end() => return Ok(()),
+                    Ok(_) => {}
+                    Err(Event::Bell) => term.ring_bell(),
+                    // Unhandled event!
+                    Err(_) => {}
                 }
             }
         }

@@ -65,6 +65,7 @@ impl Input {
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
                 .or_else(|| e.to_mouse(self.last_area))
+                .or_else(|| e.to_undo_redo())
         }) {
             Some(Action::Char(c)) => {
                 if c == '\x08' {
@@ -92,6 +93,7 @@ impl Input {
             }
             Some(Action::Indent(forward)) => {
                 buffer.indent(cursor_id, forward);
+                self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
             Some(Action::GotoLine(line)) => {
@@ -101,6 +103,7 @@ impl Input {
             }
             Some(Action::SelectToken) => {
                 buffer.select_token_cursor(cursor_id);
+                self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
             Some(Action::SelectAll) => {
@@ -109,8 +112,23 @@ impl Input {
             }
             Some(Action::Mouse(MouseAction::Click, pos)) => {
                 buffer.goto_cursor(cursor_id, [self.focus[0] + pos[0], self.focus[1] + pos[1]]);
-                self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
+            }
+            Some(Action::Undo) => {
+                if buffer.undo() {
+                    self.refocus(buffer, cursor_id);
+                    Ok(Resp::handled(None))
+                } else {
+                    Ok(Resp::handled(Some(Event::Bell)))
+                }
+            }
+            Some(Action::Redo) => {
+                if buffer.redo() {
+                    self.refocus(buffer, cursor_id);
+                    Ok(Resp::handled(None))
+                } else {
+                    Ok(Resp::handled(Some(Event::Bell)))
+                }
             }
             _ => Err(event),
         }

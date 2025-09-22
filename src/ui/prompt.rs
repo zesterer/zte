@@ -73,7 +73,7 @@ impl Element<()> for Prompt {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             Some(Action::Go) => match self.parse_action() {
                 Ok(action) => {
-                    self.buffer.clear();
+                    self.buffer.reset();
                     Ok(Resp::end(Some(action.into())))
                 }
                 Err(err) => Ok(Resp::handled(Some(
@@ -303,7 +303,7 @@ impl Opener {
     }
 
     fn set_string(&mut self, s: &str) {
-        self.buffer.clear();
+        self.buffer.reset();
         self.buffer.enter(self.cursor_id, s.chars());
         self.update_completions();
     }

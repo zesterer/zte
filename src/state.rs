@@ -5,6 +5,7 @@ use crate::{
 };
 use slotmap::{HopSlotMap, new_key_type};
 use std::{
+    collections::HashMap,
     io,
     ops::Range,
     path::{Path, PathBuf},
@@ -15,7 +16,7 @@ new_key_type! {
     pub struct CursorId;
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Cursor {
     pub base: usize,
     pub pos: usize,
@@ -147,6 +148,31 @@ pub struct Buffer {
     pub cursors: HopSlotMap<CursorId, Cursor>,
     pub dir: Option<PathBuf>,
     pub path: Option<PathBuf>,
+    pub undo: Vec<Change>,
+    pub redo: Vec<Change>,
+}
+
+pub struct Change {
+    kind: ChangeKind,
+    cursors: HashMap<CursorId, (Cursor, Cursor)>,
+}
+
+pub enum ChangeKind {
+    Insert(usize, Vec<char>),
+    Remove(usize, Vec<char>),
+}
+
+impl Change {
+    fn invert(mut self) -> Self {
+        self.kind = match self.kind {
+            ChangeKind::Insert(at, s) => ChangeKind::Remove(at, s),
+            ChangeKind::Remove(at, s) => ChangeKind::Insert(at, s),
+        };
+        for (from, to) in self.cursors.values_mut() {
+            core::mem::swap(from, to);
+        }
+        self
+    }
 }
 
 impl Buffer {
@@ -175,6 +201,8 @@ impl Buffer {
             cursors: HopSlotMap::default(),
             dir,
             path: Some(path),
+            undo: Vec::new(),
+            redo: Vec::new(),
         })
     }
 
@@ -205,7 +233,7 @@ impl Buffer {
             .map(|hl| hl.highlighter.highlight(self.text.chars()));
     }
 
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.unsaved = true;
 
         self.text.chars.clear();
@@ -214,6 +242,7 @@ impl Buffer {
         self.cursors.values_mut().for_each(|cursor| {
             *cursor = Cursor::default();
         });
+        self.undo = Vec::new();
     }
 
     pub fn goto_cursor(&mut self, cursor_id: CursorId, pos: [isize; 2]) {
@@ -398,26 +427,149 @@ impl Buffer {
         }
     }
 
-    pub fn insert(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) {
-        self.unsaved = true;
+    fn push_undo(&mut self, mut change: Change) {
+        self.redo.clear(); // TODO: Maybe add tree undos?
 
+        let Some(last) = self.undo.last_mut() else {
+            return self.undo.push(change);
+        };
+
+        // Attempt to merge changes together
+        match (&mut last.kind, &mut change.kind) {
+            (ChangeKind::Insert(at, s), ChangeKind::Insert(at2, s2)) if *at + s.len() == *at2 => {
+                s.append(s2);
+            }
+            (ChangeKind::Remove(at, s), ChangeKind::Remove(at2, s2)) if *at == *at2 + s2.len() => {
+                s2.append(s);
+                *s = core::mem::take(s2);
+                *at = *at2;
+            }
+            _ => return self.undo.push(change),
+        }
+
+        for (id, (from2, to2)) in change.cursors {
+            last.cursors
+                .entry(id)
+                .and_modify(|(_, to)| *to = to2)
+                .or_insert((from2, to2));
+        }
+    }
+
+    fn apply_change(&mut self, change: &Change) {
+        match &change.kind {
+            ChangeKind::Insert(at, s) => {
+                for (i, c) in s.iter().enumerate() {
+                    self.text.chars.insert(at + i, *c);
+                }
+            }
+            ChangeKind::Remove(at, s) => {
+                self.text.chars.drain(*at..*at + s.len());
+            }
+        }
+        for (id, (_, to)) in change.cursors.iter() {
+            if let Some(c) = self.cursors.get_mut(*id) {
+                // panic!("Changing {c:?} to {to:?}");
+                *c = *to;
+            }
+        }
+        self.update_highlights();
+    }
+
+    pub fn undo(&mut self) -> bool {
+        if let Some(change) = self.undo.pop() {
+            let change = change.invert();
+            self.apply_change(&change);
+            self.redo.push(change);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn redo(&mut self) -> bool {
+        if let Some(change) = self.redo.pop() {
+            let change = change.invert();
+            self.apply_change(&change);
+            self.undo.push(change);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn insert_inner(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) -> Change {
+        let chars = chars.into_iter().collect::<Vec<_>>();
         let mut n = 0;
-        for c in chars {
-            self.text
-                .chars
-                .insert((pos + n).min(self.text.chars.len()), c);
+        let base = pos.min(self.text.chars.len());
+        for c in &chars {
+            self.text.chars.insert(base + n, *c);
             n += 1;
         }
         self.update_highlights();
-        self.cursors.values_mut().for_each(|cursor| {
-            if cursor.base >= pos {
-                cursor.base += n;
-            }
-            if cursor.pos >= pos {
-                cursor.pos += n;
-                cursor.reset_desired_col(&self.text);
-            }
-        });
+        Change {
+            kind: ChangeKind::Insert(base, chars),
+            cursors: self
+                .cursors
+                .iter_mut()
+                .map(|(id, cursor)| {
+                    let old = *cursor;
+                    if cursor.base >= pos {
+                        cursor.base += n;
+                    }
+                    if cursor.pos >= pos {
+                        cursor.pos += n;
+                        cursor.reset_desired_col(&self.text);
+                    }
+                    (id, (old, *cursor))
+                })
+                .collect(),
+        }
+    }
+
+    pub fn insert(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) {
+        self.unsaved = true;
+        let change = self.insert_inner(pos, chars);
+        self.push_undo(change);
+    }
+
+    // Assumes range is well-formed
+    fn remove_inner(&mut self, range: Range<usize>) -> Change {
+        self.unsaved = true;
+
+        // TODO: Bell if false?
+        let removed = self.text.chars.drain(range.clone()).collect();
+        self.update_highlights();
+        Change {
+            kind: ChangeKind::Remove(range.start, removed),
+            cursors: self
+                .cursors
+                .iter_mut()
+                .map(|(id, cursor)| {
+                    let old = *cursor;
+                    if cursor.base >= range.start {
+                        cursor.base = cursor
+                            .base
+                            .saturating_sub(range.end - range.start)
+                            .max(range.start);
+                    }
+                    if cursor.pos >= range.start {
+                        cursor.pos = cursor
+                            .pos
+                            .saturating_sub(range.end - range.start)
+                            .max(range.start);
+                        cursor.reset_desired_col(&self.text);
+                    }
+                    (id, (old, *cursor))
+                })
+                .collect(),
+        }
+    }
+
+    // Assumes range is well-formed
+    pub fn remove(&mut self, range: Range<usize>) {
+        self.unsaved = true;
+        let change = self.remove_inner(range);
+        self.push_undo(change);
     }
 
     pub fn insert_after(&mut self, cursor_id: CursorId, chars: impl IntoIterator<Item = char>) {
@@ -442,30 +594,6 @@ impl Buffer {
         } else {
             self.insert(cursor.pos, chars);
         }
-    }
-
-    // Assumes range is well-formed
-    pub fn remove(&mut self, range: Range<usize>) {
-        self.unsaved = true;
-
-        // TODO: Bell if false?
-        self.text.chars.drain(range.clone());
-        self.update_highlights();
-        self.cursors.values_mut().for_each(|cursor| {
-            if cursor.base >= range.start {
-                cursor.base = cursor
-                    .base
-                    .saturating_sub(range.end - range.start)
-                    .max(range.start);
-            }
-            if cursor.pos >= range.start {
-                cursor.pos = cursor
-                    .pos
-                    .saturating_sub(range.end - range.start)
-                    .max(range.start);
-                cursor.reset_desired_col(&self.text);
-            }
-        });
     }
 
     pub fn backspace(&mut self, cursor_id: CursorId) {
@@ -507,11 +635,17 @@ impl Buffer {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
-        let line = self.text.to_coord(cursor.pos)[1];
-        let line_start = self.text.to_pos([0, line]);
+        let coord = self.text.to_coord(cursor.pos);
+        let line_start = self.text.to_pos([0, coord[1]]);
 
-        let prev_indent = self.text.indent_of_line(line).to_vec();
-        let next_indent = self.text.indent_of_line(line + 1).to_vec();
+        let prev_indent = self
+            .text
+            .indent_of_line(coord[1])
+            .iter()
+            .copied()
+            .take(coord[0] as usize)
+            .collect::<Vec<_>>();
+        let next_indent = self.text.indent_of_line(coord[1] + 1).to_vec();
 
         let (close_block, extra_indent, trailing_indent, base_indent) = if let Some(last_pos) =
             cursor

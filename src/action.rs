@@ -42,6 +42,8 @@ pub enum Action {
     SelectAll,                    // Fully select the entire input
     Save,                         // Save the current buffer
     Mouse(MouseAction, [isize; 2]),
+    Undo,
+    Redo,
 }
 
 /// How far should movement go?
@@ -65,6 +67,8 @@ pub enum Event {
     Action(Action),
     // The incoming event is a raw user input.
     Raw(RawEvent),
+    // A terminal bell ring
+    Bell,
 }
 
 impl From<Action> for Event {
@@ -85,6 +89,7 @@ impl Event {
         match self {
             Self::Action(a) => Some(a.clone()),
             Self::Raw(te) => translate(te),
+            Self::Bell => None,
         }
     }
 }
@@ -406,6 +411,24 @@ impl RawEvent {
             Some(Action::Save)
         } else {
             None
+        }
+    }
+
+    pub fn to_undo_redo(&self) -> Option<Action> {
+        match &self.0 {
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('z'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::Undo),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('y'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::Redo),
+            _ => None,
         }
     }
 

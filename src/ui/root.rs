@@ -41,7 +41,7 @@ impl Element<()> for Root {
     fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<()>, Event> {
         // Pass the event down through the list of tasks until we meet one that can handle it
         let mut task_idx = self.tasks.len();
-        let action = loop {
+        let event = loop {
             task_idx = match task_idx.checked_sub(1) {
                 Some(task_idx) => task_idx,
                 None => {
@@ -77,7 +77,7 @@ impl Element<()> for Root {
         };
 
         // Handle 'top-level' actions
-        if let Some(action) = action.and_then(|e| {
+        if let Some(action) = event.as_ref().and_then(|e| {
             e.to_action(|e| {
                 e.to_open_prompt()
                     .or_else(|| e.to_cancel())
@@ -126,6 +126,8 @@ impl Element<()> for Root {
                         .map(|r| r.into_can_end());
                 }
             }
+        } else if let Some(event) = event {
+            return Err(event);
         }
 
         // Root element swallows all other events
