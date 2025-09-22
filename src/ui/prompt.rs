@@ -386,6 +386,10 @@ impl Element<()> for Opener {
                 }
                 Ok(Resp::handled(None))
             }
+            Some(Action::Char('/')) if path_str.ends_with("~") && std::env::home_dir().is_some() /*let Some(home_dir) = std::env::home_dir()*/ => {
+                self.set_string(&format!("{}/", std::env::home_dir().unwrap().display()));
+                Ok(Resp::handled(None))
+            }
             _ => match self.options.handle(state, event).map(Resp::into_ended) {
                 // Selecting a directory enters the directory
                 Ok(Some(file)) if matches!(file.kind, FileKind::Dir) => {
