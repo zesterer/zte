@@ -376,7 +376,8 @@ impl Element<()> for Opener {
         match event.to_action(|e| e.to_cancel().or_else(|| e.to_char().map(Action::Char))) {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             // Backspace removes the entire path segment!
-            Some(Action::Char('\x08')) if path_str.ends_with("/") => {
+            // Only works if we're at the end of the string
+            Some(Action::Char('\x08')) if path_str.ends_with("/") && self.buffer.cursors.get(self.cursor_id).map_or(false, |c| c.selection().is_none() && c.pos == self.buffer.text.chars().len()) => {
                 if path_str != "/" {
                     self.set_string(
                         path_str

@@ -248,11 +248,11 @@ impl Buffer {
         self.undo = Vec::new();
     }
 
-    pub fn goto_cursor(&mut self, cursor_id: CursorId, pos: [isize; 2], set_base: bool) {
+    pub fn goto_cursor(&mut self, cursor_id: CursorId, coord: [isize; 2], set_base: bool) {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
-        cursor.pos = self.text.to_pos(pos);
+        cursor.pos = self.text.to_pos(coord);
         cursor.reset_desired_col(&self.text);
         if set_base {
             cursor.base = cursor.pos;
