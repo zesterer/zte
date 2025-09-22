@@ -86,7 +86,7 @@ impl Element for Panes {
                 self.selected = new_idx;
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(_, pos)) => {
+            Some(Action::Mouse(_, pos, _)) => {
                 for (i, pane) in self.panes.iter_mut().enumerate() {
                     if pane.last_area.contains(pos).is_some() {
                         self.selected = i;

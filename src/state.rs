@@ -150,10 +150,12 @@ pub struct Buffer {
     pub path: Option<PathBuf>,
     pub undo: Vec<Change>,
     pub redo: Vec<Change>,
+    action_counter: usize,
 }
 
 pub struct Change {
     kind: ChangeKind,
+    action_id: usize,
     cursors: HashMap<CursorId, (Cursor, Cursor)>,
 }
 
@@ -203,6 +205,7 @@ impl Buffer {
             path: Some(path),
             undo: Vec::new(),
             redo: Vec::new(),
+            action_counter: 0,
         })
     }
 
@@ -245,13 +248,15 @@ impl Buffer {
         self.undo = Vec::new();
     }
 
-    pub fn goto_cursor(&mut self, cursor_id: CursorId, pos: [isize; 2]) {
+    pub fn goto_cursor(&mut self, cursor_id: CursorId, pos: [isize; 2], set_base: bool) {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
         cursor.pos = self.text.to_pos(pos);
         cursor.reset_desired_col(&self.text);
-        cursor.base = cursor.pos;
+        if set_base {
+            cursor.base = cursor.pos;
+        }
     }
 
     pub fn select_token_cursor(&mut self, cursor_id: CursorId) {
@@ -427,6 +432,10 @@ impl Buffer {
         }
     }
 
+    pub fn begin_action(&mut self) {
+        self.action_counter += 1;
+    }
+
     fn push_undo(&mut self, mut change: Change) {
         self.redo.clear(); // TODO: Maybe add tree undos?
 
@@ -475,26 +484,45 @@ impl Buffer {
         self.update_highlights();
     }
 
-    pub fn undo(&mut self) -> bool {
-        if let Some(change) = self.undo.pop() {
-            let change = change.invert();
-            self.apply_change(&change);
-            self.redo.push(change);
-            true
+    fn undo_or_redo(&mut self, is_undo: bool) -> bool {
+        if let Some(mut change) = if is_undo {
+            self.undo.pop()
+        } else {
+            self.redo.pop()
+        } {
+            let action_id = change.action_id;
+            // Keep applying previous changes provided they were part of the same action
+            loop {
+                let inv_change = change.invert();
+                self.apply_change(&inv_change);
+                if is_undo {
+                    self.redo.push(inv_change)
+                } else {
+                    self.undo.push(inv_change)
+                }
+                change = if let Some(c) = (if is_undo {
+                    &mut self.undo
+                } else {
+                    &mut self.redo
+                })
+                .pop_if(|c| c.action_id == action_id)
+                {
+                    c
+                } else {
+                    break true;
+                };
+            }
         } else {
             false
         }
     }
 
+    pub fn undo(&mut self) -> bool {
+        self.undo_or_redo(true)
+    }
+
     pub fn redo(&mut self) -> bool {
-        if let Some(change) = self.redo.pop() {
-            let change = change.invert();
-            self.apply_change(&change);
-            self.undo.push(change);
-            true
-        } else {
-            false
-        }
+        self.undo_or_redo(false)
     }
 
     fn insert_inner(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) -> Change {
@@ -508,6 +536,7 @@ impl Buffer {
         self.update_highlights();
         Change {
             kind: ChangeKind::Insert(base, chars),
+            action_id: self.action_counter,
             cursors: self
                 .cursors
                 .iter_mut()
@@ -541,6 +570,7 @@ impl Buffer {
         self.update_highlights();
         Change {
             kind: ChangeKind::Remove(range.start, removed),
+            action_id: self.action_counter,
             cursors: self
                 .cursors
                 .iter_mut()
@@ -657,7 +687,7 @@ impl Buffer {
                 .iter()
                 .find(|(l, _)| l == last_char)
             && let next_pos = cursor.selection().map_or(cursor.pos, |s| s.end)
-            && let next_char = self
+            && let next_tok = self
                 .text
                 .chars()
                 .get(next_pos..)
@@ -665,11 +695,16 @@ impl Buffer {
                 .iter()
                 .filter(|c| !c.is_ascii_whitespace())
                 .next()
+            && let next_char = self.text.chars().get(next_pos)
         {
-            let close_block = next_char != Some(r)
+            let close_block = (next_tok != Some(r)
                 && next_indent
                     .strip_prefix(&*prev_indent)
-                    .map_or(true, |i| i.is_empty());
+                    .map_or(false, |i| i.is_empty()))
+                || (next_char != Some(r)
+                    && prev_indent
+                        .strip_prefix(&*next_indent)
+                        .map_or(false, |i| !i.is_empty()));
             (
                 if close_block { Some(*r) } else { None },
                 true,

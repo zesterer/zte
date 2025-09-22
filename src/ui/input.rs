@@ -57,10 +57,12 @@ impl Input {
         cursor_id: CursorId,
         event: Event,
     ) -> Result<Resp, Event> {
+        buffer.begin_action();
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
                 .or_else(|| e.to_move())
+                .or_else(|| e.to_pan())
                 .or_else(|| e.to_select_token())
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
@@ -91,13 +93,30 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
+            Some(Action::Pan(dir, dist)) => {
+                let dist = match dist {
+                    Dist::Char => [1, 1],
+                    Dist::Page => self.last_area.size().map(|s| s.saturating_sub(3).max(1)),
+                    // TODO: Don't just use an arbitrary very large number
+                    Dist::Doc => [1_000_000_000; 2],
+                };
+                let dfocus = match dir {
+                    Dir::Up => [0, -1],
+                    Dir::Down => [0, 1],
+                    Dir::Left => [-1, 0],
+                    Dir::Right => [1, 0],
+                };
+                self.focus[0] += dfocus[0] * dist[0] as isize;
+                self.focus[1] += dfocus[1] * dist[1] as isize;
+                Ok(Resp::handled(None))
+            }
             Some(Action::Indent(forward)) => {
                 buffer.indent(cursor_id, forward);
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
             Some(Action::GotoLine(line)) => {
-                buffer.goto_cursor(cursor_id, [0, line]);
+                buffer.goto_cursor(cursor_id, [0, line], true);
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
@@ -110,8 +129,23 @@ impl Input {
                 buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos)) => {
-                buffer.goto_cursor(cursor_id, [self.focus[0] + pos[0], self.focus[1] + pos[1]]);
+            Some(Action::Mouse(MouseAction::Click, pos, false)) => {
+                buffer.goto_cursor(
+                    cursor_id,
+                    [self.focus[0] + pos[0], self.focus[1] + pos[1]],
+                    true,
+                );
+                Ok(Resp::handled(None))
+            }
+            Some(
+                Action::Mouse(MouseAction::Drag, pos, false)
+                | Action::Mouse(MouseAction::Click, pos, true),
+            ) => {
+                buffer.goto_cursor(
+                    cursor_id,
+                    [self.focus[0] + pos[0], self.focus[1] + pos[1]],
+                    false,
+                );
                 Ok(Resp::handled(None))
             }
             Some(Action::Undo) => {

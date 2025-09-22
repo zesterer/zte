@@ -17,19 +17,20 @@ pub enum Dir {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Char(char),                   // Insert a character
-    Indent(bool),                 // Indent (indent vs deindent)
-    Move(Dir, Dist, bool, bool),  // Move the cursor (dir, dist, retain_base, word)
-    PaneMove(Dir),                // Move panes
-    PaneOpen(Dir),                // Create a new pane
-    PaneClose,                    // Close the current pane
-    Cancel,                       // Cancels the current action
-    Continue,                     // Continue past an info-only element (like a help screen)
-    Go,                           // Search, accept, or select the current option
-    Yes,                          // A binary confirmation is answered 'yes'
-    No,                           // A binary confirmation is answered 'no'
-    Quit,                         // Quit the application
-    OpenPrompt,                   // Open the command prompt
+    Char(char),                           // Insert a character
+    Indent(bool),                         // Indent (indent vs deindent)
+    Move(Dir, Dist, bool, bool),          // Move the cursor (dir, dist, retain_base, word)
+    Pan(Dir, Dist),                       // Pan the view window
+    PaneMove(Dir),                        // Move panes
+    PaneOpen(Dir),                        // Create a new pane
+    PaneClose,                            // Close the current pane
+    Cancel,                               // Cancels the current action
+    Continue,                             // Continue past an info-only element (like a help screen)
+    Go,                                   // Search, accept, or select the current option
+    Yes,                                  // A binary confirmation is answered 'yes'
+    No,                                   // A binary confirmation is answered 'no'
+    Quit,                                 // Quit the application
+    OpenPrompt,                           // Open the command prompt
     Show(Option<String>, String), // Display an optionally titled informational text box to the user
     OpenSwitcher,                 // Open the buffer switcher
     OpenOpener(PathBuf),          // Open the file opener
@@ -41,7 +42,7 @@ pub enum Action {
     SelectToken,                  // Fully select the token under the cursor
     SelectAll,                    // Fully select the entire input
     Save,                         // Save the current buffer
-    Mouse(MouseAction, [isize; 2]),
+    Mouse(MouseAction, [isize; 2], bool), // (action, pos, is_ctrl)
     Undo,
     Redo,
 }
@@ -57,6 +58,7 @@ pub enum Dist {
 #[derive(Clone, Debug)]
 pub enum MouseAction {
     Click,
+    Drag,
     ScrollDown,
     ScrollUp,
 }
@@ -176,11 +178,11 @@ impl RawEvent {
 
     pub fn to_move(&self) -> Option<Action> {
         let (dir, dist, retain_base, word) = match &self.0 {
-            TerminalEvent::Mouse(ev) => match ev.kind {
-                MouseEventKind::ScrollUp => (Dir::Up, Dist::Char, false, false),
-                MouseEventKind::ScrollDown => (Dir::Down, Dist::Char, false, false),
-                _ => return None,
-            },
+            // TerminalEvent::Mouse(ev) => match ev.kind {
+            //     MouseEventKind::ScrollUp => (Dir::Up, Dist::Char, false, false),
+            //     MouseEventKind::ScrollDown => (Dir::Down, Dist::Char, false, false),
+            //     _ => return None,
+            // },
             TerminalEvent::Key(KeyEvent {
                 code,
                 modifiers,
@@ -206,6 +208,19 @@ impl RawEvent {
         };
 
         Some(Action::Move(dir, dist, retain_base, word))
+    }
+
+    pub fn to_pan(&self) -> Option<Action> {
+        let (dir, dist) = match &self.0 {
+            TerminalEvent::Mouse(ev) => match ev.kind {
+                MouseEventKind::ScrollUp => (Dir::Up, Dist::Char),
+                MouseEventKind::ScrollDown => (Dir::Down, Dist::Char),
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        Some(Action::Pan(dir, dist))
     }
 
     pub fn to_select_token(&self) -> Option<Action> {
@@ -438,14 +453,15 @@ impl RawEvent {
         };
 
         if let Some(pos) = area.contains([ev.column as isize, ev.row as isize]) {
-            match ev.kind {
-                MouseEventKind::ScrollUp => Some(Action::Mouse(MouseAction::ScrollUp, pos)),
-                MouseEventKind::ScrollDown => Some(Action::Mouse(MouseAction::ScrollDown, pos)),
-                MouseEventKind::Down(MouseButton::Left) => {
-                    Some(Action::Mouse(MouseAction::Click, pos))
-                }
-                _ => None,
-            }
+            let action = match ev.kind {
+                MouseEventKind::ScrollUp => MouseAction::ScrollUp,
+                MouseEventKind::ScrollDown => MouseAction::ScrollDown,
+                MouseEventKind::Down(MouseButton::Left) => MouseAction::Click,
+                MouseEventKind::Drag(MouseButton::Left) => MouseAction::Drag,
+                _ => return None,
+            };
+            let is_ctrl = ev.modifiers == KeyModifiers::CONTROL;
+            Some(Action::Mouse(action, pos, is_ctrl))
         } else {
             None
         }
