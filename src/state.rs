@@ -456,6 +456,8 @@ impl Buffer {
             _ => return self.undo.push(change),
         }
 
+        last.action_id = change.action_id;
+
         for (id, (from2, to2)) in change.cursors {
             last.cursors
                 .entry(id)
