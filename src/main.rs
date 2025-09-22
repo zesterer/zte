@@ -6,9 +6,9 @@ mod theme;
 mod ui;
 
 use crate::{
-    action::{Action, Dir, Dist, Event},
+    action::{Action, Dir, Dist, Event, MouseAction},
     state::State,
-    terminal::{Color, Terminal, TerminalEvent},
+    terminal::{Area, Color, Terminal, TerminalEvent},
     ui::{Element as _, Visual as _},
 };
 use clap::Parser;

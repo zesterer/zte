@@ -1,5 +1,10 @@
-use crate::{state::BufferId, terminal::TerminalEvent};
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crate::{
+    state::BufferId,
+    terminal::{Area, TerminalEvent},
+};
+use crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
+};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
@@ -14,7 +19,7 @@ pub enum Dir {
 pub enum Action {
     Char(char),                   // Insert a character
     Indent(bool),                 // Indent (indent vs deindent)
-    Move(Dir, Dist, bool, bool),  // Move the cursor (dir, page, retain_base, word)
+    Move(Dir, Dist, bool, bool),  // Move the cursor (dir, dist, retain_base, word)
     PaneMove(Dir),                // Move panes
     PaneOpen(Dir),                // Create a new pane
     PaneClose,                    // Close the current pane
@@ -36,6 +41,7 @@ pub enum Action {
     SelectToken,                  // Fully select the token under the cursor
     SelectAll,                    // Fully select the entire input
     Save,                         // Save the current buffer
+    Mouse(MouseAction, [isize; 2]),
 }
 
 /// How far should movement go?
@@ -44,6 +50,13 @@ pub enum Dist {
     Char,
     Page,
     Doc,
+}
+
+#[derive(Clone, Debug)]
+pub enum MouseAction {
+    Click,
+    ScrollDown,
+    ScrollUp,
 }
 
 #[derive(Debug)]
@@ -157,28 +170,33 @@ impl RawEvent {
     }
 
     pub fn to_move(&self) -> Option<Action> {
-        let TerminalEvent::Key(KeyEvent {
-            code,
-            modifiers,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat,
-            ..
-        }) = &self.0
-        else {
-            return None;
-        };
+        let (dir, dist, retain_base, word) = match &self.0 {
+            TerminalEvent::Mouse(ev) => match ev.kind {
+                MouseEventKind::ScrollUp => (Dir::Up, Dist::Char, false, false),
+                MouseEventKind::ScrollDown => (Dir::Down, Dist::Char, false, false),
+                _ => return None,
+            },
+            TerminalEvent::Key(KeyEvent {
+                code,
+                modifiers,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                ..
+            }) => {
+                let retain_base = modifiers.contains(KeyModifiers::SHIFT);
+                let word = modifiers.contains(KeyModifiers::CONTROL);
 
-        let retain_base = modifiers.contains(KeyModifiers::SHIFT);
-        let word = modifiers.contains(KeyModifiers::CONTROL);
-
-        let (dir, dist) = match code {
-            KeyCode::Home => (Dir::Up, Dist::Doc),
-            KeyCode::End => (Dir::Down, Dist::Doc),
-            KeyCode::PageUp => (Dir::Up, Dist::Page),
-            KeyCode::PageDown => (Dir::Down, Dist::Page),
-            KeyCode::Left => (Dir::Left, Dist::Char),
-            KeyCode::Right => (Dir::Right, Dist::Char),
-            KeyCode::Up => (Dir::Up, Dist::Char),
-            KeyCode::Down => (Dir::Down, Dist::Char),
+                match code {
+                    KeyCode::Home => (Dir::Up, Dist::Doc, retain_base, word),
+                    KeyCode::End => (Dir::Down, Dist::Doc, retain_base, word),
+                    KeyCode::PageUp => (Dir::Up, Dist::Page, retain_base, word),
+                    KeyCode::PageDown => (Dir::Down, Dist::Page, retain_base, word),
+                    KeyCode::Left => (Dir::Left, Dist::Char, retain_base, word),
+                    KeyCode::Right => (Dir::Right, Dist::Char, retain_base, word),
+                    KeyCode::Up => (Dir::Up, Dist::Char, retain_base, word),
+                    KeyCode::Down => (Dir::Down, Dist::Char, retain_base, word),
+                    _ => return None,
+                }
+            }
             _ => return None,
         };
 
@@ -386,6 +404,25 @@ impl RawEvent {
             })
         ) {
             Some(Action::Save)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_mouse(&self, area: Area) -> Option<Action> {
+        let TerminalEvent::Mouse(ev) = self.0 else {
+            return None;
+        };
+
+        if let Some(pos) = area.contains([ev.column as isize, ev.row as isize]) {
+            match ev.kind {
+                MouseEventKind::ScrollUp => Some(Action::Mouse(MouseAction::ScrollUp, pos)),
+                MouseEventKind::ScrollDown => Some(Action::Mouse(MouseAction::ScrollDown, pos)),
+                MouseEventKind::Down(MouseButton::Left) => {
+                    Some(Action::Mouse(MouseAction::Click, pos))
+                }
+                _ => None,
+            }
         } else {
             None
         }

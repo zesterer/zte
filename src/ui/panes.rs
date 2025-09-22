@@ -1,14 +1,20 @@
 use super::*;
 use crate::state::BufferId;
 
-pub enum Pane {
+pub enum PaneKind {
     Empty,
     Doc(Doc),
+}
+
+pub struct Pane {
+    kind: PaneKind,
+    last_area: Area,
 }
 
 pub struct Panes {
     selected: usize,
     panes: Vec<Pane>,
+    last_area: Area,
 }
 
 impl Panes {
@@ -17,8 +23,12 @@ impl Panes {
             selected: 0,
             panes: buffers
                 .iter()
-                .map(|b| Pane::Doc(Doc::new(state, *b)))
+                .map(|b| Pane {
+                    kind: PaneKind::Doc(Doc::new(state, *b)),
+                    last_area: Area::default(),
+                })
                 .collect(),
+            last_area: Default::default(),
         }
     }
 
@@ -34,6 +44,7 @@ impl Element for Panes {
                 .map(Action::PaneMove)
                 .or_else(|| e.to_pane_open().map(Action::PaneOpen))
                 .or_else(|| e.to_pane_close())
+                .or_else(|| e.to_mouse(self.last_area))
         }) {
             Some(Action::PaneMove(Dir::Left)) => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();
@@ -45,9 +56,9 @@ impl Element for Panes {
             }
             Some(Action::PaneClose) => {
                 if self.selected < self.panes.len() {
-                    match self.panes.remove(self.selected) {
-                        Pane::Empty => {}
-                        Pane::Doc(doc) => doc.close(state),
+                    match self.panes.remove(self.selected).kind {
+                        PaneKind::Empty => {}
+                        PaneKind::Doc(doc) => doc.close(state),
                     }
                     self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
                     Ok(Resp::handled(None))
@@ -61,21 +72,39 @@ impl Element for Panes {
                     Dir::Right => (self.selected + 1).min(self.panes.len()),
                     Dir::Up | Dir::Down => return Err(event),
                 };
-                let pane = match state.buffers.keys().next() {
-                    Some(b) => Pane::Doc(Doc::new(state, b)),
-                    None => Pane::Empty,
+                let kind = match state.buffers.keys().next() {
+                    Some(b) => PaneKind::Doc(Doc::new(state, b)),
+                    None => PaneKind::Empty,
                 };
-                self.panes.insert(new_idx, pane);
+                self.panes.insert(
+                    new_idx,
+                    Pane {
+                        kind,
+                        last_area: Area::default(),
+                    },
+                );
                 self.selected = new_idx;
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(_, pos)) => {
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    if pane.last_area.contains(pos).is_some() {
+                        self.selected = i;
+                        match &mut pane.kind {
+                            PaneKind::Doc(doc) => return doc.handle(state, event),
+                            PaneKind::Empty => {}
+                        }
+                    }
+                }
                 Ok(Resp::handled(None))
             }
             // Pass anything else through to the active pane
             _ => {
                 if let Some(pane) = self.panes.get_mut(self.selected) {
                     // Pass to pane
-                    match pane {
-                        Pane::Empty => Err(event),
-                        Pane::Doc(doc) => doc.handle(state, event),
+                    match &mut pane.kind {
+                        PaneKind::Empty => Err(event),
+                        PaneKind::Doc(doc) => doc.handle(state, event),
                     }
                 } else {
                     // No active pane, don't handle
@@ -92,6 +121,8 @@ impl Visual for Panes {
         let frame_w = frame.size()[0];
         let boundary = |i| frame_w * i / n;
 
+        self.last_area = frame.area();
+
         for (i, pane) in self.panes.iter_mut().enumerate() {
             let (x0, x1) = (boundary(i), boundary(i + 1));
 
@@ -99,9 +130,12 @@ impl Visual for Panes {
             frame
                 .rect([x0, 0], [x1 - x0, frame.size()[1]])
                 .with_focus(self.selected == i)
-                .with(|frame| match pane {
-                    Pane::Empty => {}
-                    Pane::Doc(doc) => doc.render(state, frame),
+                .with(|frame| {
+                    pane.last_area = frame.area();
+                    match &mut pane.kind {
+                        PaneKind::Empty => {}
+                        PaneKind::Doc(doc) => doc.render(state, frame),
+                    }
                 });
         }
     }

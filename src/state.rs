@@ -216,11 +216,11 @@ impl Buffer {
         });
     }
 
-    pub fn goto_line_cursor(&mut self, cursor_id: CursorId, line: isize) {
+    pub fn goto_cursor(&mut self, cursor_id: CursorId, pos: [isize; 2]) {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
-        cursor.pos = self.text.to_pos([0, line]);
+        cursor.pos = self.text.to_pos(pos);
         cursor.reset_desired_col(&self.text);
         cursor.base = cursor.pos;
     }

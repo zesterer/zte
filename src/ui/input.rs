@@ -17,8 +17,8 @@ pub struct Input {
     pub mode: Mode,
     // x/y location in the buffer that the pane is trying to focus on
     pub focus: [isize; 2],
-    // Remember the last known size for things like scrolling
-    pub last_size: [usize; 2],
+    // Remember the last area for things like scrolling
+    pub last_area: Area,
 }
 
 impl Input {
@@ -39,7 +39,7 @@ impl Input {
     pub fn focus(&mut self, coord: [isize; 2]) {
         for i in 0..2 {
             self.focus[i] =
-                self.focus[i].clamp(coord[i] - self.last_size[i] as isize + 1, coord[i]);
+                self.focus[i].clamp(coord[i] - self.last_area.size()[i] as isize + 1, coord[i]);
         }
     }
 
@@ -64,6 +64,7 @@ impl Input {
                 .or_else(|| e.to_select_token())
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
+                .or_else(|| e.to_mouse(self.last_area))
         }) {
             Some(Action::Char(c)) => {
                 if c == '\x08' {
@@ -81,7 +82,7 @@ impl Input {
             Some(Action::Move(dir, dist, retain_base, word)) => {
                 let dist = match dist {
                     Dist::Char => [1, 1],
-                    Dist::Page => self.last_size.map(|s| s.saturating_sub(3).max(1)),
+                    Dist::Page => self.last_area.size().map(|s| s.saturating_sub(3).max(1)),
                     // TODO: Don't just use an arbitrary very large number
                     Dist::Doc => [1_000_000_000; 2],
                 };
@@ -94,7 +95,7 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(Action::GotoLine(line)) => {
-                buffer.goto_line_cursor(cursor_id, line);
+                buffer.goto_cursor(cursor_id, [0, line]);
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
@@ -104,6 +105,11 @@ impl Input {
             }
             Some(Action::SelectAll) => {
                 buffer.select_all_cursor(cursor_id);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(MouseAction::Click, pos)) => {
+                buffer.goto_cursor(cursor_id, [self.focus[0] + pos[0], self.focus[1] + pos[1]]);
+                self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
             _ => Err(event),
@@ -141,7 +147,7 @@ impl Input {
             Mode::Doc => line_num_w + 2,
         };
 
-        self.last_size = [frame.size()[0].saturating_sub(margin_w), frame.size()[1]];
+        self.last_area = frame.rect([margin_w, 0], [!0, !0]).area();
 
         let mut pos = 0;
         for (i, (line_num, (line_pos, line))) in buffer

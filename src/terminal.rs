@@ -31,11 +31,38 @@ impl Default for Cell {
     }
 }
 
+/// Represents an area of the terminal window
+#[derive(Copy, Clone, Default)]
+pub struct Area {
+    origin: [u16; 2],
+    size: [u16; 2],
+}
+
+impl Area {
+    pub fn size(&self) -> [usize; 2] {
+        self.size.map(|e| e as usize)
+    }
+
+    pub fn contains(&self, pos: [isize; 2]) -> Option<[isize; 2]> {
+        if (self.origin[0] as isize..self.origin[0] as isize + self.size[0] as isize)
+            .contains(&pos[0])
+            && (self.origin[1] as isize..self.origin[1] as isize + self.size[1] as isize)
+                .contains(&pos[1])
+        {
+            Some([
+                pos[0] - self.origin[0] as isize,
+                pos[1] - self.origin[1] as isize,
+            ])
+        } else {
+            None
+        }
+    }
+}
+
 pub struct Rect<'a> {
     fg: Color,
     bg: Color,
-    origin: [u16; 2],
-    size: [u16; 2],
+    area: Area,
     fb: &'a mut Framebuffer,
     has_focus: bool,
 }
@@ -44,8 +71,8 @@ impl<'a> Rect<'a> {
     fn get_mut(&mut self, pos: [usize; 2]) -> Option<&mut Cell> {
         if pos[0] < self.size()[0] && pos[1] < self.size()[1] {
             let offs = [
-                self.origin[0] as usize + pos[0],
-                self.origin[1] as usize + pos[1],
+                self.area.origin[0] as usize + pos[0],
+                self.area.origin[1] as usize + pos[1],
             ];
             Some(&mut self.fb.cells[offs[1] * self.fb.size[0] as usize + offs[0]])
         } else {
@@ -59,14 +86,16 @@ impl<'a> Rect<'a> {
 
     pub fn rect(&mut self, origin: [usize; 2], size: [usize; 2]) -> Rect {
         Rect {
-            origin: [
-                self.origin[0] + origin[0] as u16,
-                self.origin[1] + origin[1] as u16,
-            ],
-            size: [
-                size[0].min((self.size[0] as usize).saturating_sub(origin[0])) as u16,
-                size[1].min((self.size[1] as usize).saturating_sub(origin[1])) as u16,
-            ],
+            area: Area {
+                origin: [
+                    self.area.origin[0] + origin[0] as u16,
+                    self.area.origin[1] + origin[1] as u16,
+                ],
+                size: [
+                    size[0].min((self.area.size[0] as usize).saturating_sub(origin[0])) as u16,
+                    size[1].min((self.area.size[1] as usize).saturating_sub(origin[1])) as u16,
+                ],
+            },
             fg: self.fg,
             bg: self.bg,
             fb: self.fb,
@@ -132,8 +161,7 @@ impl<'a> Rect<'a> {
         Rect {
             fg,
             bg: self.bg,
-            origin: self.origin,
-            size: self.size,
+            area: self.area,
             fb: self.fb,
             has_focus: self.has_focus,
         }
@@ -143,8 +171,7 @@ impl<'a> Rect<'a> {
         Rect {
             fg: self.fg,
             bg,
-            origin: self.origin,
-            size: self.size,
+            area: self.area,
             fb: self.fb,
             has_focus: self.has_focus,
         }
@@ -154,8 +181,7 @@ impl<'a> Rect<'a> {
         Rect {
             fg: self.fg,
             bg: self.bg,
-            origin: self.origin,
-            size: self.size,
+            area: self.area,
             fb: self.fb,
             has_focus: self.has_focus && focus,
         }
@@ -165,8 +191,12 @@ impl<'a> Rect<'a> {
         self.has_focus
     }
 
+    pub fn area(&self) -> Area {
+        self.area
+    }
+
     pub fn size(&self) -> [usize; 2] {
-        self.size.map(|e| e as usize)
+        self.area.size.map(|e| e as usize)
     }
 
     pub fn fill(&mut self, c: char) -> Rect {
@@ -211,8 +241,8 @@ impl<'a> Rect<'a> {
         {
             self.fb.cursor = Some((
                 [
-                    self.origin[0] + cursor[0] as u16,
-                    self.origin[1] + cursor[1] as u16,
+                    self.area.origin[0] + cursor[0] as u16,
+                    self.area.origin[1] + cursor[1] as u16,
                 ],
                 style,
             ));
@@ -233,8 +263,10 @@ impl Framebuffer {
         Rect {
             fg: Color::Reset,
             bg: Color::Reset,
-            origin: [0, 0],
-            size: self.size,
+            area: Area {
+                origin: [0, 0],
+                size: self.size,
+            },
             fb: self,
             has_focus: true,
         }
@@ -251,12 +283,14 @@ impl<'a> Terminal<'a> {
     fn enter(mut stdout: impl io::Write) {
         let _ = terminal::enable_raw_mode();
         let _ = stdout.execute(terminal::EnterAlternateScreen);
+        let _ = stdout.execute(event::EnableMouseCapture);
     }
 
     fn leave(mut stdout: impl io::Write) {
         let _ = terminal::disable_raw_mode();
         let _ = stdout.execute(terminal::LeaveAlternateScreen);
         let _ = stdout.execute(cursor::Show);
+        let _ = stdout.execute(event::DisableMouseCapture);
     }
 
     pub fn with<T>(
