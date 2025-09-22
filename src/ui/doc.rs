@@ -269,7 +269,7 @@ impl Search {
                 return Ok(Resp::end(None));
             }
             Some(Action::Go) => return Ok(Resp::end(None)),
-            Some(Action::Move(dir, false, false, false)) => {
+            Some(Action::Move(dir, Dist::Char, false, false)) => {
                 match dir {
                     Dir::Up => {
                         self.selected = (self.selected + self.results.len().saturating_sub(1))

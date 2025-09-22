@@ -78,11 +78,12 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(dir, page, retain_base, word)) => {
-                let dist = if page {
-                    self.last_size.map(|s| s.saturating_sub(3).max(1))
-                } else {
-                    [1, 1]
+            Some(Action::Move(dir, dist, retain_base, word)) => {
+                let dist = match dist {
+                    Dist::Char => [1, 1],
+                    Dist::Page => self.last_size.map(|s| s.saturating_sub(3).max(1)),
+                    // TODO: Don't just use an arbitrary very large number
+                    Dist::Doc => [1_000_000_000; 2],
                 };
                 buffer.move_cursor(cursor_id, dir, dist, retain_base, word);
                 self.refocus(buffer, cursor_id);

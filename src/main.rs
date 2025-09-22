@@ -6,7 +6,7 @@ mod theme;
 mod ui;
 
 use crate::{
-    action::{Action, Dir, Event},
+    action::{Action, Dir, Dist, Event},
     state::State,
     terminal::{Color, Terminal, TerminalEvent},
     ui::{Element as _, Visual as _},

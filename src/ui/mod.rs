@@ -14,6 +14,8 @@ pub use self::{
     status::Status,
 };
 
+use super::*;
+
 use crate::{
     Action, Dir, Event, State,
     terminal::{Color, Rect},
@@ -149,7 +151,7 @@ impl<T> Options<T> {
 impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
-            Some(Action::Move(dir, false, false, false)) => {
+            Some(Action::Move(dir, Dist::Char, false, false)) => {
                 match dir {
                     Dir::Up => {
                         self.selected =

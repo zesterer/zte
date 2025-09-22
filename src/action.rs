@@ -14,7 +14,7 @@ pub enum Dir {
 pub enum Action {
     Char(char),                   // Insert a character
     Indent(bool),                 // Indent (indent vs deindent)
-    Move(Dir, bool, bool, bool),  // Move the cursor (dir, page, retain_base, word)
+    Move(Dir, Dist, bool, bool),  // Move the cursor (dir, page, retain_base, word)
     PaneMove(Dir),                // Move panes
     PaneOpen(Dir),                // Create a new pane
     PaneClose,                    // Close the current pane
@@ -36,6 +36,14 @@ pub enum Action {
     SelectToken,                  // Fully select the token under the cursor
     SelectAll,                    // Fully select the entire input
     Save,                         // Save the current buffer
+}
+
+/// How far should movement go?
+#[derive(Clone, Debug)]
+pub enum Dist {
+    Char,
+    Page,
+    Doc,
 }
 
 #[derive(Debug)]
@@ -162,17 +170,19 @@ impl RawEvent {
         let retain_base = modifiers.contains(KeyModifiers::SHIFT);
         let word = modifiers.contains(KeyModifiers::CONTROL);
 
-        let (dir, page) = match code {
-            KeyCode::PageUp => (Dir::Up, true),
-            KeyCode::PageDown => (Dir::Down, true),
-            KeyCode::Left => (Dir::Left, false),
-            KeyCode::Right => (Dir::Right, false),
-            KeyCode::Up => (Dir::Up, false),
-            KeyCode::Down => (Dir::Down, false),
+        let (dir, dist) = match code {
+            KeyCode::Home => (Dir::Up, Dist::Doc),
+            KeyCode::End => (Dir::Down, Dist::Doc),
+            KeyCode::PageUp => (Dir::Up, Dist::Page),
+            KeyCode::PageDown => (Dir::Down, Dist::Page),
+            KeyCode::Left => (Dir::Left, Dist::Char),
+            KeyCode::Right => (Dir::Right, Dist::Char),
+            KeyCode::Up => (Dir::Up, Dist::Char),
+            KeyCode::Down => (Dir::Down, Dist::Char),
             _ => return None,
         };
 
-        Some(Action::Move(dir, page, retain_base, word))
+        Some(Action::Move(dir, dist, retain_base, word))
     }
 
     pub fn to_select_token(&self) -> Option<Action> {
