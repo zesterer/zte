@@ -89,7 +89,6 @@ impl Element for Panes {
             Some(Action::Mouse(_, pos, _)) => {
                 for (i, pane) in self.panes.iter_mut().enumerate() {
                     if pane.last_area.contains(pos).is_some() {
-                        self.selected = i;
                         match &mut pane.kind {
                             PaneKind::Doc(doc) => return doc.handle(state, event),
                             PaneKind::Empty => {}
