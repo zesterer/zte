@@ -95,7 +95,7 @@ impl Element<()> for Root {
                 Action::OpenSwitcher => {
                     self.tasks.clear(); // Overrides all
                     self.tasks
-                        .push(Task::Switcher(Switcher::new(state.buffers.keys())));
+                        .push(Task::Switcher(Switcher::new(state.most_recent())));
                 }
                 Action::OpenOpener(path) => {
                     self.tasks.clear(); // Overrides all

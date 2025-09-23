@@ -152,6 +152,7 @@ pub struct Buffer {
     pub undo: Vec<Change>,
     pub redo: Vec<Change>,
     action_counter: usize,
+    most_recent_rank: usize,
 }
 
 pub struct Change {
@@ -207,6 +208,7 @@ impl Buffer {
             undo: Vec::new(),
             redo: Vec::new(),
             action_counter: 0,
+            most_recent_rank: 0,
         })
     }
 
@@ -854,6 +856,7 @@ pub struct State {
     pub buffers: HopSlotMap<BufferId, Buffer>,
     pub tick: u64,
     pub theme: theme::Theme,
+    pub most_recent_counter: usize,
 }
 
 impl TryFrom<Args> for State {
@@ -863,6 +866,7 @@ impl TryFrom<Args> for State {
             buffers: HopSlotMap::default(),
             tick: 0,
             theme: theme::Theme::default(),
+            most_recent_counter: 0,
         };
 
         if args.paths.is_empty() {
@@ -891,5 +895,18 @@ impl State {
 
     pub fn tick(&mut self) {
         self.tick += 1;
+    }
+
+    pub fn set_most_recent(&mut self, buffer: BufferId) {
+        if let Some(buffer) = self.buffers.get_mut(buffer) {
+            self.most_recent_counter += 1;
+            buffer.most_recent_rank = self.most_recent_counter;
+        }
+    }
+
+    pub fn most_recent(&self) -> Vec<BufferId> {
+        let mut most_recent = self.buffers.keys().collect::<Vec<_>>();
+        most_recent.sort_by_key(|b| core::cmp::Reverse(self.buffers[*b].most_recent_rank));
+        most_recent
     }
 }

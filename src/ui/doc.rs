@@ -36,6 +36,7 @@ impl Doc {
     }
 
     fn switch_buffer(&mut self, state: &mut State, buffer: BufferId) {
+        state.set_most_recent(buffer);
         self.buffer = buffer;
         let Some(buffer) = state.buffers.get_mut(self.buffer) else {
             return;
