@@ -249,6 +249,10 @@ impl<'a> Rect<'a> {
         }
         self.rect([0, 0], self.size())
     }
+
+    pub fn set_title(&mut self, title: String) {
+        self.fb.title = title;
+    }
 }
 
 #[derive(Default)]
@@ -256,6 +260,7 @@ pub struct Framebuffer {
     size: [u16; 2],
     cells: Vec<Cell>,
     cursor: Option<([u16; 2], CursorStyle)>,
+    title: String,
 }
 
 impl Framebuffer {
@@ -284,12 +289,14 @@ impl<'a> Terminal<'a> {
     fn enter(mut stdout: impl io::Write) {
         let _ = terminal::enable_raw_mode();
         let _ = stdout.execute(terminal::EnterAlternateScreen);
+        let _ = stdout.execute(terminal::DisableLineWrap);
         let _ = stdout.execute(event::EnableMouseCapture);
     }
 
     fn leave(mut stdout: impl io::Write) {
         let _ = terminal::disable_raw_mode();
         let _ = stdout.execute(terminal::LeaveAlternateScreen);
+        let _ = stdout.execute(terminal::EnableLineWrap);
         let _ = stdout.execute(cursor::Show);
         let _ = stdout.execute(event::DisableMouseCapture);
     }
@@ -346,6 +353,10 @@ impl<'a> Terminal<'a> {
                 if self.bell {
                     self.bell = false;
                     stdout.queue(style::Print('\x07')).unwrap();
+                }
+
+                if self.fb[0].title != self.fb[1].title {
+                    stdout.queue(terminal::SetTitle(&self.fb[0].title)).unwrap();
                 }
 
                 let mut cursor_pos = [0, 0];

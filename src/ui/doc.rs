@@ -142,6 +142,14 @@ impl Visual for Doc {
         };
         let cursor_id = self.cursors[&self.buffer];
 
+        if frame.has_focus() {
+            frame.set_title(if let Some(path) = &buffer.path {
+                format!("{}: {}", env!("CARGO_PKG_NAME"), path.display())
+            } else {
+                format!("{}: Unsaved", env!("CARGO_PKG_NAME"))
+            });
+        }
+
         let finder_h = if self.finder.is_some() { 3 } else { 0 };
 
         // Render input
