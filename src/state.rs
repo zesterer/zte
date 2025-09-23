@@ -768,6 +768,29 @@ impl Buffer {
         }
     }
 
+    pub fn duplicate(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        if let Some(s) = cursor.selection()
+            && let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
+        {
+            // cursor.place_at(s.end);
+            self.insert_after(cursor_id, text.to_vec())
+        } else {
+            let coord = self.text.to_coord(cursor.pos);
+            let line = self
+                .text
+                .lines()
+                .nth(coord[1].max(0) as usize)
+                .map(|l| l.to_vec());
+            if let Some(line) = line {
+                let end_of_line = self.text.to_pos([0, coord[1] + 1]);
+                self.insert(end_of_line, line);
+            }
+        }
+    }
+
     pub fn start_session(&mut self) -> CursorId {
         self.cursors.insert(Cursor::default())
     }

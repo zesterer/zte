@@ -188,6 +188,11 @@ impl Input {
                     Ok(Resp::handled(Some(Event::Bell)))
                 }
             }
+            Some(Action::Duplicate) => {
+                buffer.duplicate(cursor_id);
+                self.refocus(buffer, cursor_id);
+                Ok(Resp::handled(None))
+            }
             _ => Err(event),
         }
     }

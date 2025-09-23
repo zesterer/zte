@@ -48,6 +48,7 @@ pub enum Action {
     Copy,
     Cut,
     Paste,
+    Duplicate,
 }
 
 /// How far should movement go?
@@ -464,6 +465,12 @@ impl RawEvent {
                 kind: KeyEventKind::Press,
                 ..
             }) => Some(Action::Paste),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('d'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::Duplicate),
             _ => None,
         }
     }
