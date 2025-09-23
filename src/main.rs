@@ -1,5 +1,6 @@
 mod action;
 mod highlight;
+mod lang;
 mod state;
 mod terminal;
 mod theme;

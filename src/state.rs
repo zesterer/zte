@@ -1,8 +1,4 @@
-use crate::{
-    Args, Dir, Error,
-    highlight::{Highlighter, Highlights},
-    theme,
-};
+use crate::{Args, Dir, Error, highlight::Highlights, lang::LangPack, theme};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use slotmap::{HopSlotMap, new_key_type};
 use std::{
@@ -145,7 +141,8 @@ impl Text {
 pub struct Buffer {
     pub unsaved: bool,
     pub text: Text,
-    pub highlights: Option<Highlights>,
+    pub lang: LangPack,
+    pub highlights: Highlights,
     pub cursors: HopSlotMap<CursorId, Cursor>,
     pub dir: Option<PathBuf>,
     pub path: Option<PathBuf>,
@@ -198,9 +195,11 @@ impl Buffer {
             }
             Err(err) => return Err(err.into()),
         };
+        let lang = LangPack::from_file_name(&path);
         Ok(Self {
             unsaved,
-            highlights: Highlighter::from_file_name(&path).map(|h| h.highlight(&chars)),
+            highlights: lang.highlighter.highlight(&chars),
+            lang,
             text: Text { chars },
             cursors: HopSlotMap::default(),
             dir,
@@ -233,10 +232,7 @@ impl Buffer {
     }
 
     fn update_highlights(&mut self) {
-        self.highlights = self
-            .highlights
-            .take()
-            .map(|hl| hl.highlighter.highlight(self.text.chars()));
+        self.highlights = self.lang.highlighter.highlight(self.text.chars());
     }
 
     pub fn reset(&mut self) {
@@ -266,24 +262,20 @@ impl Buffer {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
-        if let Some(tok) = self
-            .highlights
-            .as_ref()
-            // Choose the longest token that the cursor is touching
-            .and_then(|hl| {
-                let a = hl.get_at(cursor.pos);
-                let b = hl.get_at(cursor.pos.saturating_sub(1));
-                a.zip(b)
-                    .map(|(a, b)| {
-                        if a.range.end - a.range.start > b.range.end - b.range.start {
-                            a
-                        } else {
-                            b
-                        }
-                    })
-                    .or(a)
-                    .or(b)
+
+        let a = self.highlights.get_at(cursor.pos);
+        let b = self.highlights.get_at(cursor.pos.saturating_sub(1));
+        if let Some(tok) = a
+            .zip(b)
+            .map(|(a, b)| {
+                if a.range.end - a.range.start > b.range.end - b.range.start {
+                    a
+                } else {
+                    b
+                }
             })
+            .or(a)
+            .or(b)
         {
             cursor.select(tok.range.clone());
         } else {
@@ -797,6 +789,10 @@ impl Buffer {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
+        let Some(comment_syntax) = self.lang.comment_syntax.clone() else {
+            return;
+        };
+
         let lines = cursor
             .selection()
             .map(|s| self.text.to_coord(s.start)[1]..=self.text.to_coord(s.end)[1])
@@ -824,11 +820,11 @@ impl Buffer {
                 .text
                 .chars()
                 .get(pos..)
-                .map_or(false, |l| l.starts_with(&['/', '/', ' ']))
+                .map_or(false, |l| l.starts_with(&comment_syntax))
             {
-                self.remove(pos..pos + 3);
+                self.remove(pos..pos + comment_syntax.len());
             } else {
-                self.insert(pos, "// ".chars());
+                self.insert(pos, comment_syntax.iter().copied());
             }
         }
     }

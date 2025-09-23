@@ -284,10 +284,8 @@ impl Input {
                     let (fg, c) = match line.get(coord as usize).copied() {
                         Some('\n') if selected => (state.theme.whitespace, '⮠'),
                         Some(c) => {
-                            if let Some(fg) = buffer
-                                .highlights
-                                .as_ref()
-                                .and_then(|hl| hl.get_at(pos?))
+                            if let Some(fg) = pos
+                                .and_then(|pos| buffer.highlights.get_at(pos))
                                 .map(|tok| state.theme.token_color(tok.kind))
                             {
                                 (fg, c)

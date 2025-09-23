@@ -34,8 +34,8 @@ pub enum TokenKind {
     Constant,
 }
 
+#[derive(Default)]
 pub struct Highlighter {
-    // regex: meta::Regex,
     matchers: Vec<Regex>,
     entries: Vec<TokenKind>,
 }
@@ -55,187 +55,19 @@ impl Highlighter {
     }
 
     pub fn with(mut self, token: TokenKind, p: impl AsRef<str>) -> Self {
-        self.entries.push(token);
-        self.matchers
-            .push(Regex::parser().parse(p.as_ref()).unwrap());
-        self
+        self.with_many([(token, p)])
     }
 
-    pub fn from_file_name(file_name: &Path) -> Option<Self> {
-        match file_name.extension()?.to_str()? {
-            "rs" => Some(Self::rust()),
-            "md" => Some(Self::markdown()),
-            "toml" => Some(Self::toml()),
-            "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go" => Some(Self::generic_clike()),
-            "glsl" | "vert" | "frag" => Some(Self::glsl()),
-            _ => None,
+    pub fn with_many<P: AsRef<str>>(
+        mut self,
+        patterns: impl IntoIterator<Item = (TokenKind, P)>,
+    ) -> Self {
+        for (token, p) in patterns {
+            self.entries.push(token);
+            self.matchers
+                .push(Regex::parser().parse(p.as_ref()).unwrap());
         }
-    }
-
-    pub fn markdown() -> Self {
-        Self::new_from_regex([
-            // Links
-            (TokenKind::String, r"\[[^\]]*\](\([^\)]*\))?"),
-            // Header
-            (TokenKind::Doc, r"^#+[[:space:]][^$]*$"),
-            // List item
-            (TokenKind::Operator, r"^[[:space:]]?[\-([0-9]+[\)\.])]"),
-            // Bold
-            (TokenKind::Property, r"\*\*[^(\*\*)]*\*\*"),
-            // Italics
-            (TokenKind::Attribute, r"\*[^\*]*\*"),
-            // Code block
-            (TokenKind::Operator, r"^```[^(^```)]*^```"),
-            // Inline code
-            (TokenKind::Constant, r"`[^`$]*[`$]"),
-            // HTML
-            (TokenKind::Special, r"<[^<>]*>"),
-        ])
-    }
-
-    pub fn rust() -> Self {
-        Self::new_from_regex([
-            // Both kinds of comments match multiple lines
-            (
-                TokenKind::Doc,
-                r"\/\/[\/!][^\n]*$(\n[[:space:]]\/\/[\/!][^\n]*$)*",
-            ),
-            (TokenKind::Comment, r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*"),
-            // Multi-line comment
-            (TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/"),
-            (
-                TokenKind::Keyword,
-                r"\b[(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(mut)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(async)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
-            ),
-            (TokenKind::Constant, r"\b[(true)(false)]\b"),
-            // Flow-control operators count as keywords
-            (TokenKind::Keyword, r"\.await\b"),
-            // Macro invocations: println!
-            (TokenKind::Macro, r"\b[A-Za-z_][A-Za-z0-9_]*!"),
-            // Meta-variables
-            (TokenKind::Macro, r"\$[A-Za-z_][A-Za-z0-9_]*\b"),
-            (TokenKind::Constant, r"\b[A-Z][A-Z0-9_]+\b"),
-            (TokenKind::Type, r"\b[A-Z][A-Za-z0-9_]*\b"),
-            // Primitives
-            (
-                TokenKind::Type,
-                r"\b[(u8)(u16)(u32)(u64)(u128)(i8)(i16)(i32)(i64)(i128)(usize)(isize)(bool)(str)(char)(f16)(f32)(f64)(f128)]\b",
-            ),
-            // "foo" or b"foo" or r#"foo"#
-            (TokenKind::String, r#"b?r?(#*)@("[(\\")[^("~)]]*("~))"#),
-            // Characters
-            (
-                TokenKind::String,
-                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]'"#,
-            ),
-            (
-                TokenKind::Operator,
-                r"[(&(mut)?)(\?)(\+=?)(\-=?)(\*=?)(\/=?)(%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
-            ),
-            // Fields and methods: a.foo
-            (TokenKind::Property, r"\.[a-z_][A-Za-z0-9_]*"),
-            // Paths: std::foo::bar
-            (TokenKind::Property, r"[A-Za-z_][A-Za-z0-9_]*::"),
-            // Lifetimes
-            (TokenKind::Special, r"'[a-z_][A-Za-z0-9_]*\b"),
-            (TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b"),
-            (TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*"),
-            (TokenKind::Delimiter, r"[\{\}\(\)\[\]]"),
-            (TokenKind::Macro, r"[\{\}\(\)\[\]]"),
-            (TokenKind::Attribute, r"#!?\[[^\]]*\]"),
-        ])
-    }
-
-    pub fn clike(keyword: &str, r#type: &str, builtin: &str) -> Self {
-        Self::new_from_regex([
-            // Both kinds of comments match multiple lines
-            (
-                TokenKind::Doc,
-                r"\/\/[\/!][^\n]*$(\n[[:space:]]\/\/[\/!][^\n]*$)*",
-            ),
-            (TokenKind::Comment, r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*"),
-            // Multi-line comment
-            (TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/"),
-            (TokenKind::Keyword, keyword),
-            (TokenKind::Macro, builtin),
-            (TokenKind::Constant, r"\b[(true)(false)]\b"),
-            // Flow-control operators count as keywords
-            (TokenKind::Keyword, r"\b[(\.await)\?]\b"),
-            (TokenKind::Constant, r"\b[A-Z][A-Z0-9_]+\b"),
-            (TokenKind::Type, r"\b[A-Z][A-Za-z0-9_]*\b"),
-            // Primitives
-            (TokenKind::Type, r#type),
-            // "foo" or b"foo" or r#"foo"#
-            (TokenKind::String, r#"b?r?(#*)@("[(\\")[^("~)]]*("~))"#),
-            // Character strings
-            (
-                TokenKind::String,
-                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#,
-            ),
-            (
-                TokenKind::Operator,
-                r"[(&)(\?)(\+\+)(\-\-)(\+=?)(\-=?)(\*=?)(\/=?)(%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
-            ),
-            // Fields and methods: a.foo
-            (TokenKind::Property, r"\.[a-z_][A-Za-z0-9_]*"),
-            // Paths: std::foo::bar
-            (TokenKind::Property, r"[A-Za-z_][A-Za-z0-9_]*::"),
-            (TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b"),
-            (TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*"),
-            (TokenKind::Delimiter, r"[\{\}\(\)\[\]]"),
-            // Preprocessor
-            (TokenKind::Macro, r"^#[^$]*$"),
-        ])
-    }
-
-    pub fn generic_clike() -> Self {
-        Self::clike(
-            // keyword
-            r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)]\b",
-            // types
-            r"\b[(([(unsigned)(signed)][[:space:]])*u?int[0-9]*(_t)?)(float)(double)(bool)(char)(size_t)(void)]\b",
-            "[]",
-        )
-    }
-
-    pub fn glsl() -> Self {
-        Self::clike(
-            // keyword
-            r"\b[(struct)(if)(while)(for)(else)(break)(continue)(const)(return)(layout)(uniform)(set)(binding)(location)(in)]\b",
-            // types
-            r"\b[(u?int)(float)(double)(bool)(void)([ui]?vec[1-4]*)([ui]?mat[1-4]*)(texture[(2D)(3D)]?(Cube)?)([ui]?sampler[(2D)(3D)]?(Shadow)?)]\b",
-            // Builtins
-            r"\b[(dot)(cross)(textureSize)(normalize)(texelFetch)(textureProj)(max)(min)(clamp)(reflect)(mix)(distance)(length)(abs)(pow)(sign)(sin)(cos)(tan)(fract)(mod)(round)(step)]\b",
-        )
-    }
-
-    pub fn toml() -> Self {
-        Self::new_from_regex([
-            // Header
-            (TokenKind::Doc, r#"^\[[^\n\]]*\]$"#),
-            // Delimiters
-            (TokenKind::Delimiter, r"[\{\}\(\)\[\]]"),
-            // Operators
-            (TokenKind::Operator, r"[=,]"),
-            // Numbers
-            (TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*"),
-            // Double-quoted strings
-            (
-                TokenKind::String,
-                r#"b?"[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^"]]*""#,
-            ),
-            // Single-quoted strings
-            (
-                TokenKind::String,
-                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#,
-            ),
-            // Booleans
-            (TokenKind::Constant, r"\b[(true)(false)]\b"),
-            // Identifier
-            (TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_\-]*\b"),
-            // Comments
-            (TokenKind::Comment, r"#[^$]*$"),
-        ])
+        self
     }
 
     fn highlight_str(&self, mut s: &[char]) -> Vec<Token> {
@@ -264,17 +96,14 @@ impl Highlighter {
         tokens
     }
 
-    pub fn highlight(self, s: &[char]) -> Highlights {
+    pub fn highlight(&self, s: &[char]) -> Highlights {
         let tokens = self.highlight_str(s);
-        Highlights {
-            highlighter: self,
-            tokens,
-        }
+        Highlights { tokens }
     }
 }
 
+#[derive(Default)]
 pub struct Highlights {
-    pub highlighter: Highlighter,
     tokens: Vec<Token>,
 }
 
