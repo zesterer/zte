@@ -35,6 +35,10 @@ impl LangPack {
                 highlighter: Highlighter::default().python(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
+            "tao" => Self {
+                highlighter: Highlighter::default().tao(),
+                comment_syntax: Some(vec!['#', ' ']),
+            },
             _ => Self {
                 highlighter: Highlighter::default(),
                 comment_syntax: None,
@@ -188,6 +192,23 @@ impl Highlighter {
             .with(TokenKind::Doc, r"^##[^$]*$")
             // Comments
             .with(TokenKind::Comment, r"^#[^$]*$")
+            .clike()
+    }
+
+    pub fn tao(self) -> Self {
+        self
+            // Keywords
+            .with(TokenKind::Keyword, r"\b[(data)(member)(def)(class)(type)(effect)(import)(handle)(with)(match)(if)(else)(for)(of)(let)(fn)(return)(in)(mod)(where)(when)(do)]\b")
+            // Primitives
+            .with(TokenKind::Type, r"\b[(Str)(Bool)(Nat)(Char)]\b")
+            // Builtins
+            .with(TokenKind::Macro, r"\b[(True)(False)]\b")
+            // Doc comments
+            .with(TokenKind::Doc, r"^##[^$]*$")
+            // Comments
+            .with(TokenKind::Comment, r"^#[^$]*$")
+            // Attributes
+            .with(TokenKind::Attribute, r"\$!?\[[^\]]*\]")
             .clike()
     }
 
