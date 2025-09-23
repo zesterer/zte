@@ -10,7 +10,7 @@ pub struct Doc {
     // Remember the cursor we use for each buffer
     cursors: HashMap<BufferId, CursorId>,
     input: Input,
-    search: Option<Search>,
+    finder: Option<Finder>,
 }
 
 impl Doc {
@@ -22,7 +22,7 @@ impl Doc {
                 .into_iter()
                 .collect(),
             input: Input::default(),
-            search: None,
+            finder: None,
         }
     }
 
@@ -53,10 +53,10 @@ impl Element for Doc {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
         let cursor_id = self.cursors[&self.buffer];
 
-        if let Some(search) = &mut self.search {
-            let resp = search.handle(state, &mut self.input, self.buffer, cursor_id, event)?;
+        if let Some(finder) = &mut self.finder {
+            let resp = finder.handle(state, &mut self.input, self.buffer, cursor_id, event)?;
             if resp.is_end() {
-                self.search = None;
+                self.finder = None;
             }
             return Ok(Resp::handled(resp.event));
         }
@@ -72,15 +72,16 @@ impl Element for Doc {
 
         match event.to_action(|e| {
             e.to_open_switcher()
-                .or_else(|| e.to_open_opener(open_path))
+                .or_else(|| e.to_open_opener(&open_path))
                 .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_save())
         }) {
-            action @ Some(Action::OpenSwitcher) => Ok(Resp::handled(action.map(Into::into))),
-            action @ Some(Action::OpenOpener(_)) => Ok(Resp::handled(action.map(Into::into))),
+            action @ Some(Action::OpenSwitcher) | action @ Some(Action::OpenOpener(_)) => {
+                Ok(Resp::handled(action.map(Into::into)))
+            }
             ref action @ Some(Action::OpenFinder(ref query)) => {
-                self.search = Some(Search::new(
+                self.finder = Some(Finder::new(
                     buffer.cursors[cursor_id],
                     query.clone(),
                     state,
@@ -90,13 +91,27 @@ impl Element for Doc {
                 ));
                 Ok(Resp::handled(None))
             }
+            Some(Action::BeginSearch(needle)) => {
+                let path = buffer
+                    .path
+                    .clone()
+                    .unwrap_or_else(|| std::env::current_dir().expect("no cwd"));
+                Ok(Resp::handled(Some(
+                    Action::OpenSearcher(path, needle).into(),
+                )))
+            }
             Some(Action::SwitchBuffer(new_buffer)) => {
                 self.switch_buffer(state, new_buffer);
                 Ok(Resp::handled(None))
             }
-            Some(Action::OpenFile(path)) => match state.open_or_get(path) {
+            Some(Action::OpenFile(path, line_idx)) => match state.open_or_get(path) {
                 Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
+                    if let Some(buffer) = state.buffers.get_mut(self.buffer) {
+                        let cursor_id = self.cursors[&self.buffer];
+                        buffer.goto_cursor(cursor_id, [0, line_idx as isize], true);
+                        self.input.refocus(buffer, cursor_id);
+                    }
                     Ok(Resp::handled(None))
                 }
                 Err(err) => Ok(Resp::handled(Some(
@@ -126,40 +141,40 @@ impl Visual for Doc {
         };
         let cursor_id = self.cursors[&self.buffer];
 
-        let search_h = if self.search.is_some() { 3 } else { 0 };
+        let finder_h = if self.finder.is_some() { 3 } else { 0 };
 
         // Render input
         frame
             .rect(
                 [0, 0],
-                [frame.size()[0], frame.size()[1].saturating_sub(search_h)],
+                [frame.size()[0], frame.size()[1].saturating_sub(finder_h)],
             )
-            .with_focus(true /*self.search.is_none()*/)
+            .with_focus(true /*self.finder.is_none()*/)
             .with(|f| {
                 self.input.render(
                     state,
                     buffer.name().as_deref(),
                     buffer,
                     cursor_id,
-                    self.search.as_ref(),
+                    self.finder.as_ref(),
                     f,
                 )
             });
 
-        // Render search
-        if let Some(search) = &mut self.search {
+        // Render finder
+        if let Some(finder) = &mut self.finder {
             frame
                 .rect(
-                    [0, frame.size()[1].saturating_sub(search_h)],
-                    [frame.size()[0], search_h],
+                    [0, frame.size()[1].saturating_sub(finder_h)],
+                    [frame.size()[0], finder_h],
                 )
                 .with_focus(true)
-                .with(|f| search.render(state, f));
+                .with(|f| finder.render(state, f));
         }
     }
 }
 
-pub struct Search {
+pub struct Finder {
     old_cursor: Cursor,
 
     buffer: Buffer,
@@ -171,7 +186,7 @@ pub struct Search {
     results: Vec<usize>,
 }
 
-impl Search {
+impl Finder {
     fn new(
         old_cursor: Cursor,
         query: Option<String>,
@@ -288,7 +303,7 @@ impl Search {
     }
 }
 
-impl Visual for Search {
+impl Visual for Finder {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         let title = format!("{} of {} results", self.selected + 1, self.results.len());
         self.input.render(

@@ -36,12 +36,14 @@ pub enum Action {
     OpenOpener(PathBuf),          // Open the file opener
     OpenFinder(Option<String>),   // Open the finder, with the given default query
     SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
-    OpenFile(PathBuf),            // Open the file and switch the current pane to it
-    CommandStart(&'static str),   // Start a new command
-    GotoLine(isize),              // Go to the specified file line
-    SelectToken,                  // Fully select the token under the cursor
-    SelectAll,                    // Fully select the entire input
-    Save,                         // Save the current buffer
+    OpenFile(PathBuf, usize), // Open the file (on the given line) and switch the current pane to it
+    CommandStart(&'static str), // Start a new command
+    GotoLine(isize),          // Go to the specified file line
+    BeginSearch(String),      // Request to begin a search with the given needle
+    OpenSearcher(PathBuf, String), // Start a project-wide search with the given location and needle
+    SelectToken,              // Fully select the token under the cursor
+    SelectAll,                // Fully select the entire input
+    Save,                     // Save the current buffer
     Mouse(MouseAction, [isize; 2], bool), // (action, pos, is_ctrl)
     Undo,
     Redo,
@@ -306,7 +308,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_open_opener(&self, path: PathBuf) -> Option<Action> {
+    pub fn to_open_opener(&self, path: &PathBuf) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -316,7 +318,7 @@ impl RawEvent {
                 ..
             })
         ) {
-            Some(Action::OpenOpener(path))
+            Some(Action::OpenOpener(path.clone()))
         } else {
             None
         }
@@ -349,6 +351,16 @@ impl RawEvent {
             })
         ) {
             Some(Action::CommandStart("goto_line"))
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('f'),
+                modifiers,
+                kind: KeyEventKind::Press,
+                ..
+            }) if *modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT
+        ) {
+            Some(Action::CommandStart("search"))
         } else {
             None
         }

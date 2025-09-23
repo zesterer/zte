@@ -13,6 +13,7 @@ pub enum Task {
     Confirm(Confirm),
     Switcher(Switcher),
     Opener(Opener),
+    Searcher(Searcher),
 }
 
 impl Task {
@@ -23,6 +24,7 @@ impl Task {
             Self::Confirm(c) => c.requested_height(),
             Self::Switcher(s) => s.requested_height(),
             Self::Opener(o) => o.requested_height(),
+            Self::Searcher(s) => s.requested_height(),
         }
     }
 }
@@ -58,6 +60,7 @@ impl Element<()> for Root {
                 Task::Confirm(c) => c.handle(state, event),
                 Task::Switcher(s) => s.handle(state, event),
                 Task::Opener(o) => o.handle(state, event),
+                Task::Searcher(s) => s.handle(state, event),
             };
 
             match res {
@@ -97,6 +100,10 @@ impl Element<()> for Root {
                 Action::OpenOpener(path) => {
                     self.tasks.clear(); // Overrides all
                     self.tasks.push(Task::Opener(Opener::new(path)));
+                }
+                Action::OpenSearcher(path, needle) => {
+                    self.tasks.clear(); // Overrides all
+                    self.tasks.push(Task::Searcher(Searcher::new(path, needle)));
                 }
                 Action::CommandStart(cmd) => {
                     self.tasks.clear(); // Prompt overrides all
@@ -158,6 +165,7 @@ impl Visual for Root {
                     Task::Confirm(c) => c.render(state, frame),
                     Task::Switcher(s) => s.render(state, frame),
                     Task::Opener(o) => o.render(state, frame),
+                    Task::Searcher(s) => s.render(state, frame),
                 });
         }
 

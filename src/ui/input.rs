@@ -38,8 +38,9 @@ impl Input {
 
     pub fn focus(&mut self, coord: [isize; 2]) {
         for i in 0..2 {
-            self.focus[i] =
-                self.focus[i].clamp(coord[i] - self.last_area.size()[i] as isize + 1, coord[i]);
+            self.focus[i] = self.focus[i]
+                .max(coord[i] - self.last_area.size()[i] as isize + 1)
+                .min(coord[i]);
         }
     }
 
@@ -207,7 +208,7 @@ impl Input {
         title: Option<&str>,
         buffer: &Buffer,
         cursor_id: CursorId,
-        search: Option<&Search>,
+        finder: Option<&Finder>,
         frame: &mut Rect,
     ) {
         // Add frame
@@ -296,7 +297,7 @@ impl Input {
                         }
                         None => (Color::Reset, ' '),
                     };
-                    let bg = match search.map(|s| s.contains(pos?)) {
+                    let bg = match finder.map(|s| s.contains(pos?)) {
                         Some(Some(true)) => state.theme.select_bg,
                         Some(Some(false)) => state.theme.search_result_bg,
                         Some(None) if line_selected && frame.has_focus() => {

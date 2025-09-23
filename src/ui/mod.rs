@@ -3,14 +3,16 @@ mod input;
 mod panes;
 mod prompt;
 mod root;
+mod search;
 mod status;
 
 pub use self::{
-    doc::{Doc, Search},
+    doc::{Doc, Finder},
     input::Input,
     panes::{Pane, Panes},
     prompt::{Confirm, Opener, Prompt, Show, Switcher},
     root::Root,
+    search::Searcher,
     status::Status,
 };
 
@@ -156,10 +158,10 @@ impl<T: Clone> Element<T> for Options<T> {
             Some(Action::Move(dir, Dist::Char, false, false)) => {
                 match dir {
                     Dir::Up => {
-                        self.selected =
-                            (self.selected + self.ranking.len() - 1) % self.ranking.len()
+                        self.selected = (self.selected + self.ranking.len()).saturating_sub(1)
+                            % self.ranking.len().max(1)
                     }
-                    Dir::Down => self.selected = (self.selected + 1) % self.ranking.len(),
+                    Dir::Down => self.selected = (self.selected + 1) % self.ranking.len().max(1),
                     _ => return Err(event),
                 }
                 Ok(Resp::handled(None))

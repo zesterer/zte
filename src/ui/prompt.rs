@@ -54,6 +54,10 @@ impl Prompt {
                     - 1;
                 Ok(Action::GotoLine(line))
             }
+            Some("search") => {
+                let needle = args.next().ok_or_else(|| "Expected argument".to_string())?;
+                Ok(Action::BeginSearch(needle.to_string()))
+            }
             Some(cmd) => Err(format!("Unknown command `{cmd}`")),
             None => Err(format!("No command entered")),
         }
@@ -397,7 +401,7 @@ impl Element<()> for Opener {
                     self.set_string(&format!("{}/", file.path.display()));
                     Ok(Resp::handled(None))
                 }
-                Ok(Some(file)) => Ok(Resp::end(Some(Action::OpenFile(file.path).into()))),
+                Ok(Some(file)) => Ok(Resp::end(Some(Action::OpenFile(file.path, 0).into()))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
                     let res = self
