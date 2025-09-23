@@ -394,6 +394,9 @@ impl<'a> Terminal<'a> {
                             // Convert non-printable chars
                             let c = match self.fb[0].cells[pos].c {
                                 c if c.is_whitespace() => ' ',
+                                c if c.is_control() => {
+                                    char::from_u32(9216 + c as u32).unwrap_or('?')
+                                }
                                 c => c,
                             };
                             stdout.queue(style::Print(c)).unwrap();
