@@ -3,6 +3,7 @@ use crate::{
     highlight::{Highlighter, Highlights},
     theme,
 };
+use clipboard::{ClipboardContext, ClipboardProvider};
 use slotmap::{HopSlotMap, new_key_type};
 use std::{
     collections::HashMap,
@@ -731,6 +732,39 @@ impl Buffer {
         }
         if extra_indent {
             self.indent(cursor_id, true);
+        }
+    }
+
+    pub fn copy(&mut self, cursor_id: CursorId) -> bool {
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return false;
+        };
+        if let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
+            && ClipboardContext::new()
+                .and_then(|mut ctx| ctx.set_contents(text.iter().copied().collect()))
+                .is_ok()
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn cut(&mut self, cursor_id: CursorId) -> bool {
+        if self.copy(cursor_id) {
+            self.backspace(cursor_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn paste(&mut self, cursor_id: CursorId) -> bool {
+        if let Ok(s) = ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
+            self.enter(cursor_id, s.chars());
+            true
+        } else {
+            false
         }
     }
 

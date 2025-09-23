@@ -67,7 +67,7 @@ impl Input {
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
                 .or_else(|| e.to_mouse(self.last_area))
-                .or_else(|| e.to_undo_redo())
+                .or_else(|| e.to_edit())
         }) {
             Some(Action::Char(c)) => {
                 if c == '\x08' {
@@ -158,6 +158,30 @@ impl Input {
             }
             Some(Action::Redo) => {
                 if buffer.redo() {
+                    self.refocus(buffer, cursor_id);
+                    Ok(Resp::handled(None))
+                } else {
+                    Ok(Resp::handled(Some(Event::Bell)))
+                }
+            }
+            Some(Action::Copy) => {
+                if buffer.copy(cursor_id) {
+                    self.refocus(buffer, cursor_id);
+                    Ok(Resp::handled(None))
+                } else {
+                    Ok(Resp::handled(Some(Event::Bell)))
+                }
+            }
+            Some(Action::Cut) => {
+                if buffer.cut(cursor_id) {
+                    self.refocus(buffer, cursor_id);
+                    Ok(Resp::handled(None))
+                } else {
+                    Ok(Resp::handled(Some(Event::Bell)))
+                }
+            }
+            Some(Action::Paste) => {
+                if buffer.paste(cursor_id) {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {

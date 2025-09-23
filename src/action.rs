@@ -45,6 +45,9 @@ pub enum Action {
     Mouse(MouseAction, [isize; 2], bool), // (action, pos, is_ctrl)
     Undo,
     Redo,
+    Copy,
+    Cut,
+    Paste,
 }
 
 /// How far should movement go?
@@ -429,7 +432,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_undo_redo(&self) -> Option<Action> {
+    pub fn to_edit(&self) -> Option<Action> {
         match &self.0 {
             TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Char('z'),
@@ -443,6 +446,24 @@ impl RawEvent {
                 kind: KeyEventKind::Press,
                 ..
             }) => Some(Action::Redo),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::Copy),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('x'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::Cut),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('v'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::Paste),
             _ => None,
         }
     }
