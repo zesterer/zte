@@ -70,14 +70,10 @@ impl Element for Doc {
             .to_owned()
             .unwrap_or_else(|| std::env::current_dir().expect("no working dir"));
 
-        let selection = buffer.cursors[cursor_id]
-            .selection()
-            .map(|range| buffer.text.chars()[range].iter().copied().collect());
-
         match event.to_action(|e| {
             e.to_open_switcher()
                 .or_else(|| e.to_open_opener(open_path))
-                .or_else(|| e.to_open_finder(selection))
+                .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_save())
         }) {

@@ -322,7 +322,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_open_finder(&self, selection: Option<String>) -> Option<Action> {
+    pub fn to_open_finder(&self, query: Option<String>) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -332,7 +332,7 @@ impl RawEvent {
                 ..
             })
         ) {
-            Some(Action::OpenFinder(selection))
+            Some(Action::OpenFinder(query))
         } else {
             None
         }
