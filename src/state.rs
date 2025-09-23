@@ -791,6 +791,46 @@ impl Buffer {
         }
     }
 
+    pub fn comment(&mut self, cursor_id: CursorId) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        let lines = cursor
+            .selection()
+            .map(|s| self.text.to_coord(s.start)[1]..=self.text.to_coord(s.end)[1])
+            .unwrap_or_else(|| {
+                let coord = self.text.to_coord(cursor.pos);
+                coord[1]..=coord[1]
+            });
+        let mut indent: Option<&[char]> = None;
+        for line_idx in lines.clone() {
+            indent = Some(match (indent, self.text.indent_of_line(line_idx)) {
+                (Some(indent), new_indent) => {
+                    &new_indent[..indent
+                        .iter()
+                        .zip(new_indent)
+                        .take_while(|(x, y)| x == y)
+                        .count()]
+                }
+                (None, new_indent) => new_indent,
+            });
+        }
+        let indent = indent.unwrap_or(&[]).to_vec();
+        for line_idx in lines {
+            let pos = self.text.to_pos([indent.len() as isize, line_idx]);
+            if self
+                .text
+                .chars()
+                .get(pos..)
+                .map_or(false, |l| l.starts_with(&['/', '/', ' ']))
+            {
+                self.remove(pos..pos + 3);
+            } else {
+                self.insert(pos, "// ".chars());
+            }
+        }
+    }
+
     pub fn start_session(&mut self) -> CursorId {
         self.cursors.insert(Cursor::default())
     }

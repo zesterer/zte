@@ -193,6 +193,10 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
+            Some(Action::Comment) => {
+                buffer.comment(cursor_id);
+                Ok(Resp::handled(None))
+            }
             _ => Err(event),
         }
     }
