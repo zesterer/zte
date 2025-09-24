@@ -214,11 +214,11 @@ impl Input {
         buffer: &Buffer,
         cursor_id: CursorId,
         finder: Option<&Finder>,
-        frame: &mut Rect,
+        outer_frame: &mut Rect,
     ) {
         // Add frame
-        let mut frame = frame.with_border(
-            if frame.has_focus() {
+        let mut frame = outer_frame.with_border(
+            if outer_frame.has_focus() {
                 &state.theme.focus_border
             } else {
                 &state.theme.border
@@ -336,6 +336,24 @@ impl Input {
             }
 
             pos += line.len();
+        }
+
+        // TODO: Clean this up
+        let line_count = buffer.text.lines().count();
+        let frame_sz = outer_frame.size()[1].saturating_sub(2).max(1);
+        let scroll_sz = (frame_sz * frame_sz / line_count).max(1).min(frame_sz);
+        if scroll_sz != frame_sz {
+            let lines2 = line_count.saturating_sub(frame_sz).max(1);
+            let offset = frame_sz.saturating_sub(scroll_sz)
+                * (self.focus[1].max(0) as usize).min(lines2)
+                / lines2;
+            outer_frame
+                .rect(
+                    [outer_frame.size()[0].saturating_sub(1), 1 + offset],
+                    [1, scroll_sz],
+                )
+                .with_bg(Color::White)
+                .fill(' ');
         }
     }
 }
