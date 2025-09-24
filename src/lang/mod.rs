@@ -14,7 +14,7 @@ impl LangPack {
             file_name.file_name().and_then(|e| e.to_str()).unwrap_or(""),
             file_name.extension().and_then(|e| e.to_str()).unwrap_or(""),
         ) {
-            (_, "rs") => Self {
+            (_, "rs" | "ron") => Self {
                 highlighter: Highlighter::default().rust().git(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
@@ -26,7 +26,7 @@ impl LangPack {
                 highlighter: Highlighter::default().toml().git(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
-            (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go") => Self {
+            (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go" | "sh") => Self {
                 highlighter: Highlighter::default().generic_clike().git(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
@@ -45,6 +45,13 @@ impl LangPack {
             ("makefile" | "Makefile", _) => Self {
                 highlighter: Highlighter::default().makefile().git(),
                 comment_syntax: Some(vec!['#', ' ']),
+            },
+            (_, "proto" | "json") => Self {
+                highlighter: Highlighter::default()
+                    .clike_comments()
+                    .generic_delimited()
+                    .git(),
+                comment_syntax: Some(vec!['/', '/', ' ']),
             },
             _ => Self {
                 highlighter: Highlighter::default().git(),
@@ -120,7 +127,7 @@ impl Highlighter {
             // Lifetimes
             .with(TokenKind::Special, r"'[a-z_][A-Za-z0-9_]*\b")
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b")
-            .with(TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*")
+            .with(TokenKind::Number, r"\b[0-9][A-Za-z0-9_\.]*\b")
             .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
             .with(TokenKind::Macro, r"[\{\}\(\)\[\]]")
             .with(TokenKind::Attribute, r"#!?\[[^\]]*\]")
@@ -143,6 +150,12 @@ impl Highlighter {
         self.with(TokenKind::Macro, r"^#[^$]*$")
     }
 
+    pub fn generic_delimited(self) -> Self {
+        self.with(TokenKind::String, r#""[(\\")[^"]]*""#)
+            .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
+            .with(TokenKind::Number, r"\b[0-9][A-Za-z0-9_\.]*\b")
+    }
+
     pub fn clike(self) -> Self {
         self
             .with(TokenKind::Constant, r"\b[(true)(false)]\b")
@@ -163,7 +176,7 @@ impl Highlighter {
             // Paths: std::foo::bar
             .with(TokenKind::Property, r"[A-Za-z_][A-Za-z0-9_]*::")
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b")
-            .with(TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*")
+            .with(TokenKind::Number, r"\b[0-9][A-Za-z0-9_\.]*\b")
             .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
     }
 
@@ -226,7 +239,7 @@ impl Highlighter {
     pub fn toml(self) -> Self {
         self
             // Header
-            .with(TokenKind::Doc, r#"^\[[^\n\]]*\]$"#)
+            .with(TokenKind::Doc, r#"^\[[^\n\]]*\]"#)
             // Delimiters
             .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
             // Operators

@@ -78,24 +78,22 @@ impl Highlighter {
         let mut tokens = Vec::new();
         let mut i = 0;
         loop {
-            let n = if let Some((idx, n)) = self
+            i = if let Some((idx, n)) = self
                 .matchers
                 .iter()
                 .enumerate()
-                .find_map(|(i, r)| Some((i, r.matches(s)?)))
+                .find_map(|(idx, r)| Some((idx, r.matches(s, i)?)))
             {
                 tokens.push(Token {
                     kind: self.entries[idx],
-                    range: i..i + n,
+                    range: i..n,
                 });
                 n
-            } else if !s.is_empty() {
-                1
+            } else if i < s.len() {
+                i + 1
             } else {
                 break;
             };
-            i += n;
-            s = &s[n..];
         }
         tokens
     }
@@ -259,10 +257,10 @@ impl State<'_> {
 }
 
 impl Regex {
-    fn matches(&self, s: &[char]) -> Option<usize> {
+    fn matches(&self, s: &[char], at: usize) -> Option<usize> {
         let mut s = State {
             s,
-            pos: 0,
+            pos: at,
             delim: None,
         };
         s.go(self).map(|_| s.pos)
@@ -273,6 +271,14 @@ use chumsky::{
     pratt::{infix, left, postfix},
     prelude::*,
 };
+
+#[test]
+fn regex() {
+    let reg = Regex::parser().parse(r"\b[0-9][A-Za-z0-9_\.]*\b").unwrap();
+    dbg!(&reg);
+    assert!(reg.matches(&"5".chars().collect::<Vec<_>>()).is_some());
+    panic!("done");
+}
 
 impl Regex {
     fn parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
@@ -293,14 +299,14 @@ impl Regex {
             let items = regex.clone().repeated().collect();
 
             let atom = choice((
-                range,
-                char_.map(Self::Char),
                 just("\\b").to(Self::WordBoundary),
                 just("^").to(Self::LineStart),
                 just("$").to(Self::LineEnd),
                 just("~").to(Self::LastDelim),
                 // Classes
                 just("[[:space:]]").map(|_| Self::Whitespace),
+                range,
+                char_.map(Self::Char),
                 items
                     .clone()
                     .delimited_by(just("[^"), just(']'))
@@ -331,16 +337,5 @@ impl Regex {
         .repeated()
         .collect()
         .map(Self::Group)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn simple() {
-        let hl = Highlighter::rust().highlight("pub");
-        assert_eq!(hl.tokens, Vec::new());
     }
 }
