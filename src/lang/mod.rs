@@ -10,33 +10,40 @@ pub struct LangPack {
 
 impl LangPack {
     pub fn from_file_name(file_name: &Path) -> Self {
-        match file_name.extension().and_then(|e| e.to_str()).unwrap_or("") {
-            "rs" => Self {
+        match (
+            file_name.file_name().and_then(|e| e.to_str()).unwrap_or(""),
+            file_name.extension().and_then(|e| e.to_str()).unwrap_or(""),
+        ) {
+            (_, "rs") => Self {
                 highlighter: Highlighter::default().rust(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
-            "md" => Self {
+            (_, "md") => Self {
                 highlighter: Highlighter::default().markdown(),
                 comment_syntax: None,
             },
-            "toml" => Self {
+            (_, "toml") => Self {
                 highlighter: Highlighter::default().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
-            "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go" => Self {
+            (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go") => Self {
                 highlighter: Highlighter::default().generic_clike(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
-            "glsl" | "vert" | "frag" => Self {
+            (_, "glsl" | "vert" | "frag") => Self {
                 highlighter: Highlighter::default().glsl(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
-            "py" => Self {
+            (_, "py") => Self {
                 highlighter: Highlighter::default().python(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
-            "tao" => Self {
+            (_, "tao") => Self {
                 highlighter: Highlighter::default().tao(),
+                comment_syntax: Some(vec!['#', ' ']),
+            },
+            ("makefile" | "Makefile", _) => Self {
+                highlighter: Highlighter::default().makefile(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             _ => Self {
@@ -240,6 +247,33 @@ impl Highlighter {
             .with(TokenKind::Constant, r"\b[(true)(false)]\b")
             // Identifier
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_\-]*\b")
+            // Comments
+            .with(TokenKind::Comment, r"#[^$]*$")
+    }
+
+    pub fn makefile(self) -> Self {
+        self
+            // Keywords
+            .with(
+                TokenKind::Keyword,
+                r"\b[(if(n)?[(eq)(def)]?)(endif)(else)]\b",
+            )
+            // Operators
+            .with(TokenKind::Operator, r"[=,:\@]")
+            // Double-quoted strings
+            .with(
+                TokenKind::String,
+                r#"b?"[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^"]]*""#,
+            )
+            // Single-quoted strings
+            .with(
+                TokenKind::String,
+                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#,
+            )
+            // Rules
+            .with(TokenKind::Type, r"^[A-Za-z0-9_\-\.]*:")
+            // Variables
+            .with(TokenKind::Constant, r"\$\([A-Za-z_][A-Za-z0-9_\-]*\)")
             // Comments
             .with(TokenKind::Comment, r"#[^$]*$")
     }
