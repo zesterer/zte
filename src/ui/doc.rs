@@ -119,6 +119,15 @@ impl Element for Doc {
                     Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
                 ))),
             },
+            Some(Action::CreateFile(path)) => match state.create_file(path) {
+                Ok(buffer_id) => {
+                    self.switch_buffer(state, buffer_id);
+                    Ok(Resp::handled(None))
+                }
+                Err(err) => Ok(Resp::handled(Some(
+                    Action::Show(Some(format!("Could not create file")), format!("{err}")).into(),
+                ))),
+            },
             Some(Action::Save) => {
                 let event = buffer.save().err().map(|err| {
                     Action::Show(Some("Could not save file".to_string()), err.to_string()).into()

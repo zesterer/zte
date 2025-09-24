@@ -397,11 +397,15 @@ impl Element<()> for Opener {
             }
             _ => match self.options.handle(state, event).map(Resp::into_ended) {
                 // Selecting a directory enters the directory
-                Ok(Some(file)) if matches!(file.kind, FileKind::Dir) => {
-                    self.set_string(&format!("{}/", file.path.display()));
-                    Ok(Resp::handled(None))
+                Ok(Some(file)) => match file.kind {
+                    FileKind::Dir => {
+                        self.set_string(&format!("{}/", file.path.display()));
+                        Ok(Resp::handled(None))
+                    },
+                    FileKind::File => Ok(Resp::end(Some(Action::OpenFile(file.path, 0).into()))),
+                    FileKind::New => Ok(Resp::end(Some(Action::CreateFile(file.path).into()))),
+                    FileKind::Unknown => Ok(Resp::handled(None)),
                 }
-                Ok(Some(file)) => Ok(Resp::end(Some(Action::OpenFile(file.path, 0).into()))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
                     let res = self

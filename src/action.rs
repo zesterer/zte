@@ -37,6 +37,7 @@ pub enum Action {
     OpenFinder(Option<String>),   // Open the finder, with the given default query
     SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
     OpenFile(PathBuf, usize), // Open the file (on the given line) and switch the current pane to it
+    CreateFile(PathBuf),      // Create a new file and switch the current pane to it
     CommandStart(&'static str), // Start a new command
     GotoLine(isize),          // Go to the specified file line
     BeginSearch(String),      // Request to begin a search with the given needle

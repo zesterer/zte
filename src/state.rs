@@ -878,6 +878,11 @@ impl TryFrom<Args> for State {
 }
 
 impl State {
+    pub fn create_file(&mut self, path: PathBuf) -> Result<BufferId, Error> {
+        self.open_or_get(path.clone())
+            .or_else(|_| Ok(self.buffers.insert(Buffer::from_file(path)?)))
+    }
+
     pub fn open_or_get(&mut self, path: PathBuf) -> Result<BufferId, Error> {
         let true_path = path.canonicalize()?;
         if let Some((buffer_id, _)) = self.buffers.iter().find(|(_, b)| {
