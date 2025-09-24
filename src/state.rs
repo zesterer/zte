@@ -212,13 +212,11 @@ impl Buffer {
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
-        if self.unsaved {
-            std::fs::write(
-                self.path.as_ref().expect("buffer must have path to save"),
-                self.text.to_string(),
-            )?;
-            self.unsaved = false;
-        }
+        std::fs::write(
+            self.path.as_ref().expect("buffer must have path to save"),
+            self.text.to_string(),
+        )?;
+        self.unsaved = false;
         Ok(())
     }
 
