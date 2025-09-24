@@ -102,8 +102,10 @@ impl Highlighter {
             )
             .with(
                 TokenKind::Operator,
-                r"[(&(mut)?)(\?)(\+=?)(\-=?)(\*=?)(\/=?)(%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
+                r"[(&(mut)?)(\?)(\+=?)(\-=?)(\*=?)(\/=?)(\%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
             )
+            // Function/method call
+            .with(TokenKind::Function, r"(\.)?\b[a-z_][A-Za-z0-9_]*\b[\(<]%")
             // Fields and methods: a.foo
             .with(TokenKind::Property, r"\.[a-z_][A-Za-z0-9_]*")
             // Paths: std::foo::bar
@@ -145,8 +147,10 @@ impl Highlighter {
             .with(TokenKind::String, r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#)
             .with(
                 TokenKind::Operator,
-                r"[(&)(\?)(\+\+)(\-\-)(\+=?)(\-=?)(\*=?)(\/=?)(%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
+                r"[(&)(\?)(\+\+)(\-\-)(\+=?)(\-=?)(\*=?)(\/=?)(\%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
             )
+            // Function/method call
+            .with(TokenKind::Function, r"(\.)?\b[a-z_][A-Za-z0-9_]*\b[\(<]%")
             // Fields and methods: a.foo
             .with(TokenKind::Property, r"\.[a-z_][A-Za-z0-9_]*")
             // Paths: std::foo::bar
@@ -159,7 +163,7 @@ impl Highlighter {
     pub fn generic_clike(self) -> Self {
         self
             // Keywords
-            .with(TokenKind::Keyword, r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)]\b")
+            .with(TokenKind::Keyword, r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)(goto)]\b")
             // Primitives
             .with(TokenKind::Type, r"\b[(([(unsigned)(signed)][[:space:]])*u?int[0-9]*(_t)?)(float)(double)(bool)(char)(size_t)(void)]\b")
             .clike_comments()

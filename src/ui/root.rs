@@ -112,11 +112,15 @@ impl Element<()> for Root {
                 }
                 Action::Cancel => {
                     let unsaved = state.buffers.values().filter(|b| b.unsaved).count();
-                    if unsaved == 0 {
+                    if state.buffers.is_empty() {
                         return Ok(Resp::end(None));
                     } else {
                         self.tasks.push(Task::Confirm(Confirm {
-                            label: Label(format!("Are you sure you wish to quit? (y/n). Note that {} files are unsaved!", unsaved)),
+                            label: Label(if unsaved == 0 {
+                                format!("Are you sure you wish to quit? (y/n). You have multiple documents open!")
+                            } else {
+                                format!("Are you sure you wish to quit? (y/n). Note that {} files are unsaved!", unsaved)
+                            }),
                             action: Action::Quit,
                         }));
                     }

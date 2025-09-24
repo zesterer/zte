@@ -32,6 +32,8 @@ pub enum TokenKind {
     Special,
     /// A program constant or other statically-known name
     Constant,
+    /// A function call or some other active operation
+    Function,
 }
 
 #[derive(Default)]
@@ -146,8 +148,9 @@ pub enum Regex {
     Group(Vec<Self>),
     // (at_least, at_most, _)
     Many(usize, usize, Box<Self>),
-    // (delimiter, x) - delimit x with `delimiter` on either side (used for raw strings)
+    // (delimiter, x) - parse a pattern, then refer to the substring later in x with `~`
     Delim(Box<Self>, Box<Self>),
+    Rewind(Box<Self>),
 }
 
 struct State<'a> {
@@ -163,7 +166,6 @@ impl State<'_> {
 
     fn prev(&self) -> Option<char> {
         self.s[..self.pos].last().copied()
-        // self.s.get(self.pos.saturating_sub(1)).copied()
     }
 
     fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
@@ -242,6 +244,14 @@ impl State<'_> {
                 self.delim = old_delim;
                 res
             }
+            Regex::Rewind(r) => {
+                let old_pos = self.pos;
+                let res = self.go(r);
+                if res.is_some() {
+                    self.pos = old_pos;
+                }
+                res
+            }
         }
     }
 }
@@ -265,7 +275,7 @@ use chumsky::{
 impl Regex {
     fn parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
         recursive(|regex| {
-            let metachars = r"{}[]()^$.|*+-?\/@~";
+            let metachars = r"{}[]()^$.|*+-?\/@~%";
             let char_ = choice((
                 none_of(metachars),
                 // Escaped meta characters
@@ -307,6 +317,7 @@ impl Regex {
                 postfix(1, just('*'), |r, _, _| Self::Many(0, !0, Box::new(r))),
                 postfix(1, just('+'), |r, _, _| Self::Many(1, !0, Box::new(r))),
                 postfix(1, just('?'), |r, _, _| Self::Many(0, 1, Box::new(r))),
+                postfix(1, just('%'), |r, _, _| Self::Rewind(Box::new(r))),
                 // Non-standard: `x@y` parses `x` and then `y`. `y` can use `~` to refer to the extra string that was
                 // parsed by `x`. This supports nesting and is intended for context-sensitive patterns like Rust raw
                 // strings.

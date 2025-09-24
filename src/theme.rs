@@ -63,6 +63,7 @@ pub struct Theme {
     pub hl_token_string: Color,
     pub hl_token_special: Color,
     pub hl_token_constant: Color,
+    pub hl_token_function: Color,
 }
 
 impl Default for Theme {
@@ -101,6 +102,7 @@ impl Default for Theme {
             hl_token_string: Color::AnsiValue(179),
             hl_token_special: Color::AnsiValue(160),
             hl_token_constant: Color::AnsiValue(81),
+            hl_token_function: Color::AnsiValue(122),
         }
     }
 }
@@ -123,6 +125,7 @@ impl Theme {
             TokenKind::String => self.hl_token_string,
             TokenKind::Special => self.hl_token_special,
             TokenKind::Constant => self.hl_token_constant,
+            TokenKind::Function => self.hl_token_function,
         }
     }
 }
