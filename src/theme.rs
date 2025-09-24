@@ -64,6 +64,8 @@ pub struct Theme {
     pub hl_token_special: Color,
     pub hl_token_constant: Color,
     pub hl_token_function: Color,
+
+    pub hl_merge_conflict: Color,
 }
 
 impl Default for Theme {
@@ -103,13 +105,15 @@ impl Default for Theme {
             hl_token_special: Color::AnsiValue(160),
             hl_token_constant: Color::AnsiValue(81),
             hl_token_function: Color::AnsiValue(122),
+
+            hl_merge_conflict: Color::AnsiValue(124),
         }
     }
 }
 
 impl Theme {
-    pub fn token_color(&self, token: TokenKind) -> Color {
-        match token {
+    pub fn token_color(&self, token: TokenKind) -> (Color, Option<Color>) {
+        let fg = match token {
             TokenKind::Whitespace => self.hl_token_whitespace,
             TokenKind::Ident => self.hl_token_ident,
             TokenKind::Keyword => self.hl_token_keyword,
@@ -126,6 +130,12 @@ impl Theme {
             TokenKind::Special => self.hl_token_special,
             TokenKind::Constant => self.hl_token_constant,
             TokenKind::Function => self.hl_token_function,
-        }
+            TokenKind::MergeConflict => self.text,
+        };
+        let bg = match token {
+            TokenKind::MergeConflict => Some(self.hl_merge_conflict),
+            _ => None,
+        };
+        (fg, bg)
     }
 }

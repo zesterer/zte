@@ -34,6 +34,8 @@ pub enum TokenKind {
     Constant,
     /// A function call or some other active operation
     Function,
+    /// An active merge conflict
+    MergeConflict,
 }
 
 #[derive(Default)]

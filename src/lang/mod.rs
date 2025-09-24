@@ -15,39 +15,39 @@ impl LangPack {
             file_name.extension().and_then(|e| e.to_str()).unwrap_or(""),
         ) {
             (_, "rs") => Self {
-                highlighter: Highlighter::default().rust(),
+                highlighter: Highlighter::default().rust().git(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             (_, "md") => Self {
-                highlighter: Highlighter::default().markdown(),
+                highlighter: Highlighter::default().markdown().git(),
                 comment_syntax: None,
             },
             (_, "toml") => Self {
-                highlighter: Highlighter::default().toml(),
+                highlighter: Highlighter::default().toml().git(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go") => Self {
-                highlighter: Highlighter::default().generic_clike(),
+                highlighter: Highlighter::default().generic_clike().git(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             (_, "glsl" | "vert" | "frag") => Self {
-                highlighter: Highlighter::default().glsl(),
+                highlighter: Highlighter::default().glsl().git(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             (_, "py") => Self {
-                highlighter: Highlighter::default().python(),
+                highlighter: Highlighter::default().python().git(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             (_, "tao") => Self {
-                highlighter: Highlighter::default().tao(),
+                highlighter: Highlighter::default().tao().git(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             ("makefile" | "Makefile", _) => Self {
-                highlighter: Highlighter::default().makefile(),
+                highlighter: Highlighter::default().makefile().git(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             _ => Self {
-                highlighter: Highlighter::default(),
+                highlighter: Highlighter::default().git(),
                 comment_syntax: None,
             },
         }
@@ -170,7 +170,7 @@ impl Highlighter {
     pub fn generic_clike(self) -> Self {
         self
             // Keywords
-            .with(TokenKind::Keyword, r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)(goto)]\b")
+            .with(TokenKind::Keyword, r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)(goto)(case)(default)(switch)]\b")
             // Primitives
             .with(TokenKind::Type, r"\b[(([(unsigned)(signed)][[:space:]])*u?int[0-9]*(_t)?)(float)(double)(bool)(char)(size_t)(void)]\b")
             .clike_comments()
@@ -276,5 +276,12 @@ impl Highlighter {
             .with(TokenKind::Constant, r"\$\([A-Za-z_][A-Za-z0-9_\-]*\)")
             // Comments
             .with(TokenKind::Comment, r"#[^$]*$")
+    }
+
+    pub fn git(self) -> Self {
+        self.with(
+            TokenKind::MergeConflict,
+            r"^[(<<<<<<<)(=======)(>>>>>>>)]( [^$]*)?$",
+        )
     }
 }

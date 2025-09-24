@@ -286,19 +286,19 @@ impl Input {
                         .selection()
                         .zip(pos)
                         .map_or(false, |(s, pos)| s.contains(&pos));
-                    let (fg, c) = match line.get(coord as usize).copied() {
-                        Some('\n') if selected => (state.theme.whitespace, '⮠'),
+                    let (fg, hl_bg, c) = match line.get(coord as usize).copied() {
+                        Some('\n') if selected => (state.theme.whitespace, None, '⮠'),
                         Some(c) => {
-                            if let Some(fg) = pos
+                            if let Some((fg, bg)) = pos
                                 .and_then(|pos| buffer.highlights.get_at(pos))
                                 .map(|tok| state.theme.token_color(tok.kind))
                             {
-                                (fg, c)
+                                (fg, bg, c)
                             } else {
-                                (state.theme.text, c)
+                                (state.theme.text, None, c)
                             }
                         }
-                        None => (Color::Reset, ' '),
+                        None => (Color::Reset, None, ' '),
                     };
                     let bg = match finder.map(|s| s.contains(pos?)) {
                         Some(Some(true)) => state.theme.select_bg,
@@ -316,7 +316,7 @@ impl Input {
                             } else if line_selected && frame.has_focus() {
                                 state.theme.line_select_bg
                             } else {
-                                Color::Reset
+                                hl_bg.unwrap_or(Color::Reset)
                             }
                         }
                     };
