@@ -131,11 +131,16 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(Action::Mouse(MouseAction::Click, pos, false)) => {
-                buffer.goto_cursor(
-                    cursor_id,
-                    [self.focus[0] + pos[0], self.focus[1] + pos[1]],
-                    true,
-                );
+                let pos = [self.focus[0] + pos[0], self.focus[1] + pos[1]];
+                // If we're already in the right place, select the token instead
+                if let Some(cursor) = buffer.cursors.get(cursor_id)
+                    && cursor.selection().is_none()
+                    && buffer.text.to_coord(cursor.pos) == pos
+                {
+                    buffer.select_token_cursor(cursor_id);
+                } else {
+                    buffer.goto_cursor(cursor_id, pos, true);
+                }
                 Ok(Resp::handled(None))
             }
             Some(

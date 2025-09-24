@@ -88,7 +88,7 @@ impl Default for Theme {
             option_new: Color::AnsiValue(148),
 
             hl_token_whitespace: Color::Reset,
-            hl_token_ident: Color::AnsiValue(7),
+            hl_token_ident: Color::AnsiValue(15),
             hl_token_keyword: Color::AnsiValue(112),
             hl_token_number: Color::AnsiValue(45),
             hl_token_type: Color::AnsiValue(210),

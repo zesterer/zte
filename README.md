@@ -14,10 +14,10 @@
 - [x] Search in buffer switcher
 - [x] File saving
 - [x] Syntax highlighting
+- [x] Project search
+- [x] Auto-indent (and related features)
+- [x] Undo/redo
 
 ## Todo
 
 - [ ] Replace
-- [ ] Project search
-- [ ] Auto-indent (and related features)
-- [ ] Undo/redo
