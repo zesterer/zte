@@ -19,6 +19,8 @@ pub struct Input {
     pub focus: [isize; 2],
     // Remember the last area for things like scrolling
     pub last_area: Area,
+    pub last_scroll_pos: Option<([isize; 2], usize, usize)>,
+    pub scroll_grab: Option<(usize, isize)>,
 }
 
 impl Input {
@@ -129,16 +131,36 @@ impl Input {
                 buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false, _)) => {
-                let pos = [self.focus[0] + pos[0], self.focus[1] + pos[1]];
-                // If we're already in the right place, select the token instead
-                if let Some(cursor) = buffer.cursors.get(cursor_id)
-                    && cursor.selection().is_none()
-                    && buffer.text.to_coord(cursor.pos) == pos
+            Some(Action::Mouse(MouseAction::Click, pos, false, drag_id)) => {
+                if let Some((scroll_pos, h, _)) = self.last_scroll_pos
+                    && scroll_pos[0] == pos[0]
+                    && (scroll_pos[1]..=scroll_pos[1] + h as isize).contains(&pos[1])
                 {
-                    buffer.select_token_cursor(cursor_id);
-                } else {
-                    buffer.goto_cursor(cursor_id, pos, true);
+                    self.scroll_grab = Some((drag_id, pos[1] - scroll_pos[1]));
+                } else if let Some(pos) = self.last_area.contains(pos) {
+                    let pos = [self.focus[0] + pos[0], self.focus[1] + pos[1]];
+                    // If we're already in the right place, select the token instead
+                    if let Some(cursor) = buffer.cursors.get(cursor_id)
+                        && cursor.selection().is_none()
+                        && buffer.text.to_coord(cursor.pos) == pos
+                    {
+                        buffer.select_token_cursor(cursor_id);
+                    } else {
+                        buffer.goto_cursor(cursor_id, pos, true);
+                    }
+                }
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(MouseAction::Drag, pos, false, drag_id))
+                if self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
+            {
+                if let Some(pos) = self.last_area.contains(pos)
+                    && let Some((_, offset)) = self.scroll_grab
+                    && let Some((_, scroll_sz, frame_sz)) = self.last_scroll_pos
+                {
+                    self.focus[1] = ((pos[1] - offset).max(0) as usize
+                        * buffer.text.lines().count()
+                        / frame_sz) as isize;
                 }
                 Ok(Resp::handled(None))
             }
@@ -341,18 +363,19 @@ impl Input {
         let line_count = buffer.text.lines().count();
         let frame_sz = outer_frame.size()[1].saturating_sub(2).max(1);
         let scroll_sz = (frame_sz * frame_sz / line_count).max(1).min(frame_sz);
-        if scroll_sz != frame_sz {
+        self.last_scroll_pos = if scroll_sz != frame_sz {
             let lines2 = line_count.saturating_sub(frame_sz).max(1);
             let offset = frame_sz.saturating_sub(scroll_sz)
                 * (self.focus[1].max(0) as usize).min(lines2)
                 / lines2;
+            let pos = [outer_frame.size()[0].saturating_sub(1), 1 + offset];
             outer_frame
-                .rect(
-                    [outer_frame.size()[0].saturating_sub(1), 1 + offset],
-                    [1, scroll_sz],
-                )
+                .rect(pos, [1, scroll_sz])
                 .with_bg(Color::White)
                 .fill(' ');
-        }
+            Some((pos.map(|e| e as isize), scroll_sz, frame_sz))
+        } else {
+            None
+        };
     }
 }
