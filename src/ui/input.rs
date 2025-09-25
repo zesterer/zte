@@ -67,7 +67,6 @@ impl Input {
                 .or_else(|| e.to_select_token())
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
-                .or_else(|| e.to_mouse(self.last_area))
                 .or_else(|| e.to_edit())
         }) {
             Some(Action::Char(c)) => {
@@ -130,7 +129,7 @@ impl Input {
                 buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false)) => {
+            Some(Action::Mouse(MouseAction::Click, pos, false, _)) => {
                 let pos = [self.focus[0] + pos[0], self.focus[1] + pos[1]];
                 // If we're already in the right place, select the token instead
                 if let Some(cursor) = buffer.cursors.get(cursor_id)
@@ -144,8 +143,8 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(
-                Action::Mouse(MouseAction::Drag, pos, false)
-                | Action::Mouse(MouseAction::Click, pos, true),
+                Action::Mouse(MouseAction::Drag, pos, false, _)
+                | Action::Mouse(MouseAction::Click, pos, true, _),
             ) => {
                 buffer.goto_cursor(
                     cursor_id,

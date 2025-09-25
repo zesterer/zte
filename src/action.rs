@@ -17,20 +17,20 @@ pub enum Dir {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Char(char),                           // Insert a character
-    Indent(bool),                         // Indent (indent vs deindent)
-    Move(Dir, Dist, bool, bool),          // Move the cursor (dir, dist, retain_base, word)
-    Pan(Dir, Dist),                       // Pan the view window
-    PaneMove(Dir),                        // Move panes
-    PaneOpen(Dir),                        // Create a new pane
-    PaneClose,                            // Close the current pane
-    Cancel,                               // Cancels the current action
-    Continue,                             // Continue past an info-only element (like a help screen)
-    Go,                                   // Search, accept, or select the current option
-    Yes,                                  // A binary confirmation is answered 'yes'
-    No,                                   // A binary confirmation is answered 'no'
-    Quit,                                 // Quit the application
-    OpenPrompt,                           // Open the command prompt
+    Char(char),                                  // Insert a character
+    Indent(bool),                                // Indent (indent vs deindent)
+    Move(Dir, Dist, bool, bool),                 // Move the cursor (dir, dist, retain_base, word)
+    Pan(Dir, Dist),                              // Pan the view window
+    PaneMove(Dir),                               // Move panes
+    PaneOpen(Dir),                               // Create a new pane
+    PaneClose,                                   // Close the current pane
+    Cancel,                                      // Cancels the current action
+    Continue,                      // Continue past an info-only element (like a help screen)
+    Go,                            // Search, accept, or select the current option
+    Yes,                           // A binary confirmation is answered 'yes'
+    No,                            // A binary confirmation is answered 'no'
+    Quit,                          // Quit the application
+    OpenPrompt,                    // Open the command prompt
     Show(Option<String>, String), // Display an optionally titled informational text box to the user
     OpenSwitcher,                 // Open the buffer switcher
     OpenOpener(PathBuf),          // Open the file opener
@@ -45,7 +45,7 @@ pub enum Action {
     SelectToken,              // Fully select the token under the cursor
     SelectAll,                // Fully select the entire input
     Save,                     // Save the current buffer
-    Mouse(MouseAction, [isize; 2], bool), // (action, pos, is_ctrl)
+    Mouse(MouseAction, [isize; 2], bool, usize), // (action, pos, is_ctrl, drag_id)
     Undo,
     Redo,
     Copy,
@@ -495,7 +495,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_mouse(&self, area: Area) -> Option<Action> {
+    pub fn to_mouse(&self, area: Area, drag_id_counter: &mut usize) -> Option<Action> {
         let TerminalEvent::Mouse(ev) = self.0 else {
             return None;
         };
@@ -504,12 +504,15 @@ impl RawEvent {
             let action = match ev.kind {
                 MouseEventKind::ScrollUp => MouseAction::ScrollUp,
                 MouseEventKind::ScrollDown => MouseAction::ScrollDown,
-                MouseEventKind::Down(MouseButton::Left) => MouseAction::Click,
+                MouseEventKind::Down(MouseButton::Left) => {
+                    *drag_id_counter += 1;
+                    MouseAction::Click
+                }
                 MouseEventKind::Drag(MouseButton::Left) => MouseAction::Drag,
                 _ => return None,
             };
             let is_ctrl = ev.modifiers == KeyModifiers::CONTROL;
-            Some(Action::Mouse(action, pos, is_ctrl))
+            Some(Action::Mouse(action, pos, is_ctrl, *drag_id_counter))
         } else {
             None
         }
