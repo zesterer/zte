@@ -1,4 +1,3 @@
-use super::*;
 use crate::highlight::{Highlighter, TokenKind};
 use std::path::Path;
 

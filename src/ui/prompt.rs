@@ -325,11 +325,12 @@ impl Opener {
                 let options = entries
                     .filter_map(|e| e.ok())
                     .filter_map(|entry| {
+                        let metadata = fs::metadata(entry.path()).ok()?;
                         Some(FileOption {
                             path: entry.path(),
-                            kind: if entry.file_type().ok()?.is_dir() {
+                            kind: if metadata.file_type().is_dir() {
                                 FileKind::Dir
-                            } else if entry.file_type().ok()?.is_file() {
+                            } else if metadata.file_type().is_file() {
                                 FileKind::File
                             } else {
                                 FileKind::Unknown
@@ -442,11 +443,12 @@ impl Visual for FileOption {
             Some(name) => format!("{name}"),
             None => format!("Unknown"),
         };
+        let is_link = if self.is_link { " (symlink)" } else { "" };
         let desc = match self.kind {
-            FileKind::Dir => "Directory",
-            FileKind::Unknown => "Unknown filesystem item",
-            FileKind::File => "File",
-            FileKind::New => "Create new file",
+            FileKind::Dir => format!("Directory{is_link}"),
+            FileKind::Unknown => format!("Unknown{is_link}"),
+            FileKind::File => format!("File{is_link}"),
+            FileKind::New => format!("Create new file{is_link}"),
         };
         frame
             .with_fg(match self.kind {

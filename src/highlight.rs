@@ -1,4 +1,4 @@
-use std::{ops::Range, path::Path};
+use std::ops::Range;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TokenKind {
@@ -58,7 +58,7 @@ impl Highlighter {
         Self { entries, matchers }
     }
 
-    pub fn with(mut self, token: TokenKind, p: impl AsRef<str>) -> Self {
+    pub fn with(self, token: TokenKind, p: impl AsRef<str>) -> Self {
         self.with_many([(token, p)])
     }
 
@@ -74,7 +74,7 @@ impl Highlighter {
         self
     }
 
-    fn highlight_str(&self, mut s: &[char]) -> Vec<Token> {
+    fn highlight_str(&self, s: &[char]) -> Vec<Token> {
         let mut tokens = Vec::new();
         let mut i = 0;
         loop {

@@ -9,7 +9,7 @@ mod status;
 pub use self::{
     doc::{Doc, Finder},
     input::Input,
-    panes::{Pane, Panes},
+    panes::Panes,
     prompt::{Confirm, Opener, Prompt, Show, Switcher},
     root::Root,
     search::Searcher,
@@ -64,7 +64,7 @@ impl<End> Resp<End> {
     pub fn is_end(&self) -> bool {
         self.ended.is_some()
     }
-    pub fn into_ended(mut self) -> Option<End> {
+    pub fn into_ended(self) -> Option<End> {
         self.ended
     }
 }
@@ -131,7 +131,7 @@ impl<T> Options<T> {
     pub fn set_options<F: FnMut(&T) -> Option<S>, S: Ord + Copy>(
         &mut self,
         options: impl IntoIterator<Item = T>,
-        mut f: F,
+        f: F,
     ) {
         self.options = options.into_iter().collect();
         self.apply_scoring(f);

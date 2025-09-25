@@ -80,11 +80,11 @@ impl<'a> Rect<'a> {
         }
     }
 
-    pub fn with<R>(&mut self, f: impl FnOnce(&mut Rect) -> R) -> R {
+    pub fn with<R>(&mut self, f: impl FnOnce(&mut Rect<'_>) -> R) -> R {
         f(self)
     }
 
-    pub fn rect(&mut self, origin: [usize; 2], size: [usize; 2]) -> Rect {
+    pub fn rect(&mut self, origin: [usize; 2], size: [usize; 2]) -> Rect<'_> {
         Rect {
             area: Area {
                 origin: [
@@ -103,7 +103,7 @@ impl<'a> Rect<'a> {
         }
     }
 
-    pub fn with_border(&mut self, theme: &theme::BorderTheme, title: Option<&str>) -> Rect {
+    pub fn with_border(&mut self, theme: &theme::BorderTheme, title: Option<&str>) -> Rect<'_> {
         let edge = self.size().map(|e| e.saturating_sub(1));
         for col in 0..edge[0] {
             self.get_mut([col, 0]).map(|c| {
@@ -157,7 +157,7 @@ impl<'a> Rect<'a> {
         self.rect([1, 1], self.size().map(|e| e.saturating_sub(2)))
     }
 
-    pub fn with_fg(&mut self, fg: Color) -> Rect {
+    pub fn with_fg(&mut self, fg: Color) -> Rect<'_> {
         Rect {
             fg,
             bg: self.bg,
@@ -167,7 +167,7 @@ impl<'a> Rect<'a> {
         }
     }
 
-    pub fn with_bg(&mut self, bg: Color) -> Rect {
+    pub fn with_bg(&mut self, bg: Color) -> Rect<'_> {
         Rect {
             fg: self.fg,
             bg,
@@ -177,7 +177,7 @@ impl<'a> Rect<'a> {
         }
     }
 
-    pub fn with_focus(&mut self, focus: bool) -> Rect {
+    pub fn with_focus(&mut self, focus: bool) -> Rect<'_> {
         Rect {
             fg: self.fg,
             bg: self.bg,
@@ -199,7 +199,7 @@ impl<'a> Rect<'a> {
         self.area.size.map(|e| e as usize)
     }
 
-    pub fn fill(&mut self, c: char) -> Rect {
+    pub fn fill(&mut self, c: char) -> Rect<'_> {
         for row in 0..self.size()[1] {
             for col in 0..self.size()[0] {
                 let cell = Cell {
@@ -215,7 +215,7 @@ impl<'a> Rect<'a> {
         self.rect([0, 0], self.size())
     }
 
-    pub fn text(&mut self, origin: [isize; 2], text: &str) -> Rect {
+    pub fn text(&mut self, origin: [isize; 2], text: &str) -> Rect<'_> {
         for (idx, c) in text.chars().enumerate() {
             if (0..self.size()[0] as isize).contains(&(origin[0] + idx as isize)) && origin[1] >= 0
             {
@@ -234,7 +234,7 @@ impl<'a> Rect<'a> {
         self.rect([0, 0], self.size())
     }
 
-    pub fn set_cursor(&mut self, cursor: [isize; 2], style: CursorStyle) -> Rect {
+    pub fn set_cursor(&mut self, cursor: [isize; 2], style: CursorStyle) -> Rect<'_> {
         if self.has_focus
             && (0..=self.size()[0] as isize).contains(&cursor[0])
             && (0..self.size()[1] as isize).contains(&cursor[1])
@@ -264,7 +264,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub fn rect(&mut self) -> Rect {
+    pub fn rect(&mut self) -> Rect<'_> {
         Rect {
             fg: Color::Reset,
             bg: Color::Reset,

@@ -1,9 +1,6 @@
 use super::*;
-use crate::{
-    state::{Buffer, BufferId, Cursor, CursorId},
-    terminal::CursorStyle,
-};
-use std::{collections::HashMap, path::PathBuf};
+use crate::state::{Buffer, BufferId, Cursor, CursorId};
+use std::collections::HashMap;
 
 pub struct Doc {
     buffer: BufferId,
