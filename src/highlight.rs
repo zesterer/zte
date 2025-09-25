@@ -325,6 +325,8 @@ impl Regex {
                 postfix(1, just('*'), |r, _, _| Self::Many(0, !0, Box::new(r))),
                 postfix(1, just('+'), |r, _, _| Self::Many(1, !0, Box::new(r))),
                 postfix(1, just('?'), |r, _, _| Self::Many(0, 1, Box::new(r))),
+                // Non-standard: match the lhs, then rewind the input (i.e: as if it had never been parsed).
+                // Most useful at the end of tokens for context-sensitivie behaviour. For example, differentiating idents and function calls
                 postfix(1, just('%'), |r, _, _| Self::Rewind(Box::new(r))),
                 // Non-standard: `x@y` parses `x` and then `y`. `y` can use `~` to refer to the extra string that was
                 // parsed by `x`. This supports nesting and is intended for context-sensitive patterns like Rust raw

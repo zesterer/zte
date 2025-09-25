@@ -54,9 +54,9 @@ impl Prompt {
                     - 1;
                 Ok(Action::GotoLine(line))
             }
-            Some("search") => {
-                let needle = args.next().ok_or_else(|| "Expected argument".to_string())?;
-                Ok(Action::BeginSearch(needle.to_string()))
+            Some(arg0 @ "search") => {
+                let needle = cmd.get(arg0.len()..).unwrap().trim().to_string();
+                Ok(Action::BeginSearch(needle))
             }
             Some(cmd) => Err(format!("Unknown command `{cmd}`")),
             None => Err(format!("No command entered")),

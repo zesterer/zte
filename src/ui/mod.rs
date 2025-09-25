@@ -113,6 +113,7 @@ pub struct Options<T> {
     // (score, option)
     pub options: Vec<T>,
     pub ranking: Vec<usize>,
+    pub last_height: usize,
 }
 
 impl<T> Options<T> {
@@ -123,6 +124,7 @@ impl<T> Options<T> {
             selected: 0,
             options,
             ranking,
+            last_height: 0,
         }
     }
 
@@ -155,13 +157,28 @@ impl<T> Options<T> {
 impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
-            Some(Action::Move(dir, Dist::Char, false, false)) => {
+            Some(Action::Move(dir, dist, false, false)) => {
+                let dist = match dist {
+                    Dist::Char => 1,
+                    Dist::Page => self.last_height.saturating_sub(1).min(self.ranking.len()),
+                    Dist::Doc => self.ranking.len(),
+                };
                 match dir {
                     Dir::Up => {
-                        self.selected = (self.selected + self.ranking.len()).saturating_sub(1)
-                            % self.ranking.len().max(1)
+                        if self.selected == 0 {
+                            self.selected = self.ranking.len().saturating_sub(1);
+                        } else {
+                            self.selected = self.selected.saturating_sub(dist);
+                        }
                     }
-                    Dir::Down => self.selected = (self.selected + 1) % self.ranking.len().max(1),
+                    Dir::Down => {
+                        if self.selected == self.ranking.len().saturating_sub(1) {
+                            self.selected = 0;
+                        } else {
+                            self.selected =
+                                (self.selected + dist).min(self.ranking.len().saturating_sub(1));
+                        }
+                    }
                     _ => return Err(event),
                 }
                 Ok(Resp::handled(None))
@@ -191,6 +208,8 @@ impl<T: Visual> Visual for Options<T> {
             },
             None,
         );
+
+        self.last_height = frame.size()[1];
 
         self.focus = self
             .focus
