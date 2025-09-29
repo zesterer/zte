@@ -21,7 +21,7 @@ impl LangPack {
                 highlighter: Highlighter::default().markdown().git(),
                 comment_syntax: None,
             },
-            (_, "toml") => Self {
+            ("Cargo.lock", _) | (_, "toml") => Self {
                 highlighter: Highlighter::default().toml().git(),
                 comment_syntax: Some(vec!['#', ' ']),
             },

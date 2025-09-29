@@ -72,7 +72,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             ui_bg: Color::AnsiValue(235),
-            select_bg: Color::AnsiValue(23),
+            select_bg: Color::AnsiValue(8),
             line_select_bg: Color::AnsiValue(238),
             unfocus_select_bg: Color::AnsiValue(240),
             search_result_bg: Color::AnsiValue(60),

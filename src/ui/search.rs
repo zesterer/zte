@@ -10,6 +10,7 @@ pub struct Searcher {
     buffer: Buffer,
     cursor_id: CursorId,
     input: Input,
+    preview: Option<(Buffer, CursorId, Input, SearchResult)>,
 }
 
 impl Searcher {
@@ -87,11 +88,13 @@ impl Searcher {
             cursor_id,
             buffer,
             input: Input::filter(),
+            preview: None,
         }
     }
 
     pub fn requested_height(&self) -> usize {
-        self.options.requested_height() + 3
+        !0
+        // self.options.requested_height() + 3
     }
 
     fn update_completions(&mut self) {
@@ -113,7 +116,9 @@ impl Searcher {
 
 impl Element<()> for Searcher {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
-        match event.to_action(|e| e.to_cancel().or_else(|| e.to_char().map(Action::Char))) {
+        let filter_str = self.buffer.text.to_string();
+        let res = match event.to_action(|e| e.to_cancel().or_else(|| e.to_char().map(Action::Char)))
+        {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             _ => match self.options.handle(state, event).map(Resp::into_ended) {
                 // Selecting a directory enters the directory
@@ -123,19 +128,35 @@ impl Element<()> for Searcher {
                 ))))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
-                    let res = self
+                    let res = match self
                         .input
                         .handle(&mut self.buffer, self.cursor_id, event)
-                        .map(Resp::into_can_end);
-                    self.update_completions();
+                        .map(Resp::into_can_end)
+                    {
+                        Ok(x) => Ok(x),
+                        Err(event) => {
+                            if let Some((buffer, cursor_id, input, _)) = &mut self.preview {
+                                input
+                                    .handle(buffer, *cursor_id, event)
+                                    .map(Resp::into_can_end)
+                            } else {
+                                Err(event)
+                            }
+                        }
+                    };
                     res
                 }
             },
+        };
+
+        if self.buffer.text.to_string() != filter_str {
+            self.update_completions();
         }
+        res
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct SearchResult {
     pub path: PathBuf,
     pub line_idx: usize,
@@ -162,11 +183,43 @@ impl Visual for SearchResult {
 
 impl Visual for Searcher {
     fn render(&mut self, state: &State, frame: &mut Rect) {
+        let path_input_sz = 3;
+        let remaining_sz = frame.size()[1].saturating_sub(path_input_sz);
+        let (preview_sz, options_sz) = if remaining_sz > 12 {
+            let preview_sz = remaining_sz / 2;
+            (preview_sz, remaining_sz - preview_sz)
+        } else {
+            (0, remaining_sz)
+        };
+
+        self.preview = self.options.selected().and_then(|result| {
+            self.preview
+                .take()
+                .filter(|(_, _, _, r)| r == result)
+                .or_else(|| {
+                    let mut buffer = Buffer::from_file(result.path.clone()).ok()?;
+                    let cursor_id = buffer.start_session();
+                    let mut input = Input::default();
+                    buffer.goto_cursor(cursor_id, [0, result.line_idx as isize], true);
+                    input.focus([0, result.line_idx as isize - preview_sz as isize / 2]);
+                    Some((buffer, cursor_id, input, result.clone()))
+                })
+        });
+
+        if let Some((buffer, cursor_id, input, result)) = &mut self.preview {
+            frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
+                input.render(state, buffer.name().as_deref(), buffer, *cursor_id, None, f)
+            });
+        }
+
         frame
-            .rect([0, 0], [frame.size()[0], frame.size()[1].saturating_sub(3)])
+            .rect([0, preview_sz], [frame.size()[0], options_sz])
             .with(|f| self.options.render(state, f));
         frame
-            .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
+            .rect(
+                [0, preview_sz + options_sz],
+                [frame.size()[0], path_input_sz],
+            )
             .with(|f| {
                 let title = format!(
                     "{} of {} results for '{}' in {}/",

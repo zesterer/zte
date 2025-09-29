@@ -128,6 +128,10 @@ impl<T> Options<T> {
         }
     }
 
+    pub fn selected(&self) -> Option<&T> {
+        self.options.get(*self.ranking.get(self.selected)?)
+    }
+
     pub fn set_options<F: FnMut(&T) -> Option<S>, S: Ord + Copy>(
         &mut self,
         options: impl IntoIterator<Item = T>,
@@ -157,10 +161,10 @@ impl<T> Options<T> {
 impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
-            Some(Action::Move(dir, dist, false, false)) => {
+            Some(Action::Move(dir, dist @ (Dist::Char | Dist::Doc), false, false)) => {
                 let dist = match dist {
                     Dist::Char => 1,
-                    Dist::Page => self.last_height.saturating_sub(1).min(self.ranking.len()),
+                    Dist::Page => unimplemented!(),
                     Dist::Doc => self.ranking.len(),
                 };
                 match dir {

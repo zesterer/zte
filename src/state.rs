@@ -834,6 +834,16 @@ impl Buffer {
     pub fn end_session(&mut self, cursor_id: CursorId) {
         self.cursors.remove(cursor_id);
     }
+
+    pub fn is_same_path(&self, path: &Path) -> bool {
+        self.path
+            .as_ref()
+            .and_then(|p| p.canonicalize().ok())
+            .as_ref()
+            .map_or(false, |p| {
+                path.canonicalize().ok().map_or(false, |path| *p == path)
+            })
+    }
 }
 
 // CLassify the character by property
@@ -882,10 +892,7 @@ impl State {
     }
 
     pub fn open_or_get(&mut self, path: PathBuf) -> Result<BufferId, Error> {
-        let true_path = path.canonicalize()?;
-        if let Some((buffer_id, _)) = self.buffers.iter().find(|(_, b)| {
-            b.path.as_ref().and_then(|p| p.canonicalize().ok()).as_ref() == Some(&true_path)
-        }) {
+        if let Some((buffer_id, _)) = self.buffers.iter().find(|(_, b)| b.is_same_path(&path)) {
             Ok(buffer_id)
         } else {
             Ok(self.buffers.insert(Buffer::from_file(path)?))

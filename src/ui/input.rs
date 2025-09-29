@@ -61,6 +61,7 @@ impl Input {
         event: Event,
     ) -> Result<Resp, Event> {
         buffer.begin_action();
+        let is_doc = matches!(self.mode, Mode::Doc);
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
@@ -84,7 +85,9 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Move(dir, dist, retain_base, word)) => {
+            Some(Action::Move(dir, dist, retain_base, word))
+                if matches!(dir, Dir::Left | Dir::Right) || is_doc =>
+            {
                 let dist = match dist {
                     Dist::Char => [1, 1],
                     Dist::Page => self.last_area.size().map(|s| s.saturating_sub(3).max(1)),
@@ -95,7 +98,7 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Pan(dir, dist)) => {
+            Some(Action::Pan(dir, dist)) if is_doc => {
                 let dist = match dist {
                     Dist::Char => [1, 1],
                     Dist::Page => self.last_area.size().map(|s| s.saturating_sub(3).max(1)),
@@ -247,11 +250,6 @@ impl Input {
             title.as_deref(),
         );
 
-        let Some(cursor) = buffer.cursors.get(cursor_id) else {
-            return;
-        };
-        let cursor_coord = buffer.text.to_coord(cursor.pos);
-
         let line_num_w = buffer.text.lines().count().max(1).ilog10() as usize + 1;
         let margin_w = match self.mode {
             Mode::Prompt => 2,
@@ -260,6 +258,11 @@ impl Input {
         };
 
         self.last_area = frame.rect([margin_w, 0], [!0, !0]).area();
+
+        let Some(cursor) = buffer.cursors.get(cursor_id) else {
+            return;
+        };
+        let cursor_coord = buffer.text.to_coord(cursor.pos);
 
         let mut pos = 0;
         for (i, (line_num, (line_pos, line))) in buffer
