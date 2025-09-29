@@ -63,9 +63,13 @@ impl Element for Doc {
             return Err(event);
         };
 
-        let open_path = buffer
-            .dir
+        let mut open_path = buffer
+            .path
             .to_owned()
+            .map(|mut p| {
+                p.pop();
+                p
+            })
             .unwrap_or_else(|| std::env::current_dir().expect("no working dir"));
 
         match event.to_action(|e| {
@@ -125,12 +129,26 @@ impl Element for Doc {
                     Action::Show(Some(format!("Could not create file")), format!("{err}")).into(),
                 ))),
             },
-            Some(Action::Save) => {
-                let event = buffer.save().err().map(|err| {
-                    Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
-                });
-                Ok(Resp::handled(event))
+            Some(Action::Overwrite) => Ok(Resp::handled(buffer.save().err().map(|err| {
+                Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+            }))),
+            Some(Action::Reload) => {
+                buffer.reload();
+                Ok(Resp::handled(None))
             }
+            Some(Action::Save) => Ok(Resp::handled(if buffer.diverged {
+                Some(
+                    Action::Confirm(
+                        format!("File has diverged on disk. Are you sure you wish to save (y/n)?"),
+                        Box::new(Action::Overwrite),
+                    )
+                    .into(),
+                )
+            } else {
+                buffer.save().err().map(|err| {
+                    Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+                })
+            })),
             _ => {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);

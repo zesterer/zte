@@ -39,6 +39,7 @@ impl Prompt {
                 - version\n\
                 - pane_move_left\n\
                 - pane_move_right\n\
+                - reload : Reload the current file from disk, dropping unsaved changes\n\
                 - help"
                 ),
             )),
@@ -58,6 +59,7 @@ impl Prompt {
                 let needle = cmd.get(arg0.len()..).unwrap().trim().to_string();
                 Ok(Action::BeginSearch(needle))
             }
+            Some("reload") => Ok(Action::Reload),
             Some(cmd) => Err(format!("Unknown command `{cmd}`")),
             None => Err(format!("No command entered")),
         }

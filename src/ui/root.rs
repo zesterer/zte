@@ -133,6 +133,10 @@ impl Element<()> for Root {
                         }));
                     }
                 }
+                Action::Confirm(q, action) => self.tasks.push(Task::Confirm(Confirm {
+                    label: Label(q),
+                    action: *action,
+                })),
                 Action::Show(title, text) => self.tasks.push(Task::Show(Show {
                     title,
                     label: Label(text),

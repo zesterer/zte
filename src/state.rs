@@ -6,6 +6,7 @@ use std::{
     io,
     ops::Range,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 new_key_type! {
@@ -140,14 +141,15 @@ impl Text {
 #[derive(Default)]
 pub struct Buffer {
     pub unsaved: bool,
+    pub diverged: bool,
     pub text: Text,
     pub lang: LangPack,
     pub highlights: Highlights,
     pub cursors: HopSlotMap<CursorId, Cursor>,
-    pub dir: Option<PathBuf>,
     pub path: Option<PathBuf>,
     pub undo: Vec<Change>,
     pub redo: Vec<Change>,
+    opened_at: Option<SystemTime>,
     action_counter: usize,
     most_recent_rank: usize,
 }
@@ -178,34 +180,24 @@ impl Change {
 
 impl Buffer {
     pub fn from_file(path: PathBuf) -> Result<Self, Error> {
-        let (unsaved, dir, chars, s) = match std::fs::read_to_string(&path) {
-            Ok(s) => {
-                let mut path = path.canonicalize()?;
-                path.pop();
-                (false, Some(path), s.chars().collect(), s)
-            }
+        let (unsaved, chars, s) = match std::fs::read_to_string(&path) {
+            Ok(s) => (false, s.chars().collect(), s),
             // If the file doesn't exist, create a new file
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                let dir = path
-                    .parent()
-                    .filter(|p| p.to_str() != Some(""))
-                    .map(Path::to_owned)
-                    .or_else(|| std::env::current_dir().ok());
-                (true, dir, Vec::new(), String::new())
-            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => (true, Vec::new(), String::new()),
             Err(err) => return Err(err.into()),
         };
         let lang = LangPack::from_file_name(&path);
         Ok(Self {
             unsaved,
+            diverged: false,
             highlights: lang.highlighter.highlight(&chars),
             lang,
             text: Text { chars },
             cursors: HopSlotMap::default(),
-            dir,
-            path: Some(path),
+            path: Some(path.canonicalize()?),
             undo: Vec::new(),
             redo: Vec::new(),
+            opened_at: Some(SystemTime::now()),
             action_counter: 0,
             most_recent_rank: 0,
         })
@@ -216,6 +208,8 @@ impl Buffer {
             self.path.as_ref().expect("buffer must have path to save"),
             self.text.to_string(),
         )?;
+        self.diverged = false;
+        self.opened_at = Some(SystemTime::now());
         self.unsaved = false;
         Ok(())
     }
@@ -223,7 +217,16 @@ impl Buffer {
     pub fn name(&self) -> Option<String> {
         Some(
             match self.path.as_ref()?.file_name().and_then(|n| n.to_str()) {
-                Some(name) => format!("{}{name}", if self.unsaved { "* " } else { "" }),
+                Some(name) => format!(
+                    "{}{name}",
+                    if self.diverged {
+                        "! "
+                    } else if self.unsaved {
+                        "* "
+                    } else {
+                        ""
+                    }
+                ),
                 None => "<error>".to_string(),
             },
         )
@@ -844,6 +847,40 @@ impl Buffer {
                 path.canonicalize().ok().map_or(false, |path| *p == path)
             })
     }
+
+    pub fn reload(&mut self) {
+        if let Some(path) = &self.path {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                self.text = Text {
+                    chars: text.chars().collect(),
+                };
+                self.opened_at = Some(SystemTime::now());
+                self.diverged = false;
+                self.unsaved = false;
+                self.undo.clear();
+                self.redo.clear();
+                self.update_highlights();
+            } else {
+                self.diverged = true;
+                self.unsaved = true;
+            }
+        }
+    }
+
+    pub fn tick(&mut self) {
+        if let Some(path) = &self.path {
+            let stale = std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|lm| Some(lm > self.opened_at?));
+            match (stale, self.unsaved) {
+                (Some(false), _) => {}
+                (Some(true), true) => self.diverged = true,
+                (Some(true), false) => self.reload(),
+                (None, _) => self.diverged = true,
+            }
+        }
+    }
 }
 
 // CLassify the character by property
@@ -901,6 +938,9 @@ impl State {
 
     pub fn tick(&mut self) {
         self.tick += 1;
+        for b in self.buffers.values_mut() {
+            b.tick();
+        }
     }
 
     pub fn set_most_recent(&mut self, buffer: BufferId) {

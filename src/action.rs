@@ -44,7 +44,10 @@ pub enum Action {
     SelectToken,              // Fully select the token under the cursor
     SelectAll,                // Fully select the entire input
     Save,                     // Save the current buffer
+    Overwrite,                // Save the current buffer, forcefully
+    Reload,                   // Reload the current file from disk, losing unsaved changes
     Mouse(MouseAction, [isize; 2], bool, usize), // (action, pos, is_ctrl, drag_id)
+    Confirm(String, Box<Self>),
     Undo,
     Redo,
     Copy,
