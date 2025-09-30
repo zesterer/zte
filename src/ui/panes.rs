@@ -15,7 +15,6 @@ pub struct Panes {
     selected: usize,
     panes: Vec<Pane>,
     last_area: Area,
-    drag_id_counter: usize,
 }
 
 impl Panes {
@@ -30,7 +29,6 @@ impl Panes {
                 })
                 .collect(),
             last_area: Default::default(),
-            drag_id_counter: 0,
         }
     }
 
@@ -46,7 +44,6 @@ impl Element for Panes {
                 .map(Action::PaneMove)
                 .or_else(|| e.to_pane_open().map(Action::PaneOpen))
                 .or_else(|| e.to_pane_close())
-                .or_else(|| e.to_mouse(self.last_area, &mut self.drag_id_counter))
         }) {
             Some(Action::PaneMove(Dir::Left)) => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();

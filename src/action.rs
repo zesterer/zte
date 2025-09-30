@@ -480,26 +480,23 @@ impl RawEvent {
         }
     }
 
-    pub fn to_mouse(&self, area: Area, drag_id_counter: &mut usize) -> Option<Action> {
+    pub fn to_mouse(&self, drag_id_counter: &mut usize) -> Option<Action> {
         let TerminalEvent::Mouse(ev) = self.0 else {
             return None;
         };
 
-        if let Some(pos) = area.contains([ev.column as isize, ev.row as isize]) {
-            let action = match ev.kind {
-                MouseEventKind::ScrollUp => MouseAction::Scroll(Dir::Up),
-                MouseEventKind::ScrollDown => MouseAction::Scroll(Dir::Down),
-                MouseEventKind::Down(MouseButton::Left) => {
-                    *drag_id_counter += 1;
-                    MouseAction::Click
-                }
-                MouseEventKind::Drag(MouseButton::Left) => MouseAction::Drag,
-                _ => return None,
-            };
-            let is_ctrl = ev.modifiers == KeyModifiers::CONTROL;
-            Some(Action::Mouse(action, pos, is_ctrl, *drag_id_counter))
-        } else {
-            None
-        }
+        let pos = [ev.column as isize, ev.row as isize];
+        let action = match ev.kind {
+            MouseEventKind::ScrollUp => MouseAction::Scroll(Dir::Up),
+            MouseEventKind::ScrollDown => MouseAction::Scroll(Dir::Down),
+            MouseEventKind::Down(MouseButton::Left) => {
+                *drag_id_counter += 1;
+                MouseAction::Click
+            }
+            MouseEventKind::Drag(MouseButton::Left) => MouseAction::Drag,
+            _ => return None,
+        };
+        let is_ctrl = ev.modifiers == KeyModifiers::CONTROL;
+        Some(Action::Mouse(action, pos, is_ctrl, *drag_id_counter))
     }
 }

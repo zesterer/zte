@@ -5,6 +5,7 @@ pub struct Root {
     panes: Panes,
     status: Status,
     tasks: Vec<Task>,
+    drag_id_counter: usize,
 }
 
 pub enum Task {
@@ -35,12 +36,19 @@ impl Root {
             panes: Panes::new(state, buffers),
             status: Status,
             tasks: Vec::new(),
+            drag_id_counter: 0,
         }
     }
 }
 
 impl Element<()> for Root {
     fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<()>, Event> {
+        // Perform any top-level conversion of raw events
+        let mut event = event
+            .to_action(|e| e.to_mouse(&mut self.drag_id_counter))
+            .map(Event::Action)
+            .unwrap_or(event);
+
         // Pass the event down through the list of tasks until we meet one that can handle it
         let mut task_idx = self.tasks.len();
         let event = loop {

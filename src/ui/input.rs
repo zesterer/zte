@@ -97,7 +97,9 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _)) if is_doc => {
+            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _))
+                if is_doc && self.last_area.contains(pos).is_some() =>
+            {
                 let dist = [1, 1];
                 let dfocus = match dir {
                     Dir::Up => [0, -1],
