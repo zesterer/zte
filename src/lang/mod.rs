@@ -212,9 +212,9 @@ impl Highlighter {
             // Builtins
             .with(TokenKind::Macro, r"\b[(True)(False)(None)]\b")
             // Doc comments
-            .with(TokenKind::Doc, r"^##[^$]*$")
+            .with(TokenKind::Doc, r"^[[:space:]]##[^$]*$")
             // Comments
-            .with(TokenKind::Comment, r"^#[^$]*$")
+            .with(TokenKind::Comment, r"#[^$]*$")
             .clike()
     }
 
@@ -227,9 +227,9 @@ impl Highlighter {
             // Builtins
             .with(TokenKind::Macro, r"\b[(True)(False)]\b")
             // Doc comments
-            .with(TokenKind::Doc, r"^##[^$]*$")
+            .with(TokenKind::Doc, r"^[[:space:]]##[^$]*$")
             // Comments
-            .with(TokenKind::Comment, r"^#[^$]*$")
+            .with(TokenKind::Comment, r"#[^$]*$")
             // Attributes
             .with(TokenKind::Attribute, r"\$!?\[[^\]]*\]")
             .clike()
