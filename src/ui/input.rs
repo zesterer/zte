@@ -66,7 +66,6 @@ impl Input {
             e.to_char()
                 .map(Action::Char)
                 .or_else(|| e.to_move())
-                .or_else(|| e.to_pan())
                 .or_else(|| e.to_select_token())
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
@@ -98,13 +97,8 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Pan(dir, dist)) if is_doc => {
-                let dist = match dist {
-                    Dist::Char => [1, 1],
-                    Dist::Page => self.last_area.size().map(|s| s.saturating_sub(3).max(1)),
-                    // TODO: Don't just use an arbitrary very large number
-                    Dist::Doc => [1_000_000_000; 2],
-                };
+            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _)) if is_doc => {
+                let dist = [1, 1];
                 let dfocus = match dir {
                     Dir::Up => [0, -1],
                     Dir::Down => [0, 1],

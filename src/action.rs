@@ -20,7 +20,6 @@ pub enum Action {
     Char(char),                                  // Insert a character
     Indent(bool),                                // Indent (indent vs deindent)
     Move(Dir, Dist, bool, bool),                 // Move the cursor (dir, dist, retain_base, word)
-    Pan(Dir, Dist),                              // Pan the view window
     PaneMove(Dir),                               // Move panes
     PaneOpen(Dir),                               // Create a new pane
     PaneClose,                                   // Close the current pane
@@ -67,8 +66,7 @@ pub enum Dist {
 pub enum MouseAction {
     Click,
     Drag,
-    ScrollDown,
-    ScrollUp,
+    Scroll(Dir),
 }
 
 #[derive(Debug)]
@@ -216,19 +214,6 @@ impl RawEvent {
         };
 
         Some(Action::Move(dir, dist, retain_base, word))
-    }
-
-    pub fn to_pan(&self) -> Option<Action> {
-        let (dir, dist) = match &self.0 {
-            TerminalEvent::Mouse(ev) => match ev.kind {
-                MouseEventKind::ScrollUp => (Dir::Up, Dist::Char),
-                MouseEventKind::ScrollDown => (Dir::Down, Dist::Char),
-                _ => return None,
-            },
-            _ => return None,
-        };
-
-        Some(Action::Pan(dir, dist))
     }
 
     pub fn to_select_token(&self) -> Option<Action> {
@@ -502,8 +487,8 @@ impl RawEvent {
 
         if let Some(pos) = area.contains([ev.column as isize, ev.row as isize]) {
             let action = match ev.kind {
-                MouseEventKind::ScrollUp => MouseAction::ScrollUp,
-                MouseEventKind::ScrollDown => MouseAction::ScrollDown,
+                MouseEventKind::ScrollUp => MouseAction::Scroll(Dir::Up),
+                MouseEventKind::ScrollDown => MouseAction::Scroll(Dir::Down),
                 MouseEventKind::Down(MouseButton::Left) => {
                     *drag_id_counter += 1;
                     MouseAction::Click
