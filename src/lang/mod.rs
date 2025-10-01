@@ -64,7 +64,7 @@ impl Highlighter {
     pub fn markdown(self) -> Self {
         self
             // Links
-            .with(TokenKind::String, r"\[[^\]]*\](\([^\)]*\))?")
+            .with(TokenKind::String, r"!?\[[^\]]*\](\([^\)]*\))?")
             // Header
             .with(TokenKind::Doc, r"^#+[[:space:]][^$]*$")
             // List item
