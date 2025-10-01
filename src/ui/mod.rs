@@ -113,7 +113,7 @@ pub struct Options<T> {
     // (score, option)
     pub options: Vec<T>,
     pub ranking: Vec<usize>,
-    pub last_height: usize,
+    last_area: Area,
 }
 
 impl<T> Options<T> {
@@ -124,7 +124,7 @@ impl<T> Options<T> {
             selected: 0,
             options,
             ranking,
-            last_height: 0,
+            last_area: Area::default(),
         }
     }
 
@@ -156,34 +156,55 @@ impl<T> Options<T> {
     pub fn requested_height(&self) -> usize {
         2 + self.ranking.len()
     }
+
+    fn scroll(&mut self, dir: Dir, dist: Dist) {
+        let dist = match dist {
+            Dist::Char => 1,
+            Dist::Page => unimplemented!(),
+            Dist::Doc => self.ranking.len(),
+        };
+        match dir {
+            Dir::Up => {
+                if self.selected == 0 {
+                    self.selected = self.ranking.len().saturating_sub(1);
+                } else {
+                    self.selected = self.selected.saturating_sub(dist);
+                }
+            }
+            Dir::Down => {
+                if self.selected == self.ranking.len().saturating_sub(1) {
+                    self.selected = 0;
+                } else {
+                    self.selected =
+                        (self.selected + dist).min(self.ranking.len().saturating_sub(1));
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
             Some(Action::Move(dir, dist @ (Dist::Char | Dist::Doc), false, false)) => {
-                let dist = match dist {
-                    Dist::Char => 1,
-                    Dist::Page => unimplemented!(),
-                    Dist::Doc => self.ranking.len(),
-                };
-                match dir {
-                    Dir::Up => {
-                        if self.selected == 0 {
-                            self.selected = self.ranking.len().saturating_sub(1);
-                        } else {
-                            self.selected = self.selected.saturating_sub(dist);
-                        }
-                    }
-                    Dir::Down => {
-                        if self.selected == self.ranking.len().saturating_sub(1) {
-                            self.selected = 0;
-                        } else {
-                            self.selected =
-                                (self.selected + dist).min(self.ranking.len().saturating_sub(1));
-                        }
-                    }
-                    _ => return Err(event),
+                self.scroll(dir, dist);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(MouseAction::Click, pos, _, _))
+                if self.last_area.contains(pos).is_some() =>
+            {
+                if let Some(pos) = self.last_area.contains(pos) {
+                    self.selected =
+                        ((pos[1] - self.focus as isize).max(0) as usize).min(self.ranking.len());
+                }
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _))
+                if self.last_area.contains(pos).is_some() =>
+            {
+                if let Some(pos) = self.last_area.contains(pos) {
+                    self.scroll(dir, Dist::Char);
                 }
                 Ok(Resp::handled(None))
             }
@@ -213,7 +234,7 @@ impl<T: Visual> Visual for Options<T> {
             None,
         );
 
-        self.last_height = frame.size()[1];
+        self.last_area = frame.area();
 
         self.focus = self
             .focus
