@@ -317,12 +317,12 @@ impl Opener {
 
     fn update_completions(&mut self) {
         let path_str = self.buffer.text.to_string();
-        let (dir, filter) = match path_str.rsplit_once('/') {
+        let (dir, file_name) = match path_str.rsplit_once('/') {
             Some(("", filter)) => ("/", filter),
             Some((dir, filter)) => (dir, filter),
             None => ("/", path_str.as_str()),
         };
-        let filter = filter.to_lowercase();
+        let filter = file_name.to_lowercase();
         match fs::read_dir(dir) {
             Ok(entries) => {
                 let options = entries
@@ -343,7 +343,7 @@ impl Opener {
                     })
                     .chain(if filter != "" {
                         Some(FileOption {
-                            path: [dir, &filter].into_iter().collect(),
+                            path: [dir, &file_name].into_iter().collect(),
                             kind: FileKind::New,
                             is_link: false,
                         })
