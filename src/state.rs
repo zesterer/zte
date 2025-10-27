@@ -179,28 +179,31 @@ impl Change {
 }
 
 impl Buffer {
-    pub fn from_file(path: PathBuf) -> Result<Self, Error> {
-        let (unsaved, chars, s) = match std::fs::read_to_string(&path) {
-            Ok(s) => (false, s.chars().collect(), s),
-            // If the file doesn't exist, create a new file
-            Err(err) if err.kind() == io::ErrorKind::NotFound => (true, Vec::new(), String::new()),
-            Err(err) => return Err(err.into()),
-        };
+    pub fn new(unsaved: bool, chars: Vec<char>, path: PathBuf) -> Self {
         let lang = LangPack::from_file_name(&path);
-        Ok(Self {
+        Self {
             unsaved,
             diverged: false,
             highlights: lang.highlighter.highlight(&chars),
             lang,
             text: Text { chars },
             cursors: HopSlotMap::default(),
-            path: Some(path.canonicalize()?),
+            path: Some(path),
             undo: Vec::new(),
             redo: Vec::new(),
             opened_at: Some(SystemTime::now()),
             action_counter: 0,
             most_recent_rank: 0,
-        })
+        }
+    }
+
+    pub fn open(path: PathBuf) -> Result<Self, Error> {
+        let path = path.canonicalize()?;
+        let (unsaved, chars) = match std::fs::read_to_string(&path) {
+            Ok(s) => (false, s.chars().collect()),
+            Err(err) => return Err(err.into()),
+        };
+        Ok(Self::new(unsaved, chars, path))
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
@@ -871,13 +874,12 @@ impl Buffer {
         if let Some(path) = &self.path {
             let stale = std::fs::metadata(path)
                 .and_then(|m| m.modified())
-                .ok()
-                .and_then(|lm| Some(lm > self.opened_at?));
+                .map(|lm| lm > self.opened_at.expect("state buffer must have open time"));
             match (stale, self.unsaved) {
-                (Some(false), _) => {}
-                (Some(true), true) => self.diverged = true,
-                (Some(true), false) => self.reload(),
-                (None, _) => self.diverged = true,
+                (Ok(false), _) => {}
+                (Ok(true), true) => self.diverged = true,
+                (Ok(true), false) => self.reload(),
+                (Err(_), _) => {}
             }
         }
     }
@@ -914,7 +916,7 @@ impl TryFrom<Args> for State {
             this.buffers.insert(Buffer::default());
         } else {
             for path in args.paths {
-                this.buffers.insert(Buffer::from_file(path)?);
+                this.create(path)?;
             }
         }
 
@@ -923,16 +925,35 @@ impl TryFrom<Args> for State {
 }
 
 impl State {
-    pub fn create_file(&mut self, path: PathBuf) -> Result<BufferId, Error> {
-        self.open_or_get(path.clone())
-            .or_else(|_| Ok(self.buffers.insert(Buffer::from_file(path)?)))
-    }
-
-    pub fn open_or_get(&mut self, path: PathBuf) -> Result<BufferId, Error> {
+    pub fn get(&self, path: PathBuf) -> Result<BufferId, Error> {
         if let Some((buffer_id, _)) = self.buffers.iter().find(|(_, b)| b.is_same_path(&path)) {
             Ok(buffer_id)
         } else {
-            Ok(self.buffers.insert(Buffer::from_file(path)?))
+            Err(Error::NoSuchBuffer)
+        }
+    }
+
+    pub fn open(&mut self, path: PathBuf) -> Result<BufferId, Error> {
+        match self.get(path.clone()) {
+            Ok(id) => Ok(id),
+            Err(Error::NoSuchBuffer) => Ok(self.buffers.insert(Buffer::open(path)?)),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub fn create(&mut self, path: PathBuf) -> Result<BufferId, Error> {
+        match self.open(path.clone()) {
+            Ok(id) => Ok(id),
+            // If the file was not found, create a new file
+            Err(Error::Io(err)) if err.kind() == io::ErrorKind::NotFound => {
+                let path = if path.has_root() {
+                    path
+                } else {
+                    std::env::current_dir()?.join(path)
+                };
+                Ok(self.buffers.insert(Buffer::new(true, Vec::new(), path)))
+            }
+            Err(err) => Err(err),
         }
     }
 

@@ -24,6 +24,8 @@ struct Args {
 pub enum Error {
     #[error("io: {0}")]
     Io(#[from] io::Error),
+    #[error("no such buffer")]
+    NoSuchBuffer,
 }
 
 fn main() -> Result<(), Error> {

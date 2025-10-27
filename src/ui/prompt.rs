@@ -487,7 +487,7 @@ impl Visual for Opener {
                 .take()
                 .filter(|(b, _, _)| b.is_same_path(&f.path))
                 .or_else(|| {
-                    let mut buffer = Buffer::from_file(f.path.clone()).ok()?;
+                    let mut buffer = Buffer::open(f.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     Some((buffer, cursor_id, Input::default()))
                 })

@@ -197,7 +197,7 @@ impl Visual for Searcher {
                 .take()
                 .filter(|(_, _, _, r)| r == result)
                 .or_else(|| {
-                    let mut buffer = Buffer::from_file(result.path.clone()).ok()?;
+                    let mut buffer = Buffer::open(result.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     let mut input = Input::default();
                     buffer.goto_cursor(cursor_id, [0, result.line_idx as isize], true);

@@ -106,7 +106,7 @@ impl Element for Doc {
                 self.switch_buffer(state, new_buffer);
                 Ok(Resp::handled(None))
             }
-            Some(Action::OpenFile(path, line_idx)) => match state.open_or_get(path) {
+            Some(Action::OpenFile(path, line_idx)) => match state.open(path) {
                 Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
                     if let Some(buffer) = state.buffers.get_mut(self.buffer) {
@@ -120,7 +120,7 @@ impl Element for Doc {
                     Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
                 ))),
             },
-            Some(Action::CreateFile(path)) => match state.create_file(path) {
+            Some(Action::CreateFile(path)) => match state.create(path) {
                 Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
                     Ok(Resp::handled(None))
