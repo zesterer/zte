@@ -153,7 +153,8 @@ impl Element for Doc {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);
                 };
-                self.input.handle(buffer, cursor_id, event)
+                self.input
+                    .handle(&mut state.clipboard, buffer, cursor_id, event)
             }
         }
     }
@@ -326,7 +327,12 @@ impl Finder {
             }
             _ => self
                 .input
-                .handle(&mut self.buffer, self.cursor_id, event)
+                .handle(
+                    &mut state.clipboard,
+                    &mut self.buffer,
+                    self.cursor_id,
+                    event,
+                )
                 .map(Resp::into_can_end),
         };
 

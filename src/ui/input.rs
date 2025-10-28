@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    state::{Buffer, CursorId},
+    state::{Buffer, Clipboard, CursorId},
     terminal::CursorStyle,
 };
 
@@ -56,6 +56,7 @@ impl Input {
 
     pub fn handle(
         &mut self,
+        clipboard: &mut Clipboard,
         buffer: &mut Buffer,
         cursor_id: CursorId,
         event: Event,
@@ -191,7 +192,7 @@ impl Input {
                 }
             }
             Some(Action::Copy) => {
-                if buffer.copy(cursor_id) {
+                if buffer.copy(clipboard, cursor_id) {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
@@ -199,7 +200,7 @@ impl Input {
                 }
             }
             Some(Action::Cut) => {
-                if buffer.cut(cursor_id) {
+                if buffer.cut(clipboard, cursor_id) {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
@@ -207,7 +208,7 @@ impl Input {
                 }
             }
             Some(Action::Paste) => {
-                if buffer.paste(cursor_id) {
+                if buffer.paste(clipboard, cursor_id) {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {

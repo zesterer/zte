@@ -88,7 +88,12 @@ impl Element<()> for Prompt {
             },
             _ => self
                 .input
-                .handle(&mut self.buffer, self.cursor_id, event)
+                .handle(
+                    &mut state.clipboard,
+                    &mut self.buffer,
+                    self.cursor_id,
+                    event,
+                )
                 .map(Resp::into_can_end),
         }
     }
@@ -231,7 +236,12 @@ impl Element<()> for Switcher {
                 Err(event) => {
                     let res = self
                         .input
-                        .handle(&mut self.buffer, self.cursor_id, event)
+                        .handle(
+                            &mut state.clipboard,
+                            &mut self.buffer,
+                            self.cursor_id,
+                            event,
+                        )
                         .map(Resp::into_can_end);
                     // Score entries
                     let filter = self.buffer.text.to_string();
@@ -416,12 +426,12 @@ impl Element<()> for Opener {
                 Err(event) => {
                     let res = match self
                         .input
-                        .handle(&mut self.buffer, self.cursor_id, event)
+                        .handle(&mut state.clipboard, &mut self.buffer, self.cursor_id, event)
                         .map(Resp::into_can_end)
                     {
                         Ok(x) => Ok(x),
                         Err(event) => if let Some((buffer, cursor_id, input)) = &mut self.preview {
-                            input.handle(buffer, *cursor_id, event).map(Resp::into_can_end)
+                            input.handle(&mut state.clipboard, buffer, *cursor_id, event).map(Resp::into_can_end)
                         } else {
                             Err(event)
                         },

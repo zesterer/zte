@@ -733,14 +733,12 @@ impl Buffer {
         }
     }
 
-    pub fn copy(&mut self, cursor_id: CursorId) -> bool {
+    pub fn copy(&mut self, clipboard: &mut Clipboard, cursor_id: CursorId) -> bool {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return false;
         };
         if let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
-            && ClipboardContext::new()
-                .and_then(|mut ctx| ctx.set_contents(text.iter().copied().collect()))
-                .is_ok()
+            && clipboard.set(text.iter().copied().collect()).is_ok()
         {
             true
         } else {
@@ -748,8 +746,8 @@ impl Buffer {
         }
     }
 
-    pub fn cut(&mut self, cursor_id: CursorId) -> bool {
-        if self.copy(cursor_id) {
+    pub fn cut(&mut self, clipboard: &mut Clipboard, cursor_id: CursorId) -> bool {
+        if self.copy(clipboard, cursor_id) {
             self.backspace(cursor_id);
             true
         } else {
@@ -757,8 +755,8 @@ impl Buffer {
         }
     }
 
-    pub fn paste(&mut self, cursor_id: CursorId) -> bool {
-        if let Ok(s) = ClipboardContext::new().and_then(|mut ctx| ctx.get_contents()) {
+    pub fn paste(&mut self, clipboard: &mut Clipboard, cursor_id: CursorId) -> bool {
+        if let Ok(s) = clipboard.get() {
             self.enter(cursor_id, s.chars());
             true
         } else {
@@ -895,11 +893,33 @@ fn classify(c: char) -> Option<u8> {
     }
 }
 
+pub struct Clipboard {
+    // If a global clipboard cannot be established, use a local clipboard instead
+    ctx: Result<ClipboardContext, String>,
+}
+
+impl Clipboard {
+    fn get(&mut self) -> Result<String, ()> {
+        match &mut self.ctx {
+            Ok(ctx) => ctx.get_contents().map_err(|_| ()),
+            Err(contents) => Ok(contents.clone()),
+        }
+    }
+
+    fn set(&mut self, text: String) -> Result<(), ()> {
+        match &mut self.ctx {
+            Ok(ctx) => ctx.set_contents(text).map_err(|_| ()),
+            Err(contents) => Ok(*contents = text),
+        }
+    }
+}
+
 pub struct State {
     pub buffers: HopSlotMap<BufferId, Buffer>,
     pub tick: u64,
     pub theme: theme::Theme,
     pub most_recent_counter: usize,
+    pub clipboard: Clipboard,
 }
 
 impl TryFrom<Args> for State {
@@ -910,6 +930,9 @@ impl TryFrom<Args> for State {
             tick: 0,
             theme: theme::Theme::default(),
             most_recent_counter: 0,
+            clipboard: Clipboard {
+                ctx: ClipboardContext::new().map_err(|_| String::new()),
+            },
         };
 
         if args.paths.is_empty() {
