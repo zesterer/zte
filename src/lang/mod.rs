@@ -14,46 +14,43 @@ impl LangPack {
             file_name.extension().and_then(|e| e.to_str()).unwrap_or(""),
         ) {
             (_, "rs" | "ron") => Self {
-                highlighter: Highlighter::default().rust().git(),
+                highlighter: Highlighter::code().rust(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             (_, "md") => Self {
-                highlighter: Highlighter::default().markdown().git(),
+                highlighter: Highlighter::code().markdown(),
                 comment_syntax: None,
             },
             ("Cargo.lock", _) | (_, "toml") => Self {
-                highlighter: Highlighter::default().toml().git(),
+                highlighter: Highlighter::code().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go" | "sh") => Self {
-                highlighter: Highlighter::default().generic_clike().git(),
+                highlighter: Highlighter::code().generic_clike(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             (_, "glsl" | "vert" | "frag") => Self {
-                highlighter: Highlighter::default().glsl().git(),
+                highlighter: Highlighter::code().glsl(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             (_, "py") => Self {
-                highlighter: Highlighter::default().python().git(),
+                highlighter: Highlighter::code().python(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             (_, "tao") => Self {
-                highlighter: Highlighter::default().tao().git(),
+                highlighter: Highlighter::code().tao(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             ("makefile" | "Makefile", _) => Self {
-                highlighter: Highlighter::default().makefile().git(),
+                highlighter: Highlighter::code().makefile(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
             (_, "proto" | "json") => Self {
-                highlighter: Highlighter::default()
-                    .clike_comments()
-                    .generic_delimited()
-                    .git(),
+                highlighter: Highlighter::code().clike_comments().generic_delimited(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
             _ => Self {
-                highlighter: Highlighter::default().git(),
+                highlighter: Highlighter::code(),
                 comment_syntax: None,
             },
         }
@@ -61,6 +58,10 @@ impl LangPack {
 }
 
 impl Highlighter {
+    pub fn code() -> Self {
+        Self::default().git()
+    }
+
     pub fn markdown(self) -> Self {
         self
             // Links
