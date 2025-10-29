@@ -324,9 +324,6 @@ impl Input {
                     let bg = match finder.map(|s| s.contains(pos?)) {
                         Some(Some(true)) => state.theme.select_bg,
                         Some(Some(false)) => state.theme.search_result_bg,
-                        Some(None) if line_selected && frame.has_focus() => {
-                            state.theme.line_select_bg
-                        }
                         _ => {
                             if selected {
                                 if frame.has_focus() {
@@ -334,10 +331,12 @@ impl Input {
                                 } else {
                                     state.theme.unfocus_select_bg
                                 }
+                            } else if let Some(hl_bg) = hl_bg {
+                                hl_bg
                             } else if line_selected && frame.has_focus() {
                                 state.theme.line_select_bg
                             } else {
-                                hl_bg.unwrap_or(Color::Reset)
+                                Color::Reset
                             }
                         }
                     };
