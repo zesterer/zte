@@ -371,15 +371,18 @@ impl Opener {
                         .ok()
                         .and_then(|m| Some(m.modified().ok()?.elapsed().ok()?.as_secs()))
                         .unwrap_or(!0);
-                    if matches!(e.kind, FileKind::New) {
+                    if filter == "" {
+                        // When no filter is specified, simply order alphabetically
+                        Some((0, 0, 0, name))
+                    } else if matches!(e.kind, FileKind::New) {
                         // Special-case: the 'new file' entry always matches last
-                        Some((1000, 0, 0))
+                        Some((1000, 0, 0, String::new()))
                     } else if name == filter {
-                        Some((0, modify_time, name.chars().count()))
+                        Some((0, modify_time, name.chars().count(), String::new()))
                     } else if name.starts_with(&filter) {
-                        Some((1, modify_time, name.chars().count()))
+                        Some((1, modify_time, name.chars().count(), String::new()))
                     } else if name.contains(&filter) {
-                        Some((2, modify_time, name.chars().count()))
+                        Some((2, modify_time, name.chars().count(), String::new()))
                     } else {
                         None
                     }

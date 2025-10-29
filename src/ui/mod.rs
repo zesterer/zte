@@ -132,7 +132,7 @@ impl<T> Options<T> {
         self.options.get(*self.ranking.get(self.selected)?)
     }
 
-    pub fn set_options<F: FnMut(&T) -> Option<S>, S: Ord + Copy>(
+    pub fn set_options<F: FnMut(&T) -> Option<S>, S: Ord + Clone>(
         &mut self,
         options: impl IntoIterator<Item = T>,
         f: F,
@@ -141,14 +141,14 @@ impl<T> Options<T> {
         self.apply_scoring(f);
     }
 
-    pub fn apply_scoring<F: FnMut(&T) -> Option<S>, S: Ord + Copy>(&mut self, mut f: F) {
+    pub fn apply_scoring<F: FnMut(&T) -> Option<S>, S: Ord + Clone>(&mut self, mut f: F) {
         let mut ranking = self
             .options
             .iter()
             .enumerate()
             .filter_map(|(i, o)| Some((i, f(o)?)))
             .collect::<Vec<_>>();
-        ranking.sort_by_key(|(_, score)| *score);
+        ranking.sort_by_key(|(_, score)| score.clone());
         self.ranking = ranking.into_iter().map(|(i, _)| i).collect();
         self.selected = 0;
     }
