@@ -698,7 +698,7 @@ impl Buffer {
                 .next()
             && let next_char = self.text.chars().get(next_pos)
         {
-            let close_block = (next_tok != Some(r)
+            let close_block = (next_tok.map_or(true, |c| *c == '\n') // TODO: More robust is_line_end check
                 && next_indent
                     .strip_prefix(&*prev_indent)
                     .map_or(false, |i| i.is_empty()))
