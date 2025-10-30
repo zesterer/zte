@@ -144,7 +144,6 @@ pub struct Buffer {
     pub diverged: bool,
     pub text: Text,
     pub lang: LangPack,
-    pub highlights: Highlights,
     pub cursors: HopSlotMap<CursorId, Cursor>,
     pub path: Option<PathBuf>,
     pub undo: Vec<Change>,
@@ -152,6 +151,9 @@ pub struct Buffer {
     opened_at: Option<SystemTime>,
     action_counter: usize,
     most_recent_rank: usize,
+
+    pub highlights: Highlights,
+    highlights_stale: bool,
 }
 
 pub struct Change {
@@ -185,6 +187,7 @@ impl Buffer {
             unsaved,
             diverged: false,
             highlights: lang.highlighter.highlight(&chars),
+            highlights_stale: false,
             lang,
             text: Text { chars },
             cursors: HopSlotMap::default(),
@@ -235,15 +238,11 @@ impl Buffer {
         )
     }
 
-    fn update_highlights(&mut self) {
-        self.highlights = self.lang.highlighter.highlight(self.text.chars());
-    }
-
     pub fn reset(&mut self) {
         self.unsaved = true;
 
         self.text.chars.clear();
-        self.update_highlights();
+        self.highlights_stale = true;
         // Reset cursors
         self.cursors.values_mut().for_each(|cursor| {
             *cursor = Cursor::default();
@@ -482,7 +481,7 @@ impl Buffer {
                 *c = *to;
             }
         }
-        self.update_highlights();
+        self.highlights_stale = true;
     }
 
     fn undo_or_redo(&mut self, is_undo: bool) -> bool {
@@ -534,7 +533,7 @@ impl Buffer {
             self.text.chars.insert(base + n, *c);
             n += 1;
         }
-        self.update_highlights();
+        self.highlights_stale = true;
         Change {
             kind: ChangeKind::Insert(base, chars),
             action_id: self.action_counter,
@@ -568,7 +567,7 @@ impl Buffer {
 
         // TODO: Bell if false?
         let removed = self.text.chars.drain(range.clone()).collect();
-        self.update_highlights();
+        self.highlights_stale = true;
         Change {
             kind: ChangeKind::Remove(range.start, removed),
             action_id: self.action_counter,
@@ -860,7 +859,7 @@ impl Buffer {
                 self.unsaved = false;
                 self.undo.clear();
                 self.redo.clear();
-                self.update_highlights();
+                self.highlights_stale = true;
             } else {
                 self.diverged = true;
                 self.unsaved = true;
@@ -879,6 +878,12 @@ impl Buffer {
                 (Ok(true), false) => self.reload(),
                 (Err(_), _) => {}
             }
+        }
+
+        // Update highlights, if necessary
+        if self.highlights_stale {
+            self.highlights = self.lang.highlighter.highlight(self.text.chars());
+            self.highlights_stale = false;
         }
     }
 }

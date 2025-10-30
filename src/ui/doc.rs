@@ -344,7 +344,11 @@ impl Finder {
 
 impl Visual for Finder {
     fn render(&mut self, state: &State, frame: &mut Rect) {
-        let title = format!("{} of {} results", self.selected + 1, self.results.len());
+        let title = if self.results.is_empty() {
+            format!("No results found")
+        } else {
+            format!("{} of {} results", self.selected + 1, self.results.len())
+        };
         self.input.render(
             state,
             Some(&title),

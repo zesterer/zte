@@ -42,7 +42,6 @@ fn main() -> Result<(), Error> {
 
             // Wait for a while
             term.wait_at_least(Duration::from_millis(250));
-            state.tick();
 
             while let Some(ev) = term.get_event() {
                 // Resize events are special and need handling by the terminal
@@ -59,6 +58,8 @@ fn main() -> Result<(), Error> {
                     Err(_) => {}
                 }
             }
+
+            state.tick();
         }
     })
 }
