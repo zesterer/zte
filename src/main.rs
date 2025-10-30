@@ -36,14 +36,14 @@ fn main() -> Result<(), Error> {
     let mut ui = ui::Root::new(&mut state, &open_buffers);
 
     Terminal::with(move |term| {
+        let mut needs_render = true;
         loop {
-            // Render the state to the screen
-            term.update(|fb| ui.render(&state, fb));
-
-            // Wait for a while
+            // Wait for a while, or until an event occurs
             term.wait_at_least(Duration::from_millis(250));
 
             while let Some(ev) = term.get_event() {
+                needs_render = true; // TODO: Don't always rerender?
+
                 // Resize events are special and need handling by the terminal
                 if let TerminalEvent::Resize(cols, rows) = ev {
                     term.set_size([cols, rows]);
@@ -59,7 +59,12 @@ fn main() -> Result<(), Error> {
                 }
             }
 
-            state.tick();
+            state.tick(&mut needs_render);
+
+            // Render the state to the screen
+            if needs_render {
+                term.update(|fb| ui.render(&state, fb));
+            }
         }
     })
 }

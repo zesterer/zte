@@ -867,16 +867,23 @@ impl Buffer {
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, needs_render: &mut bool) {
         if let Some(path) = &self.path {
             let stale = std::fs::metadata(path)
                 .and_then(|m| m.modified())
-                .map(|lm| lm > self.opened_at.expect("state buffer must have open time"));
-            match (stale, self.unsaved) {
-                (Ok(false), _) => {}
-                (Ok(true), true) => self.diverged = true,
-                (Ok(true), false) => self.reload(),
-                (Err(_), _) => {}
+                .map_or(true, |lm| {
+                    lm > self.opened_at.expect("state buffer must have open time")
+                });
+            if stale {
+                if self.unsaved {
+                    if !self.diverged {
+                        self.diverged = true;
+                        *needs_render = true;
+                    }
+                } else {
+                    self.reload();
+                    *needs_render = true;
+                }
             }
         }
 
@@ -985,10 +992,10 @@ impl State {
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, needs_render: &mut bool) {
         self.tick += 1;
         for b in self.buffers.values_mut() {
-            b.tick();
+            b.tick(needs_render);
         }
     }
 
