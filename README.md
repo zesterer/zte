@@ -24,5 +24,4 @@
 
 ## Issues to fix
 
-- Can't use left/right to edit text in finder
 - Pressing return on `foo {|bar` should wrap `bar` in a block
