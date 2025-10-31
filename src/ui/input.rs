@@ -292,7 +292,8 @@ impl Input {
                     .text([1, 0], &format!("{:>line_num_w$}", line_num + 1)),
             };
 
-            let line_selected = buffer.text.to_coord(cursor.pos)[1] == line_num as isize;
+            let line_highlight_selected = matches!(self.mode, Mode::Doc)
+                && buffer.text.to_coord(cursor.pos)[1] == line_num as isize;
 
             // Line
             {
@@ -334,7 +335,7 @@ impl Input {
                                 }
                             } else if let Some(hl_bg) = hl_bg {
                                 hl_bg
-                            } else if line_selected && frame.has_focus() {
+                            } else if line_highlight_selected && frame.has_focus() {
                                 state.theme.line_select_bg
                             } else {
                                 Color::Reset

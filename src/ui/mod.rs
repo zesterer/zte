@@ -187,7 +187,12 @@ impl<T> Options<T> {
 impl<T: Clone> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
-            Some(Action::Move(dir, dist @ (Dist::Char | Dist::Doc), false, false)) => {
+            Some(Action::Move(
+                dir @ (Dir::Up | Dir::Down),
+                dist @ (Dist::Char | Dist::Doc),
+                false,
+                false,
+            )) => {
                 self.scroll(dir, dist);
                 Ok(Resp::handled(None))
             }
@@ -200,7 +205,7 @@ impl<T: Clone> Element<T> for Options<T> {
                 }
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _))
+            Some(Action::Mouse(MouseAction::Scroll(dir @ (Dir::Up | Dir::Down)), pos, _, _))
                 if self.last_area.contains(pos).is_some() =>
             {
                 if let Some(pos) = self.last_area.contains(pos) {
