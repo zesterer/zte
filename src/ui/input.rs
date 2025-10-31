@@ -154,8 +154,7 @@ impl Input {
             Some(Action::Mouse(MouseAction::Drag, pos, false, drag_id))
                 if self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
             {
-                if let Some(pos) = self.last_area.contains(pos)
-                    && let Some((_, offset)) = self.scroll_grab
+                if let Some((_, offset)) = self.scroll_grab
                     && let Some((_, scroll_sz, frame_sz)) = self.last_scroll_pos
                 {
                     self.focus[1] = ((pos[1] - offset).max(0) as usize
