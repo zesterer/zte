@@ -307,11 +307,6 @@ impl Buffer {
             let n = next_up(coord[0], TAB_ALIGN) - coord[0];
             self.insert(pos, (0..n).map(|_| ' '));
         } else {
-            // First, find the next non-space character in the line
-            while self.text.chars().get(pos) == Some(&' ') {
-                pos += 1;
-            }
-
             // Find the desired column, and hence the number of spaces to remove
             let coord = self.text.to_coord(pos).map(|e| e.max(0) as usize);
             let next_down = |x: usize, n: usize| (x.saturating_sub(1) / n) * n;
@@ -337,7 +332,9 @@ impl Buffer {
         if let Some(range) = cursor.selection() {
             let line_range = self.text.to_coord(range.start)[1]..=self.text.to_coord(range.end)[1];
             for line in line_range {
-                self.indent_at(self.text.to_pos([0, line]), forward);
+                // For maximum flexibility, indent/deindent from the end of the indentation
+                let mut pos = self.text.to_pos([0, line]) + self.text.indent_of_line(line).len();
+                self.indent_at(pos, forward);
             }
         } else {
             let pos = cursor.pos;
@@ -657,7 +654,7 @@ impl Buffer {
                 // Ensure there's only whitespace to our left
                 && self.text.chars().get(line_start..pos).unwrap_or(&[]).iter().all(|c| "\t ".contains(*c))
             {
-                self.indent_at(pos, false);
+                self.indent_at(cursor.pos, false);
             } else {
                 self.remove(pos..pos + 1);
             }
