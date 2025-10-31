@@ -48,15 +48,20 @@ impl Doc {
 }
 
 impl Element for Doc {
-    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp, Event> {
         let cursor_id = self.cursors[&self.buffer];
 
         if let Some(finder) = &mut self.finder {
-            let resp = finder.handle(state, &mut self.input, self.buffer, cursor_id, event)?;
-            if resp.is_end() {
-                self.finder = None;
+            let resp = finder.handle(state, &mut self.input, self.buffer, cursor_id, event);
+            event = match resp {
+                Ok(resp) => {
+                    if resp.is_end() {
+                        self.finder = None;
+                    }
+                    return Ok(Resp::handled(resp.event));
+                }
+                Err(event) => event,
             }
-            return Ok(Resp::handled(resp.event));
         }
 
         let Some(buffer) = state.buffers.get_mut(self.buffer) else {
@@ -248,6 +253,7 @@ impl Finder {
         };
 
         this.update(state, input, buffer_id, cursor_id);
+        this.refocus_selected(&mut state.buffers[buffer_id], input, cursor_id);
 
         this
     }
@@ -288,7 +294,9 @@ impl Finder {
                 .find(|i| self.results[*i] >= self.old_cursor.pos)
                 .unwrap_or(0);
         }
+    }
 
+    fn refocus_selected(&mut self, buffer: &mut Buffer, input: &mut Input, cursor_id: CursorId) {
         if let Some(result) = self.results.get(self.selected) {
             buffer.cursors[cursor_id].select(*result..*result + self.needle.len());
             input.refocus(buffer, cursor_id);
@@ -323,17 +331,22 @@ impl Finder {
                     Dir::Down => self.selected = (self.selected + 1) % self.results.len().max(1),
                     _ => {}
                 }
+                self.refocus_selected(buffer, input, cursor_id);
                 Ok(Resp::handled(None))
             }
-            _ => self
-                .input
-                .handle(
-                    &mut state.clipboard,
-                    &mut self.buffer,
-                    self.cursor_id,
-                    event,
-                )
-                .map(Resp::into_can_end),
+            _ => {
+                let resp = self
+                    .input
+                    .handle(
+                        &mut state.clipboard,
+                        &mut self.buffer,
+                        self.cursor_id,
+                        event,
+                    )
+                    .map(Resp::into_can_end)?;
+                self.refocus_selected(buffer, input, cursor_id);
+                Ok(resp)
+            }
         };
 
         self.update(state, input, buffer_id, cursor_id);
