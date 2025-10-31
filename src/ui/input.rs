@@ -292,12 +292,13 @@ impl Input {
                     .text([1, 0], &format!("{:>line_num_w$}", line_num + 1)),
             };
 
+            let line_selected = buffer.text.to_coord(cursor.pos)[1] == line_num as isize;
+
             // Line
             {
                 let mut frame = frame.rect([margin_w, i], [!0, 1]);
                 for i in 0..frame.size()[0] {
                     let coord = self.focus[0] + i as isize;
-                    let line_selected = (line_pos..line_pos + line.len()).contains(&cursor.pos);
                     let pos = if i < line.len() {
                         Some(line_pos + coord as usize)
                     } else {

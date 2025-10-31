@@ -23,5 +23,3 @@
 - [ ] Replace
 
 ## Issues to fix
-
-- Pressing return on `foo {|bar` should wrap `bar` in a block

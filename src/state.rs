@@ -87,7 +87,11 @@ impl Text {
         let mut pos = 0;
         for (i, line) in self.lines().enumerate() {
             if i as isize == coord[1] {
-                return pos + coord[0].clamp(0, line.len().saturating_sub(1) as isize) as usize;
+                return pos
+                    + coord[0].clamp(
+                        0,
+                        line.len().saturating_sub(line.ends_with(&['\n']) as usize) as isize,
+                    ) as usize;
             } else {
                 pos += line.len();
             }
@@ -565,7 +569,9 @@ impl Buffer {
     fn remove_inner(&mut self, range: Range<usize>) -> Change {
         self.unsaved = true;
 
-        // TODO: Bell if false?
+        // Force range to be valid
+        let range = range.start.min(self.text.chars.len())..range.end.min(self.text.chars.len());
+
         let removed = self.text.chars.drain(range.clone()).collect();
         self.highlights_stale = true;
         Change {
@@ -602,12 +608,17 @@ impl Buffer {
         self.push_undo(change);
     }
 
-    pub fn insert_after(&mut self, cursor_id: CursorId, chars: impl IntoIterator<Item = char>) {
+    pub fn insert_after(
+        &mut self,
+        cursor_id: CursorId,
+        at: Option<usize>,
+        chars: impl IntoIterator<Item = char>,
+    ) {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
         let old_cursor = *cursor;
-        self.insert(old_cursor.pos, chars);
+        self.insert(at.unwrap_or(old_cursor.pos), chars);
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
@@ -642,7 +653,10 @@ impl Buffer {
         } else*/
         if let Some(pos) = cursor.pos.checked_sub(1) {
             // If a backspace is performed on a space, a deindent takes place instead
-            if self.text.chars().get(pos) == Some(&' ') {
+            if self.text.chars().get(pos) == Some(&' ')
+                // Ensure there's only whitespace to our left
+                && self.text.chars().get(line_start..pos).unwrap_or(&[]).iter().all(|c| "\t ".contains(*c))
+            {
                 self.indent_at(pos, false);
             } else {
                 self.remove(pos..pos + 1);
@@ -667,6 +681,7 @@ impl Buffer {
         };
         let coord = self.text.to_coord(cursor.pos);
         let line_start = self.text.to_pos([0, coord[1]]);
+        let line_end = self.text.to_pos([1000000, coord[1]]);
 
         let prev_indent = self
             .text
@@ -677,7 +692,8 @@ impl Buffer {
             .collect::<Vec<_>>();
         let next_indent = self.text.indent_of_line(coord[1] + 1).to_vec();
 
-        let (close_block, extra_indent, trailing_indent, base_indent) = if let Some(last_pos) =
+        // Determine whether we're creating/forming a new code block
+        let (close_block, extra_indent, closing_indent, base_indent) = if let Some(last_pos) =
             cursor
                 .selection()
                 .map_or(cursor.pos, |s| s.start)
@@ -697,7 +713,7 @@ impl Buffer {
                 .next()
             && let next_char = self.text.chars().get(next_pos)
         {
-            let close_block = (next_tok.map_or(true, |c| *c == '\n') // TODO: More robust is_line_end check
+            let close_block = (true//next_tok.map_or(true, |c| *c == '\n') // TODO: More robust is_line_end check
                 && next_indent
                     .strip_prefix(&*prev_indent)
                     .map_or(false, |i| i.is_empty()))
@@ -715,19 +731,24 @@ impl Buffer {
             (None, false, false, prev_indent)
         };
 
-        // Indent to same level as last line
-        self.enter(
-            cursor_id,
-            ['\n'].into_iter().chain(base_indent.iter().copied()),
-        );
-
+        // Where is the end of the new code block?
+        let end_of_block = line_end.max(cursor.pos);
         if let Some(r) = close_block {
-            self.insert_after(cursor_id, [r]);
+            self.insert_after(cursor_id, Some(end_of_block), [r]);
         }
-        if trailing_indent {
-            self.insert_after(cursor_id, core::iter::once('\n').chain(base_indent));
+        if closing_indent {
+            // Indent the block closer to the base level
+            self.insert_after(
+                cursor_id,
+                Some(end_of_block),
+                core::iter::once('\n').chain(base_indent.iter().copied()),
+            );
         }
+
+        // Indent to same level as last line
+        self.enter(cursor_id, ['\n'].into_iter().chain(base_indent));
         if extra_indent {
+            // If we're starting a new block, increase the indent
             self.indent(cursor_id, true);
         }
     }
@@ -771,7 +792,7 @@ impl Buffer {
             && let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
         {
             // cursor.place_at(s.end);
-            self.insert_after(cursor_id, text.to_vec())
+            self.insert_after(cursor_id, None, text.to_vec())
         } else {
             let coord = self.text.to_coord(cursor.pos);
             let line = self
