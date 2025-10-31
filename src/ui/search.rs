@@ -227,9 +227,16 @@ impl Visual for Searcher {
             )
             .with(|f| {
                 let title = format!(
-                    "{} of {} results for '{}' in {}/",
-                    self.options.selected + 1,
-                    self.options.ranking.len(),
+                    "{} results for '{}' in {}/",
+                    if self.options.ranking.is_empty() {
+                        format!("No")
+                    } else {
+                        format!(
+                            "{} of {}",
+                            self.options.selected + 1,
+                            self.options.ranking.len()
+                        )
+                    },
                     self.needle,
                     self.path.display()
                 );
