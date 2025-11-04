@@ -140,6 +140,10 @@ impl Text {
         }
         self.chars().get(line_start..line_start + i).unwrap_or(&[])
     }
+
+    fn start_of_line_text(&self, line: isize) -> usize {
+        self.to_pos([0, line]) + self.indent_of_line(line).len()
+    }
 }
 
 #[derive(Default)]
@@ -648,6 +652,7 @@ impl Buffer {
             self.remove(line_start..cursor.pos);
             self.backspace(cursor_id); // Remove the newline too
         } else*/
+        /*if self.text.start_of_line_text() {} else*/
         if let Some(pos) = cursor.pos.checked_sub(1) {
             // If a backspace is performed on a space, a deindent takes place instead
             if self.text.chars().get(pos) == Some(&' ')
@@ -700,37 +705,26 @@ impl Buffer {
                 .iter()
                 .find(|(l, _)| l == last_char)
             && let next_pos = cursor.selection().map_or(cursor.pos, |s| s.end)
-            && let next_tok = self
-                .text
-                .chars()
-                .get(next_pos..)
-                .unwrap_or(&[])
-                .iter()
-                .filter(|c| !c.is_ascii_whitespace())
-                .next()
-            && let next_char = self.text.chars().get(next_pos)
         {
             let (end_of_block, end_needs_indent) = (cursor.pos..)
-                .take_while(|pos| self.text.chars().get(*pos) != Some(&'\n'))
-                .find(|pos| {
-                    self.text
-                        .chars()
-                        .get(*pos)
-                        .map_or(true, |c| *c == '\n' || c == r)
-                })
-                .map(|pos| (pos, true))
+                .map(|pos| (pos, self.text.chars().get(pos).copied().unwrap_or('\n')))
+                .take_while(|(_, c)| *c != '\n')
+                .find(|(pos, c)| c == r)
+                .map(|(pos, _)| (pos, true))
                 .or_else(|| {
-                    let end_of_block = next_line_start + next_indent.len();
-                    // panic!("{:?}", self.text.chars().get(next_line_start + next_indent.len()));
+                    let end_of_block = self.text.start_of_line_text(coord[1] + 1);
                     (self.text.chars().get(next_line_start + next_indent.len()) == Some(&r)
                         && prev_indent == next_indent)
                         .then_some((end_of_block, false))
                 })
                 .unwrap_or((cursor.pos, true));
             let needs_closing = self.text.chars().get(end_of_block) != Some(&r);
-            let creating_block = next_indent
-                .strip_prefix(&*prev_indent)
-                .map_or(false, |i| i.is_empty())
+            let creating_block = false
+                // Case 1: A block is being created from an existing inline one
+                || self.text.to_coord(end_of_block)[1] == coord[1]
+                || next_indent
+                    .strip_prefix(&*prev_indent)
+                    .map_or(false, |i| i.is_empty())
                 || (needs_closing
                     && prev_indent
                         .strip_prefix(&*next_indent)
