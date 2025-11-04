@@ -729,7 +729,7 @@ impl Buffer {
             let needs_closing = self.text.chars().get(end_of_block) != Some(&r);
             let creating_block = false
                 // Case 1: A block is being created from an existing inline one
-                || self.text.to_coord(end_of_block)[1] == coord[1]
+                || (!needs_closing && self.text.to_coord(end_of_block)[1] == coord[1])
                 || next_indent
                     .strip_prefix(&*prev_indent)
                     .map_or(false, |i| i.is_empty())
