@@ -678,6 +678,7 @@ impl Buffer {
         };
         let coord = self.text.to_coord(cursor.pos);
         let line_start = self.text.to_pos([0, coord[1]]);
+        let next_line_start = self.text.to_pos([0, coord[1] + 1]);
         let line_end = self.text.to_pos([1000000, coord[1]]);
 
         let prev_indent = self
@@ -709,15 +710,23 @@ impl Buffer {
                 .next()
             && let next_char = self.text.chars().get(next_pos)
         {
-            let end_of_block = (cursor.pos..)
-                // TODO: Also include following lines that have the same ident
+            let (end_of_block, end_needs_indent) = (cursor.pos..)
+                .take_while(|pos| self.text.chars().get(*pos) != Some(&'\n'))
                 .find(|pos| {
                     self.text
                         .chars()
                         .get(*pos)
                         .map_or(true, |c| *c == '\n' || c == r)
                 })
-                .unwrap_or(cursor.pos);
+                .map(|pos| (pos, true))
+                .or_else(|| {
+                    let end_of_block = next_line_start + next_indent.len();
+                    // panic!("{:?}", self.text.chars().get(next_line_start + next_indent.len()));
+                    (self.text.chars().get(next_line_start + next_indent.len()) == Some(&r)
+                        && prev_indent == next_indent)
+                        .then_some((end_of_block, false))
+                })
+                .unwrap_or((cursor.pos, true));
             let needs_closing = self.text.chars().get(end_of_block) != Some(&r);
             let creating_block = next_indent
                 .strip_prefix(&*prev_indent)
@@ -728,7 +737,7 @@ impl Buffer {
                         .map_or(false, |i| !i.is_empty()));
             (
                 (creating_block && needs_closing).then_some(*r),
-                creating_block.then_some(end_of_block),
+                creating_block.then_some((end_of_block, end_needs_indent)),
                 if prev_indent.len() > next_indent.len() {
                     prev_indent
                 } else {
@@ -740,17 +749,19 @@ impl Buffer {
         };
 
         // Where is the end of the new code block?
-        if let Some(end_of_block) = end_of_block {
+        if let Some((end_of_block, end_needs_indent)) = end_of_block {
             if let Some(r) = close_block {
                 self.insert_after(cursor_id, Some(end_of_block), [r]);
             }
 
             // Indent the block closer to the base level
-            self.insert_after(
-                cursor_id,
-                Some(end_of_block),
-                core::iter::once('\n').chain(base_indent.iter().copied()),
-            );
+            if end_needs_indent {
+                self.insert_after(
+                    cursor_id,
+                    Some(end_of_block),
+                    core::iter::once('\n').chain(base_indent.iter().copied()),
+                );
+            }
         }
 
         // Indent to same level as last line

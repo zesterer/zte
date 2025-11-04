@@ -21,5 +21,6 @@
 ## Todo
 
 - [ ] Replace
+- [ ] Terminal windows
 
 ## Issues to fix
