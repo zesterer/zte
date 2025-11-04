@@ -141,8 +141,13 @@ impl Text {
         self.chars().get(line_start..line_start + i).unwrap_or(&[])
     }
 
-    fn start_of_line_text(&self, line: isize) -> usize {
-        self.to_pos([0, line]) + self.indent_of_line(line).len()
+    fn start_of_line_text(&self, line: isize) -> Result<usize, usize> {
+        let start = self.to_pos([0, line]) + self.indent_of_line(line).len();
+        if self.chars().get(start) == Some(&'\n') {
+            Err(start)
+        } else {
+            Ok(start)
+        }
     }
 }
 
@@ -643,6 +648,10 @@ impl Buffer {
             return;
         };
         let line_start = self.text.to_pos([0, self.text.to_coord(cursor.pos)[1]]);
+        let coord = self.text.to_coord(cursor.pos);
+        // At start of line, remove entire line
+        let line_text_start = self.text.start_of_line_text(coord[1]).unwrap_or_else(|s| s);
+
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
         } else
@@ -652,13 +661,12 @@ impl Buffer {
             self.remove(line_start..cursor.pos);
             self.backspace(cursor_id); // Remove the newline too
         } else*/
-        /*if self.text.start_of_line_text() {} else*/
-        if let Some(pos) = cursor.pos.checked_sub(1) {
+        if cursor.pos == line_text_start {
+            self.remove(line_start.saturating_sub(1)..cursor.pos);
+        } else if let Some(pos) = cursor.pos.checked_sub(1) {
             // If a backspace is performed on a space, a deindent takes place instead
-            if self.text.chars().get(pos) == Some(&' ')
-                // Ensure there's only whitespace to our left
-                && self.text.chars().get(line_start..pos).unwrap_or(&[]).iter().all(|c| "\t ".contains(*c))
-            {
+            // Ensure there's only whitespace to our left
+            if cursor.pos == line_text_start {
                 self.indent_at(cursor.pos, false);
             } else {
                 self.remove(pos..pos + 1);
@@ -712,7 +720,7 @@ impl Buffer {
                 .find(|(pos, c)| c == r)
                 .map(|(pos, _)| (pos, true))
                 .or_else(|| {
-                    let end_of_block = self.text.start_of_line_text(coord[1] + 1);
+                    let end_of_block = self.text.start_of_line_text(coord[1] + 1).ok()?;
                     (self.text.chars().get(next_line_start + next_indent.len()) == Some(&r)
                         && prev_indent == next_indent)
                         .then_some((end_of_block, false))
@@ -732,10 +740,10 @@ impl Buffer {
             (
                 (creating_block && needs_closing).then_some(*r),
                 creating_block.then_some((end_of_block, end_needs_indent)),
-                if prev_indent.len() > next_indent.len() {
-                    prev_indent
-                } else {
+                if prev_indent.len() < next_indent.len() && !creating_block {
                     next_indent
+                } else {
+                    prev_indent
                 },
             )
         } else {
