@@ -24,3 +24,5 @@
 - [ ] Terminal windows
 
 ## Issues to fix
+
+- New file creation should work with non-existent directories

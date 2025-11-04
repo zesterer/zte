@@ -647,10 +647,10 @@ impl Buffer {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
-        let line_start = self.text.to_pos([0, self.text.to_coord(cursor.pos)[1]]);
         let coord = self.text.to_coord(cursor.pos);
+        let line_start = self.text.to_pos([0, coord[1]]);
         // At start of line, remove entire line
-        let line_text_start = self.text.start_of_line_text(coord[1]).unwrap_or_else(|s| s);
+        let line_text_start = self.text.start_of_line_text(coord[1]);
 
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
@@ -661,12 +661,12 @@ impl Buffer {
             self.remove(line_start..cursor.pos);
             self.backspace(cursor_id); // Remove the newline too
         } else*/
-        if cursor.pos == line_text_start {
+        if cursor.pos != line_start && line_text_start == Ok(cursor.pos) {
             self.remove(line_start.saturating_sub(1)..cursor.pos);
         } else if let Some(pos) = cursor.pos.checked_sub(1) {
             // If a backspace is performed on a space, a deindent takes place instead
             // Ensure there's only whitespace to our left
-            if cursor.pos == line_text_start {
+            if cursor.pos != line_start && cursor.pos == line_text_start.unwrap_or_else(|s| s) {
                 self.indent_at(cursor.pos, false);
             } else {
                 self.remove(pos..pos + 1);
