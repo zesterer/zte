@@ -25,6 +25,10 @@ impl LangPack {
                 highlighter: Highlighter::code().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
+            (_, "yaml" | "yml") => Self {
+                highlighter: Highlighter::code().yaml(),
+                comment_syntax: Some(vec!['#', ' ']),
+            },
             (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go" | "sh") => Self {
                 highlighter: Highlighter::code().generic_clike(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
@@ -91,7 +95,7 @@ impl Highlighter {
             .with(TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/")
             .with(
                 TokenKind::Keyword,
-                r"\b[(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(mut)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(async)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
+                r"\b[(async)(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(mut)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
             )
             .with(TokenKind::Constant, r"\b[(true)(false)]\b")
             // Flow-control operators count as keywords
@@ -244,6 +248,32 @@ impl Highlighter {
             .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
             // Operators
             .with(TokenKind::Operator, r"[=,]")
+            // Numbers
+            .with(TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*")
+            // Double-quoted strings
+            .with(
+                TokenKind::String,
+                r#"b?"[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^"]]*""#,
+            )
+            // Single-quoted strings
+            .with(
+                TokenKind::String,
+                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#,
+            )
+            // Booleans
+            .with(TokenKind::Constant, r"\b[(true)(false)]\b")
+            // Identifier
+            .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_\-]*\b")
+            // Comments
+            .with(TokenKind::Comment, r"#[^$]*$")
+    }
+
+    pub fn yaml(self) -> Self {
+        self
+            // Delimiters
+            .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
+            // Operators
+            .with(TokenKind::Operator, r"[\-:]")
             // Numbers
             .with(TokenKind::Number, r"[0-9][A-Za-z0-9_\.]*")
             // Double-quoted strings
