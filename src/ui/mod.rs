@@ -184,7 +184,7 @@ impl<T> Options<T> {
     }
 }
 
-impl<T: Clone> Element<T> for Options<T> {
+impl<T> Element<T> for Options<T> {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
             Some(Action::Move(
@@ -216,7 +216,7 @@ impl<T: Clone> Element<T> for Options<T> {
             Some(Action::Go) => {
                 if self.selected < self.ranking.len() {
                     Ok(Resp::end_with(
-                        self.options[self.ranking[self.selected]].clone(),
+                        self.options.remove(self.ranking[self.selected]),
                         None,
                     ))
                 } else {

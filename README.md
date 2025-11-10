@@ -26,7 +26,4 @@
 ## Issues to fix
 
 - New file creation should work with non-existent directories
-- Search results should be ranked by 'path elements shared with original path'
-- Buffer switcher and search results should be filterable by elements of the path
-- Buffer switcher and search results should disambiguate paths with the same filename
 - Undo history changes should not join so easily

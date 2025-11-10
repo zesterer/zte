@@ -10,11 +10,13 @@ enum Mode {
     Doc,
     Prompt,
     Filter,
+    SearchResult,
 }
 
 #[derive(Clone, Default)]
 pub struct Input {
     pub mode: Mode,
+    line_offset: usize,
     // x/y location in the buffer that the pane is trying to focus on
     pub focus: [isize; 2],
     // Remember the last area for things like scrolling
@@ -34,6 +36,14 @@ impl Input {
     pub fn filter() -> Self {
         Self {
             mode: Mode::Filter,
+            ..Self::default()
+        }
+    }
+
+    pub fn search_result(line_offset: usize) -> Self {
+        Self {
+            mode: Mode::SearchResult,
+            line_offset,
             ..Self::default()
         }
     }
@@ -118,7 +128,11 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(Action::GotoLine(line)) => {
-                buffer.goto_cursor(cursor_id, [0, line], true);
+                buffer.goto_cursor(
+                    cursor_id,
+                    [0, (line - self.line_offset as isize).max(0)],
+                    true,
+                );
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
@@ -237,20 +251,30 @@ impl Input {
         outer_frame: &mut Rect,
     ) {
         // Add frame
-        let mut frame = outer_frame.with_border(
-            if outer_frame.has_focus() {
-                &state.theme.focus_border
-            } else {
-                &state.theme.border
-            },
-            title.as_deref(),
-        );
+        let mut frame = if matches!(self.mode, Mode::SearchResult) {
+            outer_frame.rect([0; 2], [!0; 2])
+        } else {
+            outer_frame.with_border(
+                if outer_frame.has_focus() {
+                    &state.theme.focus_border
+                } else {
+                    &state.theme.border
+                },
+                title.as_deref(),
+            )
+        };
 
-        let line_num_w = buffer.text.lines().count().max(1).ilog10() as usize + 1;
-        let margin_w = match self.mode {
-            Mode::Prompt => 2,
-            Mode::Filter => 0,
-            Mode::Doc => line_num_w + 2,
+        let (line_num_w, margin_w) = match self.mode {
+            Mode::Prompt => (2, 0),
+            Mode::Filter => (0, 0),
+            Mode::Doc => {
+                let line_num_w = (self.line_offset + buffer.text.lines().count())
+                    .max(1)
+                    .ilog10() as usize
+                    + 1;
+                (line_num_w, line_num_w + 2)
+            }
+            Mode::SearchResult => (4, 6),
         };
 
         self.last_area = frame.rect([margin_w, 0], [!0, !0]).area();
@@ -279,16 +303,19 @@ impl Input {
                 Mode::Filter => frame.rect([0, 0], frame.size()),
                 Mode::Prompt => frame
                     .rect([0, i], [1, 1])
-                    .with_bg(state.theme.margin_bg)
+                    .with_bg_preference(state.theme.margin_bg)
                     .with_fg(state.theme.margin_line_num)
                     .fill(' ')
                     .text([0, 0], ">"),
-                Mode::Doc => frame
+                Mode::Doc | Mode::SearchResult => frame
                     .rect([0, i], [margin_w, 1])
-                    .with_bg(state.theme.margin_bg)
+                    .with_bg_preference(state.theme.margin_bg)
                     .with_fg(state.theme.margin_line_num)
                     .fill(' ')
-                    .text([1, 0], &format!("{:>line_num_w$}", line_num + 1)),
+                    .text(
+                        [1, 0],
+                        &format!("{:>line_num_w$}", self.line_offset + line_num + 1),
+                    ),
             };
 
             let line_highlight_selected = matches!(self.mode, Mode::Doc)
@@ -337,7 +364,7 @@ impl Input {
                             } else if line_highlight_selected && frame.has_focus() {
                                 state.theme.line_select_bg
                             } else {
-                                Color::Reset
+                                frame.bg
                             }
                         }
                     };

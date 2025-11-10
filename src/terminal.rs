@@ -60,8 +60,8 @@ impl Area {
 }
 
 pub struct Rect<'a> {
-    fg: Color,
-    bg: Color,
+    pub fg: Color,
+    pub bg: Color,
     area: Area,
     fb: &'a mut Framebuffer,
     has_focus: bool,
@@ -175,6 +175,11 @@ impl<'a> Rect<'a> {
             fb: self.fb,
             has_focus: self.has_focus,
         }
+    }
+
+    /// `with_bg`, but only if background color is not already set.
+    pub fn with_bg_preference(&mut self, bg: Color) -> Rect<'_> {
+        self.with_bg(if self.bg == Color::Reset { bg } else { self.bg })
     }
 
     pub fn with_focus(&mut self, focus: bool) -> Rect<'_> {

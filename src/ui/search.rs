@@ -1,35 +1,42 @@
 use super::*;
 use crate::state::{Buffer, CursorId};
-use std::fs;
+use std::{fs, path::Path};
 
 pub struct Searcher {
     options: Options<SearchResult>,
     path: PathBuf,
+    search_path: PathBuf,
     needle: String,
     // Filter
     buffer: Buffer,
     cursor_id: CursorId,
     input: Input,
-    preview: Option<(Buffer, CursorId, Input, SearchResult)>,
+    preview: Option<(Buffer, CursorId, Input, SearchLoc)>,
 }
 
 impl Searcher {
-    pub fn new(mut path: PathBuf, needle: String) -> Self {
-        let path = loop {
-            if let Ok(mut entries) = fs::read_dir(&path)
+    pub fn new(path: PathBuf, needle: String) -> Self {
+        let mut search_path = path.clone();
+        let search_path = loop {
+            if let Ok(mut entries) = fs::read_dir(&search_path)
                 && entries.any(|e| {
                     e.map_or(false, |e| {
                         e.file_name() == ".git" && e.file_type().map_or(false, |t| t.is_dir())
                     })
                 })
             {
-                break path;
-            } else if !path.pop() {
+                break search_path;
+            } else if !search_path.pop() {
                 break std::env::current_dir().expect("No cwd");
             }
         };
 
-        fn search_in(path: &PathBuf, needle: &str, results: &mut Vec<SearchResult>) {
+        fn search_in(
+            search_path: &Path,
+            path: &Path,
+            needle: &str,
+            results: &mut Vec<SearchResult>,
+        ) {
             // Cap reached!
             if results.len() < 500 {
                 // Skip hidden files
@@ -51,16 +58,31 @@ impl Searcher {
                     for (line_idx, line_text) in
                         s.lines().enumerate().filter(|(_, l)| l.contains(needle))
                     {
+                        let mut line_buffer = Buffer::new(
+                            false,
+                            line_text.trim().chars().collect(),
+                            path.to_path_buf(),
+                        );
                         results.push(SearchResult {
-                            path: path.clone(),
-                            line_idx,
-                            line_text: line_text.trim().to_string(),
+                            loc: SearchLoc {
+                                path: path.to_path_buf(),
+                                line_idx,
+                            },
+                            rdir: format!(
+                                "./{}",
+                                path.parent()
+                                    .and_then(|p| p.strip_prefix(search_path).ok()?.to_str())
+                                    .unwrap_or("unknown")
+                            ),
+                            line_input: Input::search_result(line_idx),
+                            line_cursor: line_buffer.start_session(),
+                            line_buffer,
                         });
                     }
                 } else if let Ok(entries) = fs::read_dir(path) {
                     // Special case, ignore Rust target dir to prevent searching too many places
                     {
-                        let mut path = path.clone();
+                        let mut path = path.to_path_buf();
                         path.push("CACHEDIR.TAG");
                         if path.exists() {
                             return;
@@ -69,27 +91,30 @@ impl Searcher {
 
                     for entry in entries {
                         let Ok(entry) = entry else { continue };
-                        search_in(&entry.path(), needle, results);
+                        search_in(search_path, &entry.path(), needle, results);
                     }
                 }
             }
         }
 
         let mut results = Vec::new();
-        search_in(&path, &needle, &mut results);
+        search_in(&search_path, &search_path, &needle, &mut results);
 
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
 
-        Self {
+        let mut this = Self {
             options: Options::new(results),
             path,
+            search_path,
             needle,
             cursor_id,
             buffer,
             input: Input::filter(),
             preview: None,
-        }
+        };
+        this.update_completions();
+        this
     }
 
     pub fn requested_height(&self) -> usize {
@@ -100,13 +125,34 @@ impl Searcher {
     fn update_completions(&mut self) {
         let filter = self.buffer.text.to_string().to_lowercase();
         self.options.apply_scoring(|e| {
-            let name = format!("{}", e.path.display()).to_lowercase();
+            let name = e
+                .loc
+                .path
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or("<unknown>")
+                .to_lowercase();
+            let parent = e
+                .loc
+                .path
+                .parent()
+                .and_then(|f| Some(f.to_str()?.to_lowercase()));
+            let unshared_components = e
+                .loc
+                .path
+                .ancestors()
+                .map(|a| if self.path.starts_with(a) { -1 } else { 1 })
+                .sum::<i32>();
             if name == filter {
-                Some((0, name.chars().count()))
+                Some((0, unshared_components))
             } else if name.starts_with(&filter) {
-                Some((1, name.chars().count()))
+                Some((1, unshared_components))
             } else if name.contains(&filter) {
-                Some((2, name.chars().count()))
+                Some((2, unshared_components))
+            } else if let Some(parent) = parent
+                && parent.contains(&filter)
+            {
+                Some((3, unshared_components))
             } else {
                 None
             }
@@ -123,8 +169,8 @@ impl Element<()> for Searcher {
             _ => match self.options.handle(state, event).map(Resp::into_ended) {
                 // Selecting a directory enters the directory
                 Ok(Some(result)) => Ok(Resp::end(Some(Event::Action(Action::OpenFile(
-                    result.path,
-                    result.line_idx,
+                    result.loc.path,
+                    result.loc.line_idx,
                 ))))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
@@ -162,27 +208,46 @@ impl Element<()> for Searcher {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct SearchResult {
-    pub path: PathBuf,
-    pub line_idx: usize,
-    pub line_text: String,
+struct SearchLoc {
+    path: PathBuf,
+    line_idx: usize,
+}
+
+struct SearchResult {
+    loc: SearchLoc,
+    rdir: String,
+    line_input: Input,
+    line_cursor: CursorId,
+    line_buffer: Buffer,
 }
 
 impl Visual for SearchResult {
     fn render(&mut self, state: &State, frame: &mut Rect) {
-        let name = match self.path.file_name().and_then(|n| n.to_str()) {
+        let name = match self.loc.path.file_name().and_then(|n| n.to_str()) {
             Some(name) => format!("{name}"),
             None => format!("Unknown"),
         };
+        let col_a = (frame.size()[0] / 5).max(20);
+        let col_b = frame.size()[0] / 3;
+        // Filename
         frame
+            .rect([0, 0], [col_a, !0])
             .with_fg(state.theme.option_file)
-            .text([0, 0], &format!("{name}:{}", self.line_idx + 1));
-        frame.with_fg(state.theme.margin_line_num).with(|f| {
-            f.text(
-                [f.size()[0] as isize / 3, 0],
-                &format!("{}", self.line_text),
-            );
-        });
+            .text([0, 0], &format!("{name}:{}", self.loc.line_idx + 1));
+        // Path
+        frame
+            .rect([col_a, 0], [col_b, !0])
+            .with_fg(state.theme.option_dir)
+            .text([0, 0], &self.rdir);
+        // Code snippet
+        self.line_input.render(
+            state,
+            None,
+            &self.line_buffer,
+            self.line_cursor,
+            None,
+            &mut frame.rect([col_a + col_b, 0], [!0, !0]),
+        );
     }
 }
 
@@ -200,18 +265,18 @@ impl Visual for Searcher {
         self.preview = self.options.selected().and_then(|result| {
             self.preview
                 .take()
-                .filter(|(_, _, _, r)| r == result)
+                .filter(|(_, _, _, loc)| loc == &result.loc)
                 .or_else(|| {
-                    let mut buffer = Buffer::open(result.path.clone()).ok()?;
+                    let mut buffer = Buffer::open(result.loc.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     let mut input = Input::default();
-                    buffer.goto_cursor(cursor_id, [0, result.line_idx as isize], true);
-                    input.focus([0, result.line_idx as isize - preview_sz as isize / 2]);
-                    Some((buffer, cursor_id, input, result.clone()))
+                    buffer.goto_cursor(cursor_id, [0, result.loc.line_idx as isize], true);
+                    input.focus([0, result.loc.line_idx as isize - preview_sz as isize / 2]);
+                    Some((buffer, cursor_id, input, result.loc.clone()))
                 })
         });
 
-        if let Some((buffer, cursor_id, input, result)) = &mut self.preview {
+        if let Some((buffer, cursor_id, input, _)) = &mut self.preview {
             frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
                 input.render(state, buffer.name().as_deref(), buffer, *cursor_id, None, f)
             });
