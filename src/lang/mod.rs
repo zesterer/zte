@@ -198,7 +198,7 @@ impl Highlighter {
     pub fn glsl(self) -> Self {
         self
             // Keywords
-            .with(TokenKind::Keyword, r"\b[(struct)(if)(while)(for)(else)(break)(continue)(const)(return)(layout)(uniform)(set)(binding)(location)(in)]\b")
+            .with(TokenKind::Keyword, r"\b[(struct)(if)(while)(for)(else)(break)(continue)(const)(return)(layout)(uniform)(set)(binding)(location)(inout)(in)(case)(switch)(default)]\b")
             // Primitives
             .with(TokenKind::Type, r"\b[(u?int)(float)(double)(bool)(void)([ui]?vec[1-4]*)([ui]?mat[1-4]*)(texture[(2D)(3D)]?(Cube)?)([ui]?sampler[(2D)(3D)]?(Shadow)?)]\b")
             // Builtins
