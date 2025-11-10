@@ -407,7 +407,18 @@ impl Opener {
                     }
                 })
             }
-            Err(err) => self.options.set_options::<_, ()>(Vec::new(), |_| None),
+            Err(err) => self.options.set_options(
+                if filter != "" {
+                    vec![FileOption {
+                        path: [dir, &file_name].into_iter().collect(),
+                        kind: FileKind::New,
+                        is_link: false,
+                    }]
+                } else {
+                    Vec::new()
+                },
+                |_| Some(()),
+            ),
         }
     }
 }

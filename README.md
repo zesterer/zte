@@ -25,5 +25,4 @@
 
 ## Issues to fix
 
-- New file creation should work with non-existent directories
 - Undo history changes should not join so easily

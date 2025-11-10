@@ -223,10 +223,11 @@ impl Buffer {
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
-        std::fs::write(
-            self.path.as_ref().expect("buffer must have path to save"),
-            self.text.to_string(),
-        )?;
+        let path = self.path.as_ref().expect("buffer must have path to save");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, self.text.to_string())?;
         self.diverged = false;
         self.opened_at = Some(SystemTime::now());
         self.unsaved = false;

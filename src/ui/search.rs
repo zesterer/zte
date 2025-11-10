@@ -233,7 +233,7 @@ impl Visual for SearchResult {
         frame
             .rect([0, 0], [col_a, !0])
             .with_fg(state.theme.option_file)
-            .text([0, 0], &format!("{name}:{}", self.loc.line_idx + 1));
+            .text([0, 0], &name);
         // Path
         frame
             .rect([col_a, 0], [col_b, !0])
