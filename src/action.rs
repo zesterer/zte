@@ -7,7 +7,7 @@ use crossterm::event::{
 };
 use std::path::PathBuf;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Dir {
     Left,
     Right,
@@ -65,7 +65,7 @@ pub enum Dist {
     Doc,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum MouseAction {
     Click,
     Drag,

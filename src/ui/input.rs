@@ -20,6 +20,7 @@ pub struct Input {
     // x/y location in the buffer that the pane is trying to focus on
     pub focus: [isize; 2],
     // Remember the last area for things like scrolling
+    pub frame_area: Area,
     pub last_area: Area,
     pub last_scroll_pos: Option<([isize; 2], usize, usize)>,
     pub scroll_grab: Option<(usize, isize)>,
@@ -147,6 +148,7 @@ impl Input {
             }
             Some(Action::Mouse(MouseAction::Click, pos, false, drag_id)) => {
                 if let Some((scroll_pos, h, _)) = self.last_scroll_pos
+                    && let Some(pos) = self.frame_area.contains(pos)
                     && scroll_pos[0] == pos[0]
                     && (scroll_pos[1]..=scroll_pos[1] + h as isize).contains(&pos[1])
                 {
@@ -169,6 +171,7 @@ impl Input {
                 if self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
             {
                 if let Some((_, offset)) = self.scroll_grab
+                    && let Some(pos) = self.frame_area.contains(pos)
                     && let Some((_, scroll_sz, frame_sz)) = self.last_scroll_pos
                 {
                     self.focus[1] = ((pos[1] - offset).max(0) as usize
@@ -181,11 +184,13 @@ impl Input {
                 Action::Mouse(MouseAction::Drag, pos, false, _)
                 | Action::Mouse(MouseAction::Click, pos, true, _),
             ) => {
-                buffer.goto_cursor(
-                    cursor_id,
-                    [self.focus[0] + pos[0], self.focus[1] + pos[1]],
-                    false,
-                );
+                if let Some(pos) = self.frame_area.contains(pos) {
+                    buffer.goto_cursor(
+                        cursor_id,
+                        [self.focus[0] + pos[0], self.focus[1] + pos[1]],
+                        false,
+                    );
+                }
                 Ok(Resp::handled(None))
             }
             Some(Action::Undo) => {
@@ -250,6 +255,8 @@ impl Input {
         finder: Option<&Finder>,
         outer_frame: &mut Rect,
     ) {
+        self.frame_area = outer_frame.area();
+
         // Add frame
         let mut frame = if matches!(self.mode, Mode::SearchResult) {
             outer_frame.rect([0; 2], [!0; 2])
