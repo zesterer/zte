@@ -21,8 +21,14 @@
 ## Todo
 
 - [ ] Replace
-- [ ] Terminal windows
+- [ ] Terminal buffers
+- [ ] Ability to resize panes (weighted sum?)
+- [ ] Matching delimiter highlighting
 
 ## Issues to fix
 
 - Undo history changes should not join so easily
+- Double click should select ident, not highlighted token
+- Switcher search should allow searching whole path, not just parent
+- Scroll drag should work in opener preview
+- Switching buffers should preserve scroll position
