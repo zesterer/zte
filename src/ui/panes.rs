@@ -87,7 +87,10 @@ pub struct HBox {
     selected: usize,
     panes: Vec<Pane>,
     last_area: Area,
+    size_weight: usize,
 }
+
+const DEFAULT_WEIGHT: usize = 4;
 
 impl Element<()> for HBox {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
@@ -96,6 +99,7 @@ impl Element<()> for HBox {
                 .map(Action::PaneMove)
                 .or_else(|| e.to_pane_open().map(Action::PaneOpen))
                 .or_else(|| e.to_pane_close())
+                .or_else(|| e.to_pane_resize())
         }) {
             Some(Action::PaneMove(Dir::Left)) => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();
@@ -140,6 +144,11 @@ impl Element<()> for HBox {
                     },
                 );
                 self.selected = new_idx;
+                Ok(Resp::handled(None))
+            }
+            Some(Action::PaneResize(by)) => {
+                self.size_weight =
+                    (self.size_weight as i32 + by).clamp(1, DEFAULT_WEIGHT.pow(2) as i32) as usize;
                 Ok(Resp::handled(None))
             }
             Some(action @ Action::Mouse(m_action, pos, is_ctrl, drag_id)) => {
@@ -212,6 +221,7 @@ impl Panes {
                         task: None,
                     }],
                     last_area: Area::default(),
+                    size_weight: DEFAULT_WEIGHT,
                 })
                 .collect(),
             last_area: Default::default(),
@@ -264,6 +274,7 @@ impl Element for Panes {
                             task: None,
                         }],
                         last_area: Area::default(),
+                        size_weight: DEFAULT_WEIGHT,
                     },
                 );
                 self.selected = new_idx;
@@ -321,19 +332,29 @@ impl Element for Panes {
 impl Visual for Panes {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         let n = self.hboxes.len();
-        let frame_h = frame.size()[1];
-        let boundary = |i| frame_h * i / n;
+        if n == 0 {
+            return;
+        }
+
+        let total_weight = self.hboxes.iter().map(|h| h.size_weight).sum::<usize>();
 
         self.last_area = frame.area();
 
+        let mut y0 = 0;
         for (i, hbox) in self.hboxes.iter_mut().enumerate() {
-            let (y0, y1) = (boundary(i), boundary(i + 1));
+            let y1 = if i == n - 1 {
+                frame.size()[1]
+            } else {
+                y0 + hbox.size_weight * frame.size()[1] / total_weight
+            };
 
             // Draw pane contents
             frame
                 .rect([0, y0], [frame.size()[0], y1 - y0])
                 .with_focus(self.selected == i)
                 .with(|frame| hbox.render(state, frame));
+
+            y0 = y1;
         }
     }
 }

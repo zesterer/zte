@@ -17,36 +17,66 @@ pub enum Dir {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Char(char),                                  // Insert a character
-    Indent(bool),                                // Indent (indent vs deindent)
-    Move(Dir, Dist, bool, bool),                 // Move the cursor (dir, dist, retain_base, word)
-    PaneMove(Dir),                               // Move panes
-    PaneOpen(Dir),                               // Create a new pane
-    PaneClose,                                   // Close the current pane
-    Cancel,                                      // Cancels the current action
-    Continue,                      // Continue past an info-only element (like a help screen)
-    Go,                            // Search, accept, or select the current option
-    Yes,                           // A binary confirmation is answered 'yes'
-    No,                            // A binary confirmation is answered 'no'
-    Quit,                          // Quit the application
-    OpenPrompt,                    // Open the command prompt
-    Show(Option<String>, String), // Display an optionally titled informational text box to the user
-    OpenSwitcher,                 // Open the buffer switcher
-    OpenOpener(PathBuf),          // Open the file opener
-    OpenFinder(Option<String>),   // Open the finder, with the given default query
-    SwitchBuffer(BufferId),       // Switch the current pane to the given buffer
-    OpenFile(PathBuf, usize), // Open the file (on the given line) and switch the current pane to it
-    CreateFile(PathBuf),      // Create a new file and switch the current pane to it
-    CommandStart(&'static str), // Start a new command
-    GotoLine(isize),          // Go to the specified file line
-    BeginSearch(String),      // Request to begin a search with the given needle
-    OpenSearcher(PathBuf, String), // Start a project-wide search with the given location and needle
-    SelectToken,              // Fully select the token under the cursor
-    SelectAll,                // Fully select the entire input
-    Save,                     // Save the current buffer
-    Overwrite,                // Save the current buffer, forcefully
-    Reload,                   // Reload the current file from disk, losing unsaved changes
-    Mouse(MouseAction, [isize; 2], bool, usize), // (action, pos, is_ctrl, drag_id)
+    // Insert a character
+    Char(char),
+    // Indent (indent vs deindent)
+    Indent(bool),
+    // Move the cursor (dir, dist, retain_base, word)
+    Move(Dir, Dist, bool, bool),
+    // Move panes
+    PaneMove(Dir),
+    // Create a new pane
+    PaneOpen(Dir),
+    // Close the current pane
+    PaneClose,
+    // Cancels the current action
+    Cancel,
+    // Continue past an info-only element (like a help screen)
+    Continue,
+    // Search, accept, or select the current option
+    Go,
+    // A binary confirmation is answered 'yes'
+    Yes,
+    // A binary confirmation is answered 'no'
+    No,
+    // Quit the application
+    Quit,
+    // Open the command prompt
+    OpenPrompt,
+    // Display an optionally titled informational text box to the user
+    Show(Option<String>, String),
+    // Open the buffer switcher
+    OpenSwitcher,
+    // Open the file opener
+    OpenOpener(PathBuf),
+    // Open the finder, with the given default query
+    OpenFinder(Option<String>),
+    // Switch the current pane to the given buffer
+    SwitchBuffer(BufferId),
+    // Open the file (on the given line) and switch the current pane to it
+    OpenFile(PathBuf, usize),
+    // Create a new file and switch the current pane to it
+    CreateFile(PathBuf),
+    // Start a new command
+    CommandStart(&'static str),
+    // Go to the specified file line
+    GotoLine(isize),
+    // Request to begin a search with the given needle
+    BeginSearch(String),
+    // Start a project-wide search with the given location and needle
+    OpenSearcher(PathBuf, String),
+    // Fully select the token under the cursor
+    SelectToken,
+    // Fully select the entire input
+    SelectAll,
+    // Save the current buffer
+    Save,
+    // Save the current buffer, forcefully
+    Overwrite,
+    // Reload the current file from disk, losing unsaved changes
+    Reload,
+    // (action, pos, is_ctrl, drag_id)
+    Mouse(MouseAction, [isize; 2], bool, usize),
     Confirm(String, Box<Self>),
     Undo,
     Redo,
@@ -55,6 +85,8 @@ pub enum Action {
     Paste,
     Duplicate,
     Comment,
+    // Resize the current pane
+    PaneResize(i32),
 }
 
 /// How far should movement go?
@@ -432,6 +464,24 @@ impl RawEvent {
             Some(Action::Save)
         } else {
             None
+        }
+    }
+
+    pub fn to_pane_resize(&self) -> Option<Action> {
+        match &self.0 {
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('='),
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::PaneResize(1)),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('-'),
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::PaneResize(-1)),
+            _ => None,
         }
     }
 
