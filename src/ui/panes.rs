@@ -6,9 +6,81 @@ pub enum PaneKind {
     Doc(Doc),
 }
 
+enum PaneTask {
+    Opener(Opener),
+    Switcher(Switcher),
+}
+
 pub struct Pane {
     kind: PaneKind,
     last_area: Area,
+    task: Option<PaneTask>,
+}
+
+impl Element for Pane {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        match event.to_action(|_| None) {
+            Some(Action::OpenOpener(path)) => {
+                self.task = Some(PaneTask::Opener(Opener::new(path)));
+                Ok(Resp::handled(None))
+            }
+            Some(Action::OpenSwitcher) => {
+                self.task = Some(PaneTask::Switcher(Switcher::new(state.most_recent())));
+                Ok(Resp::handled(None))
+            }
+            _ => {
+                let event = if let Some(task) = &mut self.task {
+                    let resp = match task {
+                        PaneTask::Opener(opener) => opener.handle(state, event),
+                        PaneTask::Switcher(switcher) => switcher.handle(state, event),
+                    };
+                    match resp {
+                        Ok(resp) => {
+                            if resp.is_end() {
+                                self.task = None;
+                            }
+                            return Ok(Resp::handled(resp.event));
+                        }
+                        Err(event) => event,
+                    }
+                } else {
+                    event
+                };
+
+                match &mut self.kind {
+                    PaneKind::Empty => Err(event),
+                    PaneKind::Doc(doc) => doc.handle(state, event),
+                }
+            }
+        }
+    }
+}
+
+impl Visual for Pane {
+    fn render(&mut self, state: &State, frame: &mut Rect) {
+        let remaining_space = match &mut self.task {
+            Some(PaneTask::Opener(opener)) => {
+                opener.render(state, frame);
+                None
+            }
+            Some(PaneTask::Switcher(switcher)) => {
+                let switcher_h = switcher.requested_height();
+                switcher.render(
+                    state,
+                    &mut frame.rect([0, frame.size()[1] - switcher_h], [!0, !0]),
+                );
+                Some(([0, 0], [!0, frame.size()[1] - switcher_h]))
+            }
+            None => Some(([0, 0], [!0, !0])),
+        };
+
+        if let Some((pos, sz)) = remaining_space {
+            match &mut self.kind {
+                PaneKind::Empty => {}
+                PaneKind::Doc(doc) => doc.render(state, &mut frame.rect(pos, sz)),
+            }
+        }
+    }
 }
 
 pub struct HBox {
@@ -64,6 +136,7 @@ impl Element<()> for HBox {
                     Pane {
                         kind,
                         last_area: Area::default(),
+                        task: None,
                     },
                 );
                 self.selected = new_idx;
@@ -75,15 +148,9 @@ impl Element<()> for HBox {
                         if matches!(m_action, MouseAction::Click) {
                             self.selected = i;
                         }
-                        match &mut pane.kind {
-                            PaneKind::Doc(doc) => {
-                                return doc
-                                    .handle(state, action.clone().into())
-                                    .map(Resp::into_can_end);
-                            }
-                            PaneKind::Empty => {}
-                        }
-                        break;
+                        return pane
+                            .handle(state, action.clone().into())
+                            .map(Resp::into_can_end);
                     }
                 }
                 Ok(Resp::handled(None))
@@ -92,10 +159,7 @@ impl Element<()> for HBox {
             _ => {
                 if let Some(pane) = self.panes.get_mut(self.selected) {
                     // Pass to pane
-                    match &mut pane.kind {
-                        PaneKind::Empty => Err(event),
-                        PaneKind::Doc(doc) => doc.handle(state, event).map(Resp::into_can_end),
-                    }
+                    pane.handle(state, event).map(Resp::into_can_end)
                 } else {
                     // No active pane, don't handle
                     Err(event)
@@ -122,10 +186,7 @@ impl Visual for HBox {
                 .with_focus(self.selected == i)
                 .with(|frame| {
                     pane.last_area = frame.area();
-                    match &mut pane.kind {
-                        PaneKind::Empty => {}
-                        PaneKind::Doc(doc) => doc.render(state, frame),
-                    }
+                    pane.render(state, frame);
                 });
         }
     }
@@ -148,6 +209,7 @@ impl Panes {
                     panes: vec![Pane {
                         kind: PaneKind::Doc(Doc::new(state, *b)),
                         last_area: Area::default(),
+                        task: None,
                     }],
                     last_area: Area::default(),
                 })
@@ -199,6 +261,7 @@ impl Element for Panes {
                         panes: vec![Pane {
                             kind,
                             last_area: Area::default(),
+                            task: None,
                         }],
                         last_area: Area::default(),
                     },

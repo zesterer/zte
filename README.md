@@ -24,6 +24,7 @@
 - [ ] Terminal buffers
 - [ ] Ability to resize panes (weighted sum?)
 - [ ] Matching delimiter highlighting
+- [ ] Ability to close buffers
 
 ## Issues to fix
 
@@ -32,3 +33,4 @@
 - Switcher search should allow searching whole path, not just parent
 - Scroll drag should work in opener preview
 - Switching buffers should preserve scroll position
+- Allow opening directories immediately into the opener

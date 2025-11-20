@@ -537,13 +537,12 @@ impl Visual for Opener {
         });
 
         let path_input_sz = 3;
-        let remaining_sz = frame.size()[1].saturating_sub(path_input_sz);
-        let (preview_sz, options_sz) = if remaining_sz > 12 {
-            let preview_sz = remaining_sz / 2;
-            (preview_sz, remaining_sz - preview_sz)
-        } else {
-            (0, remaining_sz)
-        };
+        let options_sz = self
+            .options
+            .requested_height()
+            .max(1)
+            .min(frame.size()[1] * 2 / 3);
+        let preview_sz = frame.size()[1].saturating_sub(options_sz);
 
         if let Some((buffer, cursor_id, input)) = &mut self.preview {
             frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
