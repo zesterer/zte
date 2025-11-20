@@ -541,8 +541,8 @@ impl Visual for Opener {
             .options
             .requested_height()
             .max(1)
-            .min(frame.size()[1] * 2 / 3);
-        let preview_sz = frame.size()[1].saturating_sub(options_sz);
+            .min(frame.size()[1] / 2);
+        let preview_sz = frame.size()[1].saturating_sub(options_sz + path_input_sz);
 
         if let Some((buffer, cursor_id, input)) = &mut self.preview {
             frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
