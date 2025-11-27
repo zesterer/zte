@@ -1,4 +1,5 @@
 use crate::{Args, Dir, Error, highlight::Highlights, lang::LangPack, theme};
+#[cfg(feature = "clipboard")]
 use clipboard::{ClipboardContext, ClipboardProvider};
 use slotmap::{HopSlotMap, new_key_type};
 use std::{
@@ -948,23 +949,26 @@ fn classify(c: char) -> Option<u8> {
     }
 }
 
-pub struct Clipboard {
-    // If a global clipboard cannot be established, use a local clipboard instead
-    ctx: Result<ClipboardContext, String>,
+pub enum Clipboard {
+    #[cfg(feature = "clipboard")]
+    Global(ClipboardContext),
+    Local(String),
 }
 
 impl Clipboard {
     fn get(&mut self) -> Result<String, ()> {
-        match &mut self.ctx {
-            Ok(ctx) => ctx.get_contents().map_err(|_| ()),
-            Err(contents) => Ok(contents.clone()),
+        match self {
+            #[cfg(feature = "clipboard")]
+            Self::Global(ctx) => ctx.get_contents().map_err(|_| ()),
+            Self::Local(contents) => Ok(contents.clone()),
         }
     }
 
     fn set(&mut self, text: String) -> Result<(), ()> {
-        match &mut self.ctx {
-            Ok(ctx) => ctx.set_contents(text).map_err(|_| ()),
-            Err(contents) => Ok(*contents = text),
+        match self {
+            #[cfg(feature = "clipboard")]
+            Self::Global(ctx) => ctx.set_contents(text).map_err(|_| ()),
+            Self::Local(contents) => Ok(*contents = text),
         }
     }
 }
@@ -985,8 +989,12 @@ impl TryFrom<Args> for State {
             tick: 0,
             theme: theme::Theme::default(),
             most_recent_counter: 0,
-            clipboard: Clipboard {
-                ctx: ClipboardContext::new().map_err(|_| String::new()),
+            clipboard: 'clipboard: {
+                #[cfg(feature = "clipboard")]
+                if let Ok(ctx) = ClipboardContext::new() {
+                    break 'clipboard Clipboard::Global(ctx);
+                }
+                Clipboard::Local(String::new())
             },
         };
 
