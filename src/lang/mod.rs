@@ -116,7 +116,7 @@ impl Highlighter {
             // Characters
             .with(
                 TokenKind::String,
-                r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]'"#,
+                r#"b?'[(\\[nrt\\0(x[0-9A-Za-z][0-9A-Za-z])])[^']]'"#,
             )
             .with(
                 TokenKind::Operator,

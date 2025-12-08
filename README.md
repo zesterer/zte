@@ -17,12 +17,12 @@
 - [x] Project search
 - [x] Auto-indent (and related features)
 - [x] Undo/redo
+- [x] Ability to resize panes
 
 ## Todo
 
 - [ ] Replace
 - [ ] Terminal buffers
-- [ ] Ability to resize panes (weighted sum?)
 - [ ] Matching delimiter highlighting
 - [ ] Ability to close buffers
 

@@ -284,7 +284,7 @@ impl Element for Panes {
             }
             Some(Action::PaneResize(by)) => {
                 if let Some(hbox) = self.hboxes.get_mut(self.selected) {
-                    hbox.size_weight *= 1.3f32.powi(by);
+                    hbox.size_weight *= 1.2f32.powi(by);
                 }
                 Ok(Resp::handled(None))
             }
