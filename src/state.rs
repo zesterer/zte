@@ -224,6 +224,10 @@ impl Buffer {
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
+        // Ensure trailing newline exists
+        if self.text.chars.last().map_or(false, |c| *c != '\n') {
+            self.insert(self.text.chars.len(), ['\n']);
+        }
         let path = self.path.as_ref().expect("buffer must have path to save");
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;

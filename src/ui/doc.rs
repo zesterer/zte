@@ -149,6 +149,14 @@ impl Element for Doc {
                     )
                     .into(),
                 )
+            } else if buffer.path.is_none() {
+                Some(
+                    Action::Show(
+                        None,
+                        "Error: buffer does not have a path (TODO: implement save_as)".to_string(),
+                    )
+                    .into(),
+                )
             } else {
                 buffer.save().err().map(|err| {
                     Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
