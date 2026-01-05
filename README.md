@@ -28,7 +28,6 @@
 
 ## Issues to fix
 
-- Undo history changes should not join so easily
 - Double click should select ident, not highlighted token
 - Switcher search should allow searching whole path, not just parent
 - Scroll drag should work in opener preview

@@ -162,6 +162,7 @@ pub struct Buffer {
     pub path: Option<PathBuf>,
     pub undo: Vec<Change>,
     pub redo: Vec<Change>,
+    undo_dont_merge: bool,
     opened_at: Option<SystemTime>,
     action_counter: usize,
     most_recent_rank: usize,
@@ -208,6 +209,7 @@ impl Buffer {
             path: Some(path),
             undo: Vec::new(),
             redo: Vec::new(),
+            undo_dont_merge: false,
             opened_at: Some(SystemTime::now()),
             action_counter: 0,
             most_recent_rank: 0,
@@ -365,9 +367,12 @@ impl Buffer {
         retain_base: bool,
         word: bool,
     ) {
+        self.undo_checkpoint();
+
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
+
         match dir {
             Dir::Left => {
                 cursor.pos = if !retain_base && cursor.base < cursor.pos {
@@ -457,6 +462,11 @@ impl Buffer {
             return self.undo.push(change);
         };
 
+        if self.undo_dont_merge {
+            self.undo_dont_merge = false;
+            return self.undo.push(change);
+        }
+
         // Attempt to merge changes together
         match (&mut last.kind, &mut change.kind) {
             (ChangeKind::Insert(at, s), ChangeKind::Insert(at2, s2)) if *at + s.len() == *at2 => {
@@ -539,6 +549,10 @@ impl Buffer {
 
     pub fn redo(&mut self) -> bool {
         self.undo_or_redo(false)
+    }
+
+    pub fn undo_checkpoint(&mut self) {
+        self.undo_dont_merge = true;
     }
 
     fn insert_inner(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) -> Change {
@@ -692,9 +706,12 @@ impl Buffer {
     }
 
     pub fn newline(&mut self, cursor_id: CursorId) {
+        self.undo_checkpoint();
+
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
+
         let coord = self.text.to_coord(cursor.pos);
         let line_start = self.text.to_pos([0, coord[1]]);
         let next_line_start = self.text.to_pos([0, coord[1] + 1]);
@@ -787,6 +804,7 @@ impl Buffer {
         if let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
             && clipboard.set(text.iter().copied().collect()).is_ok()
         {
+            self.undo_checkpoint();
             true
         } else {
             false
@@ -795,6 +813,7 @@ impl Buffer {
 
     pub fn cut(&mut self, clipboard: &mut Clipboard, cursor_id: CursorId) -> bool {
         if self.copy(clipboard, cursor_id) {
+            self.undo_checkpoint();
             self.backspace(cursor_id);
             true
         } else {
@@ -804,6 +823,7 @@ impl Buffer {
 
     pub fn paste(&mut self, clipboard: &mut Clipboard, cursor_id: CursorId) -> bool {
         if let Ok(s) = clipboard.get() {
+            self.undo_checkpoint();
             self.enter(cursor_id, s.chars());
             true
         } else {
@@ -812,9 +832,12 @@ impl Buffer {
     }
 
     pub fn duplicate(&mut self, cursor_id: CursorId) {
+        self.undo_checkpoint();
+
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
+
         if let Some(s) = cursor.selection()
             && let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
         {
@@ -835,6 +858,8 @@ impl Buffer {
     }
 
     pub fn comment(&mut self, cursor_id: CursorId) {
+        self.undo_checkpoint();
+
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
@@ -907,6 +932,7 @@ impl Buffer {
                 self.unsaved = false;
                 self.undo.clear();
                 self.redo.clear();
+                self.undo_dont_merge = false;
                 self.highlights_stale = true;
             } else {
                 self.diverged = true;
