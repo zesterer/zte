@@ -184,7 +184,7 @@ impl Input {
                 Action::Mouse(MouseAction::Drag, pos, false, _)
                 | Action::Mouse(MouseAction::Click, pos, true, _),
             ) => {
-                if let Some(pos) = self.frame_area.contains(pos) {
+                if let Some(pos) = self.last_area.contains(pos) {
                     buffer.goto_cursor(
                         cursor_id,
                         [self.focus[0] + pos[0], self.focus[1] + pos[1]],

@@ -208,9 +208,7 @@ impl<T> Element<T> for Options<T> {
             Some(Action::Mouse(MouseAction::Scroll(dir @ (Dir::Up | Dir::Down)), pos, _, _))
                 if self.last_area.contains(pos).is_some() =>
             {
-                if let Some(pos) = self.last_area.contains(pos) {
-                    self.scroll(dir, Dist::Char);
-                }
+                self.scroll(dir, Dist::Char);
                 Ok(Resp::handled(None))
             }
             Some(Action::Go) => {
