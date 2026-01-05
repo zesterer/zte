@@ -282,28 +282,29 @@ impl Buffer {
         }
     }
 
-    pub fn select_token_cursor(&mut self, cursor_id: CursorId) {
+    pub fn select_token_cursor(&mut self, cursor_id: CursorId) -> bool {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
-            return;
+            return false;
         };
 
-        let a = self.highlights.get_at(cursor.pos);
-        let b = self.highlights.get_at(cursor.pos.saturating_sub(1));
-        if let Some(tok) = a
-            .zip(b)
-            .map(|(a, b)| {
-                if a.range.end - a.range.start > b.range.end - b.range.start {
-                    a
-                } else {
-                    b
-                }
-            })
-            .or(a)
-            .or(b)
+        if let Some(class) = self
+            .text
+            .chars()
+            .get(cursor.pos)
+            .copied()
+            .and_then(classify)
+            && let start = (0..=cursor.pos)
+                .rev()
+                .find(|i| self.text.chars.get(*i).copied().and_then(classify) != Some(class))
+                .map(|i| i + 1)
+                .unwrap_or(0)
+            && let Some(end) = (cursor.pos..)
+                .find(|i| self.text.chars.get(*i).copied().and_then(classify) != Some(class))
         {
-            cursor.select(tok.range.clone());
+            cursor.select(start..end);
+            true
         } else {
-            // TODO: Bell
+            false
         }
     }
 
