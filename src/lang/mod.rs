@@ -29,7 +29,11 @@ impl LangPack {
                 highlighter: Highlighter::code().yaml(),
                 comment_syntax: Some(vec!['#', ' ']),
             },
-            (_, "c" | "h" | "cpp" | "hpp" | "cxx" | "js" | "ts" | "go" | "sh") => Self {
+            (_, "c" | "h" | "cpp" | "hpp" | "cxx") => Self {
+                highlighter: Highlighter::code().cpp(),
+                comment_syntax: Some(vec!['/', '/', ' ']),
+            },
+            (_, "js" | "ts" | "go" | "sh") => Self {
                 highlighter: Highlighter::code().generic_clike(),
                 comment_syntax: Some(vec!['/', '/', ' ']),
             },
@@ -176,7 +180,7 @@ impl Highlighter {
             // Function/method call
             .with(TokenKind::Function, r"(\.)?\b[a-z_][A-Za-z0-9_]*\b[\(<]%")
             // Fields and methods: a.foo
-            .with(TokenKind::Property, r"\.[a-z_][A-Za-z0-9_]*")
+            .with(TokenKind::Property, r"\.[A-Za-z_][A-Za-z0-9_]*")
             // Paths: std::foo::bar
             .with(TokenKind::Property, r"[A-Za-z_][A-Za-z0-9_]*::")
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b")
@@ -191,8 +195,15 @@ impl Highlighter {
             // Primitives
             .with(TokenKind::Type, r"\b[(([(unsigned)(signed)][[:space:]])*u?int[0-9]*(_t)?)(float)(double)(bool)(char)(size_t)(void)]\b")
             .clike_comments()
-            .clike_preprocessor()
             .clike()
+    }
+
+    pub fn cpp(self) -> Self {
+        self
+            // Dereferenced fields and methods: a->foo
+            .with(TokenKind::Property, r"\->[A-Za-z_][A-Za-z0-9_]*")
+            .generic_clike()
+            .clike_preprocessor()
     }
 
     pub fn glsl(self) -> Self {
