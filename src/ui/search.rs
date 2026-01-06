@@ -321,10 +321,10 @@ impl Visual for Searcher {
                         "{} results for '{}' in {}/",
                         num_results,
                         needle,
-                        self.path.display()
+                        self.search_path.display()
                     )
                 } else {
-                    format!("{} results in {}/", num_results, self.path.display())
+                    format!("{} results in {}/", num_results, self.search_path.display())
                 };
                 self.input
                     .render(state, Some(&title), &self.buffer, self.cursor_id, None, f)
