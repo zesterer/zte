@@ -27,9 +27,9 @@ impl Task {
 }
 
 impl Root {
-    pub fn new(state: &mut State, buffers: &[BufferId]) -> Self {
+    pub fn new(state: &mut State, args: &Args) -> Self {
         Self {
-            panes: Panes::new(state, buffers),
+            panes: Panes::new(state, args),
             status: Status,
             tasks: Vec::new(),
             drag_id_counter: 0,

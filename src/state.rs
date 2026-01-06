@@ -196,7 +196,11 @@ impl Change {
 }
 
 impl Buffer {
-    pub fn new(unsaved: bool, chars: Vec<char>, path: PathBuf) -> Self {
+    pub fn anonymous() -> Self {
+        Self::default()
+    }
+
+    pub fn file(unsaved: bool, chars: Vec<char>, path: PathBuf) -> Self {
         let lang = LangPack::from_file_name(&path);
         Self {
             unsaved,
@@ -222,7 +226,7 @@ impl Buffer {
             Ok(s) => (false, s.chars().collect()),
             Err(err) => return Err(err.into()),
         };
-        Ok(Self::new(unsaved, chars, path))
+        Ok(Self::file(unsaved, chars, path))
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
@@ -1020,10 +1024,9 @@ pub struct State {
     pub clipboard: Clipboard,
 }
 
-impl TryFrom<Args> for State {
-    type Error = Error;
-    fn try_from(args: Args) -> Result<Self, Self::Error> {
-        let mut this = Self {
+impl State {
+    pub fn new(args: &Args) -> Self {
+        Self {
             buffers: HopSlotMap::default(),
             tick: 0,
             theme: theme::Theme::default(),
@@ -1035,17 +1038,7 @@ impl TryFrom<Args> for State {
                 }
                 Clipboard::Local(String::new())
             },
-        };
-
-        if args.paths.is_empty() {
-            this.buffers.insert(Buffer::default());
-        } else {
-            for path in args.paths {
-                this.create(path)?;
-            }
         }
-
-        Ok(this)
     }
 }
 
@@ -1076,10 +1069,14 @@ impl State {
                 } else {
                     std::env::current_dir()?.join(path)
                 };
-                Ok(self.buffers.insert(Buffer::new(true, Vec::new(), path)))
+                Ok(self.buffers.insert(Buffer::file(true, Vec::new(), path)))
             }
             Err(err) => Err(err),
         }
+    }
+
+    pub fn new_anonymous(&mut self) -> BufferId {
+        self.buffers.insert(Buffer::anonymous())
     }
 
     pub fn tick(&mut self, needs_render: &mut bool) {

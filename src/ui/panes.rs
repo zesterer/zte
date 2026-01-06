@@ -25,8 +25,13 @@ impl Element for Pane {
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenSwitcher) => {
-                self.task = Some(PaneTask::Switcher(Switcher::new(state.most_recent())));
-                Ok(Resp::handled(None))
+                let most_recent = state.most_recent();
+                if most_recent.is_empty() {
+                    Err(event)
+                } else {
+                    self.task = Some(PaneTask::Switcher(Switcher::new(most_recent)));
+                    Ok(Resp::handled(None))
+                }
             }
             _ => {
                 let event = if let Some(task) = &mut self.task {
@@ -200,20 +205,41 @@ pub struct Panes {
 }
 
 impl Panes {
-    pub fn new(state: &mut State, buffers: &[BufferId]) -> Self {
+    pub fn new(state: &mut State, args: &Args) -> Self {
         Self {
             selected: 0,
-            hboxes: buffers
+            hboxes: args
+                .paths
                 .iter()
-                .map(|b| HBox {
-                    selected: 0,
-                    panes: vec![Pane {
-                        kind: PaneKind::Doc(Doc::new(state, *b)),
+                .map(Some)
+                .chain(if args.paths.is_empty() {
+                    Some(None)
+                } else {
+                    None
+                })
+                .filter_map(|path| {
+                    let (buffer_id, task) = if let Some(path) = path {
+                        if path.is_dir() {
+                            (
+                                state.new_anonymous(),
+                                Some(PaneTask::Opener(Opener::new(path.clone()))),
+                            )
+                        } else {
+                            (state.create(path.clone()).ok()?, None)
+                        }
+                    } else {
+                        (state.new_anonymous(), None)
+                    };
+                    Some(HBox {
+                        selected: 0,
+                        panes: vec![Pane {
+                            kind: PaneKind::Doc(Doc::new(state, buffer_id)),
+                            last_area: Area::default(),
+                            task,
+                        }],
                         last_area: Area::default(),
-                        task: None,
-                    }],
-                    last_area: Area::default(),
-                    size_weight: 1.0,
+                        size_weight: 1.0,
+                    })
                 })
                 .collect(),
             last_area: Default::default(),

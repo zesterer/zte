@@ -65,7 +65,7 @@ impl Searcher {
                         for (line_idx, line_text) in
                             s.lines().enumerate().filter(|(_, l)| l.contains(needle))
                         {
-                            let mut line_buffer = Buffer::new(
+                            let mut line_buffer = Buffer::file(
                                 false,
                                 line_text.trim().chars().collect(),
                                 path.to_path_buf(),

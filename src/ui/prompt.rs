@@ -1,5 +1,6 @@
 use super::*;
 use crate::state::{Buffer, BufferId, CursorId};
+use slotmap::Key;
 use std::{cmp::Reverse, fs, path::PathBuf};
 
 pub struct Prompt {
@@ -299,11 +300,11 @@ impl Visual for BufferId {
         let path_x = (frame.size()[0] as isize / 3).max(32);
         frame.with_fg(state.theme.option_dir).text(
             [path_x, 0],
-            buffer
+            &buffer
                 .path
                 .as_ref()
-                .and_then(|p| p.parent()?.to_str())
-                .unwrap_or("<unknown>"),
+                .and_then(|p| Some(format!("{}", p.parent()?.display())))
+                .unwrap_or_else(|| format!("<anonymous #{}>", self.data().as_ffi())),
         );
     }
 }
@@ -323,7 +324,10 @@ impl Opener {
         let cursor_id = buffer.start_session();
         match path.display().to_string().as_str() {
             s @ "/" => buffer.enter(cursor_id, s.chars()),
-            s => buffer.enter(cursor_id, s.chars().chain(['/'])),
+            s => buffer.enter(
+                cursor_id,
+                s.chars().chain((!s.ends_with('/')).then_some('/')),
+            ),
         }
         let mut this = Self {
             options: Options::new([]),

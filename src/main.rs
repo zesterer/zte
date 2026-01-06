@@ -31,9 +31,8 @@ pub enum Error {
 fn main() -> Result<(), Error> {
     let args = Args::parse();
 
-    let mut state = State::try_from(args)?;
-    let open_buffers = state.buffers.keys().collect::<Vec<_>>();
-    let mut ui = ui::Root::new(&mut state, &open_buffers);
+    let mut state = State::new(&args);
+    let mut ui = ui::Root::new(&mut state, &args);
 
     Terminal::with(move |term| {
         let mut needs_render = true;
