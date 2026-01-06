@@ -171,10 +171,9 @@ impl Input {
                 if self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
             {
                 if let Some((_, offset)) = self.scroll_grab
-                    && let Some(pos) = self.frame_area.contains(pos)
                     && let Some((_, scroll_sz, frame_sz)) = self.last_scroll_pos
                 {
-                    self.focus[1] = ((pos[1] - offset).max(0) as usize
+                    self.focus[1] = ((self.frame_area.translate(pos)[1] - offset).max(0) as usize
                         * buffer.text.lines().count()
                         / frame_sz) as isize;
                 }
@@ -184,13 +183,12 @@ impl Input {
                 Action::Mouse(MouseAction::Drag, pos, false, _)
                 | Action::Mouse(MouseAction::Click, pos, true, _),
             ) => {
-                if let Some(pos) = self.last_area.contains(pos) {
-                    buffer.goto_cursor(
-                        cursor_id,
-                        [self.focus[0] + pos[0], self.focus[1] + pos[1]],
-                        false,
-                    );
-                }
+                let pos = self.last_area.translate(pos);
+                buffer.goto_cursor(
+                    cursor_id,
+                    [self.focus[0] + pos[0], self.focus[1] + pos[1]],
+                    false,
+                );
                 Ok(Resp::handled(None))
             }
             Some(Action::Undo) => {

@@ -43,16 +43,20 @@ impl Area {
         self.size.map(|e| e as usize)
     }
 
+    pub fn translate(&self, pos: [isize; 2]) -> [isize; 2] {
+        [
+            pos[0] - self.origin[0] as isize,
+            pos[1] - self.origin[1] as isize,
+        ]
+    }
+
     pub fn contains(&self, pos: [isize; 2]) -> Option<[isize; 2]> {
         if (self.origin[0] as isize..self.origin[0] as isize + self.size[0] as isize)
             .contains(&pos[0])
             && (self.origin[1] as isize..self.origin[1] as isize + self.size[1] as isize)
                 .contains(&pos[1])
         {
-            Some([
-                pos[0] - self.origin[0] as isize,
-                pos[1] - self.origin[1] as isize,
-            ])
+            Some(self.translate(pos))
         } else {
             None
         }
