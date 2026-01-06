@@ -293,7 +293,15 @@ impl Buffer {
             .get(cursor.pos)
             .copied()
             .and_then(classify)
-            && let start = (0..=cursor.pos)
+            // If there's no token under the cursor, try looking left
+            .or_else(|| {
+                self.text
+                    .chars()
+                    .get(cursor.pos.checked_sub(1)?)
+                    .copied()
+                    .and_then(classify)
+            })
+            && let start = (0..cursor.pos)
                 .rev()
                 .find(|i| self.text.chars.get(*i).copied().and_then(classify) != Some(class))
                 .map(|i| i + 1)

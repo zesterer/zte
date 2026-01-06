@@ -74,7 +74,7 @@ impl Default for Theme {
             ui_bg: Color::AnsiValue(235),
             select_bg: Color::AnsiValue(8),
             line_select_bg: Color::AnsiValue(238),
-            unfocus_select_bg: Color::AnsiValue(240),
+            unfocus_select_bg: Color::AnsiValue(238),
             search_result_bg: Color::AnsiValue(60),
             margin_bg: Color::Reset,
             margin_line_num: Color::AnsiValue(245),
