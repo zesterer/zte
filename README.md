@@ -14,7 +14,7 @@
 - [x] Search in buffer switcher
 - [x] File saving
 - [x] Syntax highlighting
-- [x] Project search
+- [x] Project search (including file path search)
 - [x] Auto-indent (and related features)
 - [x] Undo/redo
 - [x] Ability to resize panes

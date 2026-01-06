@@ -6,7 +6,7 @@ pub struct Searcher {
     options: Options<SearchResult>,
     path: PathBuf,
     search_path: PathBuf,
-    needle: String,
+    needle: Option<String>,
     // Filter
     buffer: Buffer,
     cursor_id: CursorId,
@@ -15,7 +15,7 @@ pub struct Searcher {
 }
 
 impl Searcher {
-    pub fn new(path: PathBuf, needle: String) -> Self {
+    pub fn new(path: PathBuf, needle: Option<String>) -> Self {
         let mut search_path = path.clone();
         let search_path = loop {
             if let Ok(mut entries) = fs::read_dir(&search_path)
@@ -34,7 +34,7 @@ impl Searcher {
         fn search_in(
             search_path: &Path,
             path: &Path,
-            needle: &str,
+            needle: Option<&str>,
             results: &mut Vec<SearchResult>,
         ) {
             // Cap reached!
@@ -55,28 +55,42 @@ impl Searcher {
                     && md.len() < 1 << 20
                     && let Ok(s) = fs::read_to_string(path)
                 {
-                    for (line_idx, line_text) in
-                        s.lines().enumerate().filter(|(_, l)| l.contains(needle))
-                    {
-                        let mut line_buffer = Buffer::new(
-                            false,
-                            line_text.trim().chars().collect(),
-                            path.to_path_buf(),
-                        );
+                    let rdir = format!(
+                        "./{}",
+                        path.parent()
+                            .and_then(|p| p.strip_prefix(search_path).ok()?.to_str())
+                            .unwrap_or("unknown")
+                    );
+                    if let Some(needle) = needle {
+                        for (line_idx, line_text) in
+                            s.lines().enumerate().filter(|(_, l)| l.contains(needle))
+                        {
+                            let mut line_buffer = Buffer::new(
+                                false,
+                                line_text.trim().chars().collect(),
+                                path.to_path_buf(),
+                            );
+                            results.push(SearchResult {
+                                loc: SearchLoc {
+                                    path: path.to_path_buf(),
+                                    line_idx: Some(line_idx),
+                                },
+                                rdir: rdir.clone(),
+                                line: Some((
+                                    Input::search_result(line_idx),
+                                    line_buffer.start_session(),
+                                    line_buffer,
+                                )),
+                            });
+                        }
+                    } else {
                         results.push(SearchResult {
                             loc: SearchLoc {
                                 path: path.to_path_buf(),
-                                line_idx,
+                                line_idx: None,
                             },
-                            rdir: format!(
-                                "./{}",
-                                path.parent()
-                                    .and_then(|p| p.strip_prefix(search_path).ok()?.to_str())
-                                    .unwrap_or("unknown")
-                            ),
-                            line_input: Input::search_result(line_idx),
-                            line_cursor: line_buffer.start_session(),
-                            line_buffer,
+                            rdir,
+                            line: None,
                         });
                     }
                 } else if let Ok(entries) = fs::read_dir(path) {
@@ -98,7 +112,7 @@ impl Searcher {
         }
 
         let mut results = Vec::new();
-        search_in(&search_path, &search_path, &needle, &mut results);
+        search_in(&search_path, &search_path, needle.as_deref(), &mut results);
 
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
@@ -210,15 +224,13 @@ impl Element<()> for Searcher {
 #[derive(Clone, PartialEq)]
 struct SearchLoc {
     path: PathBuf,
-    line_idx: usize,
+    line_idx: Option<usize>,
 }
 
 struct SearchResult {
     loc: SearchLoc,
     rdir: String,
-    line_input: Input,
-    line_cursor: CursorId,
-    line_buffer: Buffer,
+    line: Option<(Input, CursorId, Buffer)>,
 }
 
 impl Visual for SearchResult {
@@ -240,14 +252,16 @@ impl Visual for SearchResult {
             .with_fg(state.theme.option_dir)
             .text([0, 0], &self.rdir);
         // Code snippet
-        self.line_input.render(
-            state,
-            None,
-            &self.line_buffer,
-            self.line_cursor,
-            None,
-            &mut frame.rect([col_a + col_b, 0], [!0, !0]),
-        );
+        if let Some((input, cursor, buffer)) = &mut self.line {
+            input.render(
+                state,
+                None,
+                buffer,
+                *cursor,
+                None,
+                &mut frame.rect([col_a + col_b, 0], [!0, !0]),
+            );
+        }
     }
 }
 
@@ -270,8 +284,10 @@ impl Visual for Searcher {
                     let mut buffer = Buffer::open(result.loc.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     let mut input = Input::default();
-                    buffer.goto_cursor(cursor_id, [0, result.loc.line_idx as isize], true);
-                    input.focus([0, result.loc.line_idx as isize - preview_sz as isize / 2]);
+                    if let Some(line_idx) = result.loc.line_idx {
+                        buffer.goto_cursor(cursor_id, [0, line_idx as isize], true);
+                        input.focus([0, line_idx as isize - preview_sz as isize / 2]);
+                    }
                     Some((buffer, cursor_id, input, result.loc.clone()))
                 })
         });
@@ -291,20 +307,25 @@ impl Visual for Searcher {
                 [frame.size()[0], path_input_sz],
             )
             .with(|f| {
-                let title = format!(
-                    "{} results for '{}' in {}/",
-                    if self.options.ranking.is_empty() {
-                        format!("No")
-                    } else {
-                        format!(
-                            "{} of {}",
-                            self.options.selected + 1,
-                            self.options.ranking.len()
-                        )
-                    },
-                    self.needle,
-                    self.path.display()
-                );
+                let num_results = if self.options.ranking.is_empty() {
+                    format!("No")
+                } else {
+                    format!(
+                        "{} of {}",
+                        self.options.selected + 1,
+                        self.options.ranking.len()
+                    )
+                };
+                let title = if let Some(needle) = &self.needle {
+                    format!(
+                        "{} results for '{}' in {}/",
+                        num_results,
+                        needle,
+                        self.path.display()
+                    )
+                } else {
+                    format!("{} results in {}/", num_results, self.path.display())
+                };
                 self.input
                     .render(state, Some(&title), &self.buffer, self.cursor_id, None, f)
             });

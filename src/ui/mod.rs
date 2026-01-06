@@ -25,6 +25,7 @@ use crate::{
 
 pub enum CannotEnd {}
 
+#[derive(Debug)]
 pub struct Resp<End = CannotEnd> {
     ended: Option<End>,
     pub event: Option<Event>,

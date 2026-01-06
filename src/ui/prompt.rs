@@ -56,7 +56,8 @@ impl Prompt {
                 Ok(Action::GotoLine(line))
             }
             Some(arg0 @ "search") => {
-                let needle = cmd.get(arg0.len()..).unwrap().trim().to_string();
+                let needle = Some(cmd.get(arg0.len()..).unwrap().trim().to_string())
+                    .filter(|n| !n.is_empty());
                 Ok(Action::BeginSearch(needle))
             }
             Some("reload") => Ok(Action::Reload),
@@ -451,7 +452,7 @@ impl Element<()> for Opener {
                         self.set_string(&format!("{}/", file.path.display()));
                         Ok(Resp::handled(None))
                     },
-                    FileKind::File => Ok(Resp::end(Some(Action::OpenFile(file.path, 0).into()))),
+                    FileKind::File => Ok(Resp::end(Some(Action::OpenFile(file.path, None).into()))),
                     FileKind::New => Ok(Resp::end(Some(Action::CreateFile(file.path).into()))),
                     FileKind::Unknown => Ok(Resp::handled(None)),
                 }

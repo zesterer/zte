@@ -54,17 +54,17 @@ pub enum Action {
     // Switch the current pane to the given buffer
     SwitchBuffer(BufferId),
     // Open the file (on the given line) and switch the current pane to it
-    OpenFile(PathBuf, usize),
+    OpenFile(PathBuf, Option<usize>),
     // Create a new file and switch the current pane to it
     CreateFile(PathBuf),
     // Start a new command
     CommandStart(&'static str),
     // Go to the specified file line
     GotoLine(isize),
-    // Request to begin a search with the given needle
-    BeginSearch(String),
-    // Start a project-wide search with the given location and needle
-    OpenSearcher(PathBuf, String),
+    // Request to begin a search with the given needle. `None` implies file path search.
+    BeginSearch(Option<String>),
+    // Start a project-wide search with the given location and needle. `None` implies file path search.
+    OpenSearcher(PathBuf, Option<String>),
     // Fully select the token under the cursor
     SelectToken,
     // Fully select the entire input
@@ -382,6 +382,22 @@ impl RawEvent {
             }) if *modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT
         ) {
             Some(Action::CommandStart("search"))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_path_search(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('o'),
+                modifiers,
+                kind: KeyEventKind::Press,
+                ..
+            }) if *modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT
+        ) {
+            Some(Action::BeginSearch(None))
         } else {
             None
         }

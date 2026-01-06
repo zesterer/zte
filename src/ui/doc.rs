@@ -83,6 +83,7 @@ impl Element for Doc {
                 .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_save())
+                .or_else(|| e.to_path_search())
         }) {
             action @ Some(Action::OpenSwitcher) | action @ Some(Action::OpenOpener(_)) => {
                 Ok(Resp::handled(action.map(Into::into)))
@@ -114,7 +115,9 @@ impl Element for Doc {
             Some(Action::OpenFile(path, line_idx)) => match state.open(path) {
                 Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
-                    if let Some(buffer) = state.buffers.get_mut(self.buffer) {
+                    if let Some(buffer) = state.buffers.get_mut(self.buffer)
+                        && let Some(line_idx) = line_idx
+                    {
                         let cursor_id = self.cursors[&self.buffer];
                         buffer.goto_cursor(cursor_id, [0, line_idx as isize], true);
                         self.input.refocus(buffer, cursor_id);
