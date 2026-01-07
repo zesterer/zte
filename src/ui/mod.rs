@@ -10,7 +10,7 @@ pub use self::{
     doc::{Doc, Finder},
     input::Input,
     panes::Panes,
-    prompt::{Confirm, Opener, Prompt, Show, Switcher},
+    prompt::{Confirm, FileBrowser, FileBrowserMode, Prompt, Show, Switcher},
     root::Root,
     search::Searcher,
     status::Status,

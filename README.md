@@ -10,6 +10,8 @@
 - [x] Multiple panes
 - [x] Pane creation/deletion
 - [x] Opener
+- [x] Save
+- [x] Save as
 - [x] Find
 - [x] Search in buffer switcher
 - [x] File saving
@@ -38,6 +40,7 @@ Buffers represent open files and are tracked independently of view panes.
 ```
 Ctrl + o = Open buffer
 Ctrl + s = Save buffer
+Ctrl + Shift + s = Save buffer as
 Ctrl + b = Switch buffer
 ```
 

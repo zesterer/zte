@@ -7,7 +7,7 @@ pub enum PaneKind {
 }
 
 enum PaneTask {
-    Opener(Opener),
+    FileBrowser(FileBrowser),
     Switcher(Switcher),
 }
 
@@ -21,7 +21,17 @@ impl Element for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
         match event.to_action(|_| None) {
             Some(Action::OpenOpener(path)) => {
-                self.task = Some(PaneTask::Opener(Opener::new(path)));
+                self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
+                    path,
+                    FileBrowserMode::Opener,
+                )));
+                Ok(Resp::handled(None))
+            }
+            Some(Action::OpenSaver(path)) => {
+                self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
+                    path,
+                    FileBrowserMode::Save,
+                )));
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenSwitcher) => {
@@ -36,7 +46,7 @@ impl Element for Pane {
             _ => {
                 let event = if let Some(task) = &mut self.task {
                     let resp = match task {
-                        PaneTask::Opener(opener) => opener.handle(state, event),
+                        PaneTask::FileBrowser(browser) => browser.handle(state, event),
                         PaneTask::Switcher(switcher) => switcher.handle(state, event),
                     };
                     match resp {
@@ -64,8 +74,8 @@ impl Element for Pane {
 impl Visual for Pane {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         let remaining_space = match &mut self.task {
-            Some(PaneTask::Opener(opener)) => {
-                opener.render(state, frame);
+            Some(PaneTask::FileBrowser(browser)) => {
+                browser.render(state, frame);
                 None
             }
             Some(PaneTask::Switcher(switcher)) => {
@@ -225,7 +235,10 @@ impl Panes {
                         if path.is_dir() {
                             (
                                 state.new_anonymous(),
-                                Some(PaneTask::Opener(Opener::new(path.clone()))),
+                                Some(PaneTask::FileBrowser(FileBrowser::new(
+                                    path.clone(),
+                                    FileBrowserMode::Opener,
+                                ))),
                             )
                         } else {
                             (state.create(path.clone()).ok()?, None)

@@ -49,6 +49,7 @@ pub enum Action {
     OpenSwitcher,
     // Open the file opener
     OpenOpener(PathBuf),
+    OpenSaver(PathBuf),
     // Open the finder, with the given default query
     OpenFinder(Option<String>),
     // Switch the current pane to the given buffer
@@ -57,6 +58,8 @@ pub enum Action {
     OpenFile(PathBuf, Option<usize>),
     // Create a new file and switch the current pane to it
     CreateFile(PathBuf),
+    // Save the file in the current pane to the possibly-new path
+    SaveFileAs(PathBuf),
     // Start a new command
     CommandStart(&'static str),
     // Go to the specified file line
@@ -73,6 +76,8 @@ pub enum Action {
     Save,
     // Save the current buffer, forcefully
     Overwrite,
+    // Save the current buffer as a new path, forcefully
+    OverwriteFileAs(PathBuf),
     // Reload the current file from disk, losing unsaved changes
     Reload,
     // (action, pos, is_ctrl, drag_id)
@@ -329,7 +334,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_open_opener(&self, path: &PathBuf) -> Option<Action> {
+    pub fn to_open_browser(&self, path: &PathBuf) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -340,6 +345,16 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenOpener(path.clone()))
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('s'),
+                modifiers,
+                kind: KeyEventKind::Press,
+                ..
+            }) if *modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT
+        ) {
+            Some(Action::OpenSaver(path.clone()))
         } else {
             None
         }

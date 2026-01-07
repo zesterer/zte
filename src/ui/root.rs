@@ -45,101 +45,121 @@ impl Element<()> for Root {
             .map(Event::Action)
             .unwrap_or(event);
 
-        // Pass the event down through the list of tasks until we meet one that can handle it
-        let mut task_idx = self.tasks.len();
-        let event = loop {
-            task_idx = match task_idx.checked_sub(1) {
-                Some(task_idx) => task_idx,
-                None => {
-                    break match self.panes.handle(state, event) {
-                        Ok(resp) => resp.event,
-                        Err(event) => Some(event),
-                    };
-                }
-            };
-
-            let res = match &mut self.tasks[task_idx] {
-                Task::Prompt(p) => p.handle(state, event),
-                Task::Show(s) => s.handle(state, event),
-                Task::Confirm(c) => c.handle(state, event),
-                Task::Searcher(s) => s.handle(state, event),
-            };
-
-            match res {
-                Ok(resp) => {
-                    // If the task has requested that it should end, kill it and all of its children
-                    if resp.is_end() {
-                        self.tasks.truncate(task_idx);
+        loop {
+            // Pass the event down through the list of tasks until we meet one that can handle it
+            let mut task_idx = self.tasks.len();
+            event = loop {
+                task_idx = match task_idx.checked_sub(1) {
+                    Some(task_idx) => task_idx,
+                    None => {
+                        break match self.panes.handle(state, event) {
+                            Ok(resp) => match resp.event {
+                                Some(new_event) => new_event,
+                                None => return Ok(Resp::handled(None)),
+                            },
+                            Err(event) => event,
+                        };
                     }
-                    event = if let Some(event) = resp.event {
-                        event
-                    } else {
-                        break None;
-                    };
-                }
-                Err(e) => event = e,
-            }
-        };
+                };
 
-        // Handle 'top-level' actions
-        if let Some(action) = event.as_ref().and_then(|e| {
-            e.to_action(|e| {
+                let res = match &mut self.tasks[task_idx] {
+                    Task::Prompt(p) => p.handle(state, event),
+                    Task::Show(s) => s.handle(state, event),
+                    Task::Confirm(c) => c.handle(state, event),
+                    Task::Searcher(s) => s.handle(state, event),
+                };
+
+                match res {
+                    Ok(resp) => {
+                        // If the task has requested that it should end, kill it and all of its children
+                        if resp.is_end() {
+                            self.tasks.truncate(task_idx);
+                        }
+                        event = if let Some(event) = resp.event {
+                            event
+                        } else {
+                            return Ok(Resp::handled(None));
+                        };
+                    }
+                    Err(e) => event = e,
+                }
+            };
+
+            // Handle 'top-level' actions
+            event = if let Some(action) = event.to_action(|e| {
                 e.to_open_prompt()
                     .or_else(|| e.to_cancel())
                     .or_else(|| e.to_command_start())
-            })
-        }) {
-            match action {
-                Action::OpenPrompt => {
-                    self.tasks.clear(); // Prompt overrides all
-                    self.tasks.push(Task::Prompt(Prompt::new("")));
-                }
-                Action::OpenSearcher(path, needle) => {
-                    self.tasks.clear(); // Overrides all
-                    self.tasks.push(Task::Searcher(Searcher::new(path, needle)));
-                }
-                Action::CommandStart(cmd) => {
-                    self.tasks.clear(); // Prompt overrides all
-                    self.tasks
-                        .push(Task::Prompt(Prompt::new(&format!("{cmd} "))));
-                }
-                Action::Cancel => {
-                    let unsaved = state.buffers.values().filter(|b| b.unsaved).count();
-                    if state.buffers.is_empty() {
-                        return Ok(Resp::end(None));
-                    } else {
-                        self.tasks.push(Task::Confirm(Confirm {
-                            label: Label(if unsaved == 0 {
-                                format!("Are you sure you wish to quit? (y/n). You have multiple documents open!")
-                            } else {
-                                format!("Are you sure you wish to quit? (y/n). Note that {} files are unsaved!", unsaved)
-                            }),
-                            action: Action::Quit,
-                        }));
+            }) {
+                match action {
+                    Action::OpenPrompt => {
+                        self.tasks.clear(); // Prompt overrides all
+                        self.tasks.push(Task::Prompt(Prompt::new("")));
+                        break Ok(Resp::handled(None));
                     }
-                }
-                Action::Confirm(q, action) => self.tasks.push(Task::Confirm(Confirm {
-                    label: Label(q),
-                    action: *action,
-                })),
-                Action::Show(title, text) => self.tasks.push(Task::Show(Show {
-                    title,
-                    label: Label(text),
-                })),
-                Action::Quit => return Ok(Resp::end(None)),
-                action => {
-                    return self
+                    Action::OpenSearcher(path, needle) => {
+                        self.tasks.clear(); // Overrides all
+                        self.tasks.push(Task::Searcher(Searcher::new(path, needle)));
+                        break Ok(Resp::handled(None));
+                    }
+                    Action::CommandStart(cmd) => {
+                        self.tasks.clear(); // Prompt overrides all
+                        self.tasks
+                            .push(Task::Prompt(Prompt::new(&format!("{cmd} "))));
+                        break Ok(Resp::handled(None));
+                    }
+                    Action::Cancel => {
+                        let unsaved = state.buffers.values().filter(|b| b.unsaved).count();
+                        if state.buffers.is_empty() {
+                            break Ok(Resp::end(None));
+                        } else {
+                            self.tasks.push(Task::Confirm(Confirm {
+                                label: Label(if unsaved == 0 {
+                                    format!("Are you sure you wish to quit? (y/n). You have multiple documents open!")
+                                } else {
+                                    format!("Are you sure you wish to quit? (y/n). Note that {} files are unsaved!", unsaved)
+                                }),
+                                action: Action::Quit,
+                            }));
+                            break Ok(Resp::handled(None));
+                        }
+                    }
+                    Action::Confirm(q, action) => {
+                        self.tasks.push(Task::Confirm(Confirm {
+                            label: Label(q),
+                            action: *action,
+                        }));
+                        break Ok(Resp::handled(None));
+                    }
+                    Action::Show(title, text) => {
+                        self.tasks.push(Task::Show(Show {
+                            title,
+                            label: Label(text),
+                        }));
+                        break Ok(Resp::handled(None));
+                    }
+                    Action::Quit => break Ok(Resp::end(None)),
+                    action => match self
                         .panes
                         .handle(state, Event::Action(action))
-                        .map(|r| r.into_can_end());
+                        .map(|r| r.into_can_end::<()>())
+                    {
+                        Ok(resp) if resp.is_end() => return Ok(resp),
+                        Ok(resp) => {
+                            if let Some(new_event) = resp.event {
+                                new_event
+                            } else {
+                                // Nothing to do
+                                break Ok(Resp::handled(None));
+                            }
+                        }
+                        Err(event) => break Err(event),
+                    },
                 }
+            } else {
+                break Err(event);
             }
-        } else if let Some(event) = event {
-            return Err(event);
         }
-
-        // Root element swallows all other events
-        Ok(Resp::handled(None))
     }
 }
 

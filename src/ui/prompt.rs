@@ -301,17 +301,23 @@ impl Visual for BufferId {
     }
 }
 
-pub struct Opener {
+pub enum FileBrowserMode {
+    Opener,
+    Save,
+}
+
+pub struct FileBrowser {
     pub options: Options<FileOption>,
     // Filter
     pub buffer: Buffer,
     pub cursor_id: CursorId,
     pub input: Input,
     preview: Option<(Buffer, CursorId, Input)>,
+    mode: FileBrowserMode,
 }
 
-impl Opener {
-    pub fn new(path: PathBuf) -> Self {
+impl FileBrowser {
+    pub fn new(path: PathBuf, mode: FileBrowserMode) -> Self {
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
         match path.display().to_string().as_str() {
@@ -327,6 +333,7 @@ impl Opener {
             buffer,
             input: Input::filter(),
             preview: None,
+            mode,
         };
         this.update_completions();
         this
@@ -420,7 +427,7 @@ impl Opener {
     }
 }
 
-impl Element<()> for Opener {
+impl Element<()> for FileBrowser {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         let path_str = self.buffer.text.to_string();
         let res = match event.to_action(|e| e.to_cancel().or_else(|| e.to_char().map(Action::Char))) {
@@ -448,8 +455,14 @@ impl Element<()> for Opener {
                         self.set_string(&format!("{}/", file.path.display()));
                         Ok(Resp::handled(None))
                     },
-                    FileKind::File => Ok(Resp::end(Some(Action::OpenFile(file.path, None).into()))),
-                    FileKind::New => Ok(Resp::end(Some(Action::CreateFile(file.path).into()))),
+                    FileKind::File => match &self.mode {
+                        FileBrowserMode::Opener => Ok(Resp::end(Some(Action::OpenFile(file.path, None).into()))),
+                        FileBrowserMode::Save => Ok(Resp::end(Some(Action::SaveFileAs(file.path).into()))),
+                    },
+                    FileKind::New => match &self.mode {
+                        FileBrowserMode::Opener => Ok(Resp::end(Some(Action::CreateFile(file.path).into()))),
+                        FileBrowserMode::Save => Ok(Resp::end(Some(Action::SaveFileAs(file.path).into()))),
+                    },
                     FileKind::Unknown => Ok(Resp::handled(None)),
                 }
                 Ok(None) => Ok(Resp::handled(None)),
@@ -521,7 +534,7 @@ impl Visual for FileOption {
     }
 }
 
-impl Visual for Opener {
+impl Visual for FileBrowser {
     fn render(&mut self, state: &State, frame: &mut Rect) {
         self.preview = self.options.selected().and_then(|f| {
             self.preview
@@ -557,8 +570,12 @@ impl Visual for Opener {
                 [frame.size()[0], path_input_sz],
             )
             .with(|f| {
+                let title = match &self.mode {
+                    FileBrowserMode::Opener => "Open file",
+                    FileBrowserMode::Save => "Save file",
+                };
                 self.input
-                    .render(state, None, &self.buffer, self.cursor_id, None, f)
+                    .render(state, Some(title), &self.buffer, self.cursor_id, None, f)
             });
     }
 }

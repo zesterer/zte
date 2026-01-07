@@ -76,15 +76,15 @@ impl Element for Doc {
 
         match event.to_action(|e| {
             e.to_open_switcher()
-                .or_else(|| e.to_open_opener(&open_path))
+                .or_else(|| e.to_open_browser(&open_path))
                 .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_save())
                 .or_else(|| e.to_path_search())
         }) {
-            action @ Some(Action::OpenSwitcher) | action @ Some(Action::OpenOpener(_)) => {
-                Ok(Resp::handled(action.map(Into::into)))
-            }
+            action @ Some(Action::OpenSwitcher)
+            | action @ Some(Action::OpenOpener(_))
+            | action @ Some(Action::OpenSaver(_)) => Ok(Resp::handled(action.map(Into::into))),
             ref action @ Some(Action::OpenFinder(ref query)) => {
                 self.finder = Some(Finder::new(
                     buffer.cursors[*cursor_id],
@@ -134,13 +134,6 @@ impl Element for Doc {
                     Action::Show(Some(format!("Could not create file")), format!("{err}")).into(),
                 ))),
             },
-            Some(Action::Overwrite) => Ok(Resp::handled(buffer.save().err().map(|err| {
-                Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
-            }))),
-            Some(Action::Reload) => {
-                buffer.reload();
-                Ok(Resp::handled(None))
-            }
             Some(Action::Save) => Ok(Resp::handled(if buffer.diverged {
                 Some(
                     Action::Confirm(
@@ -150,18 +143,37 @@ impl Element for Doc {
                     .into(),
                 )
             } else if buffer.path.is_none() {
-                Some(
-                    Action::Show(
-                        None,
-                        "Error: buffer does not have a path (TODO: implement save_as)".to_string(),
-                    )
-                    .into(),
-                )
+                Some(Action::OpenSaver(std::env::current_dir().expect("no cwd")).into())
             } else {
                 buffer.save().err().map(|err| {
                     Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
                 })
             })),
+            Some(Action::Overwrite) => Ok(Resp::handled(buffer.save().err().map(|err| {
+                Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+            }))),
+            Some(Action::SaveFileAs(path)) => Ok(Resp::handled(if path.exists() {
+                Some(
+                    Action::Confirm(
+                        format!("File already exists on disk. Are you sure you wish to overwrite it (y/n)?"),
+                        Box::new(Action::OverwriteFileAs(path)),
+                    )
+                    .into(),
+                )
+            } else {
+                buffer.save_as(path).err().map(|err| {
+                    Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+                })
+            })),
+            Some(Action::OverwriteFileAs(path)) => {
+                Ok(Resp::handled(buffer.save_as(path).err().map(|err| {
+                    Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+                })))
+            }
+            Some(Action::Reload) => {
+                buffer.reload();
+                Ok(Resp::handled(None))
+            }
             _ => {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);

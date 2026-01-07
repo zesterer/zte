@@ -229,20 +229,29 @@ impl Buffer {
         Ok(Self::file(unsaved, chars, path))
     }
 
-    pub fn save(&mut self) -> Result<(), Error> {
+    pub fn save_as(&mut self, path: PathBuf) -> Result<(), Error> {
         // Ensure trailing newline exists
         if self.text.chars.last().map_or(false, |c| *c != '\n') {
             self.insert(self.text.chars.len(), ['\n']);
         }
-        let path = self.path.as_ref().expect("buffer must have path to save");
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, self.text.to_string())?;
+        std::fs::write(&path, self.text.to_string())?;
+        self.path = Some(path);
         self.diverged = false;
         self.opened_at = Some(SystemTime::now());
         self.unsaved = false;
         Ok(())
+    }
+
+    pub fn save(&mut self) -> Result<(), Error> {
+        if let Some(path) = self.path.take() {
+            self.save_as(path)
+        } else {
+            // TODO: Not okay!
+            Ok(())
+        }
     }
 
     pub fn name(&self) -> Option<String> {
