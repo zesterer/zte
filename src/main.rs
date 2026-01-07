@@ -37,9 +37,6 @@ fn main() -> Result<(), Error> {
     Terminal::with(move |term| {
         let mut needs_render = true;
         loop {
-            // Wait for a while, or until an event occurs
-            term.wait_at_least(Duration::from_millis(250));
-
             while let Some(ev) = term.get_event() {
                 needs_render = true; // TODO: Don't always rerender?
 
@@ -64,6 +61,9 @@ fn main() -> Result<(), Error> {
             if needs_render {
                 term.update(|fb| ui.render(&state, fb));
             }
+
+            // Wait for a while, or until an event occurs
+            term.wait_at_least(Duration::from_millis(250));
         }
     })
 }
