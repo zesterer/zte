@@ -88,15 +88,7 @@ impl Element<()> for Prompt {
                     Action::Show(Some(format!("Error")), err).into(),
                 ))),
             },
-            _ => self
-                .input
-                .handle(
-                    &mut state.clipboard,
-                    &mut self.buffer,
-                    self.cursor_id,
-                    event,
-                )
-                .map(Resp::into_can_end),
+            _ => Ok(Resp::handled(None)),
         }
     }
 }
@@ -469,6 +461,7 @@ impl Element<()> for Opener {
                     {
                         Ok(x) => Ok(x),
                         Err(event) => if let Some((buffer, cursor_id, input)) = &mut self.preview {
+                            // panic!("HERE: {event:?}");
                             input.handle(&mut state.clipboard, buffer, *cursor_id, event).map(Resp::into_can_end)
                         } else {
                             Err(event)

@@ -146,7 +146,9 @@ impl Input {
                 buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false, drag_id)) => {
+            Some(Action::Mouse(MouseAction::Click, pos, false, drag_id))
+                if self.frame_area.contains(pos).is_some() =>
+            {
                 if let Some((scroll_pos, h, _)) = self.last_scroll_pos
                     && let Some(pos) = self.frame_area.contains(pos)
                     && scroll_pos[0] == pos[0]
@@ -168,7 +170,8 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(Action::Mouse(MouseAction::Drag, pos, false, drag_id))
-                if self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
+                if self.frame_area.contains(pos).is_some()
+                    && self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
             {
                 if let Some((_, offset)) = self.scroll_grab
                     && let Some((_, scroll_sz, frame_sz)) = self.last_scroll_pos
@@ -182,7 +185,7 @@ impl Input {
             Some(
                 Action::Mouse(MouseAction::Drag, pos, false, _)
                 | Action::Mouse(MouseAction::Click, pos, true, _),
-            ) => {
+            ) if self.frame_area.contains(pos).is_some() => {
                 let pos = self.last_area.translate(pos);
                 buffer.goto_cursor(
                     cursor_id,

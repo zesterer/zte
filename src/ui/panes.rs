@@ -82,7 +82,10 @@ impl Visual for Pane {
         if let Some((pos, sz)) = remaining_space {
             match &mut self.kind {
                 PaneKind::Empty => {}
-                PaneKind::Doc(doc) => doc.render(state, &mut frame.rect(pos, sz)),
+                PaneKind::Doc(doc) => doc.render(
+                    state,
+                    &mut frame.with_focus(self.task.is_none()).rect(pos, sz),
+                ),
             }
         }
     }
