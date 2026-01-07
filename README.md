@@ -29,9 +29,6 @@
 
 ## Issues to fix
 
-- Switching buffers should preserve scroll position
-- Allow opening directories immediately into the opener
-
 # Keybindings
 
 ## File & buffer manipulation

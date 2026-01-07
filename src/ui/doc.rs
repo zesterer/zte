@@ -5,26 +5,23 @@ use std::collections::HashMap;
 pub struct Doc {
     buffer: BufferId,
     // Remember the cursor we use for each buffer
-    cursors: HashMap<BufferId, CursorId>,
-    input: Input,
+    inputs: HashMap<BufferId, (CursorId, Input)>,
     finder: Option<Finder>,
 }
 
 impl Doc {
     pub fn new(state: &mut State, buffer: BufferId) -> Self {
-        Self {
+        let mut this = Self {
             buffer,
-            // TODO: Don't index directly
-            cursors: [(buffer, state.buffers[buffer].start_session())]
-                .into_iter()
-                .collect(),
-            input: Input::default(),
+            inputs: HashMap::default(),
             finder: None,
-        }
+        };
+        this.switch_buffer(state, buffer);
+        this
     }
 
     pub fn close(self, state: &mut State) {
-        for (buffer, cursor) in self.cursors {
+        for (buffer, (cursor, _)) in self.inputs {
             let Some(buffer) = state.buffers.get_mut(buffer) else {
                 continue;
             };
@@ -39,20 +36,20 @@ impl Doc {
             return;
         };
         // Start a new cursor session for this buffer if one doesn't exist
-        let cursor_id = *self
-            .cursors
+        let (cursor_id, input) = self
+            .inputs
             .entry(self.buffer)
-            .or_insert_with(|| buffer.start_session());
-        self.input.refocus(buffer, cursor_id);
+            .or_insert_with(|| (buffer.start_session(), Input::default()));
+        input.refocus(buffer, *cursor_id);
     }
 }
 
 impl Element for Doc {
     fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp, Event> {
-        let cursor_id = self.cursors[&self.buffer];
+        let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
 
         if let Some(finder) = &mut self.finder {
-            let resp = finder.handle(state, &mut self.input, self.buffer, cursor_id, event);
+            let resp = finder.handle(state, input, self.buffer, *cursor_id, event);
             event = match resp {
                 Ok(resp) => {
                     if resp.is_end() {
@@ -90,12 +87,12 @@ impl Element for Doc {
             }
             ref action @ Some(Action::OpenFinder(ref query)) => {
                 self.finder = Some(Finder::new(
-                    buffer.cursors[cursor_id],
+                    buffer.cursors[*cursor_id],
                     query.clone(),
                     state,
-                    &mut self.input,
+                    input,
                     self.buffer,
-                    cursor_id,
+                    *cursor_id,
                 ));
                 Ok(Resp::handled(None))
             }
@@ -118,9 +115,9 @@ impl Element for Doc {
                     if let Some(buffer) = state.buffers.get_mut(self.buffer)
                         && let Some(line_idx) = line_idx
                     {
-                        let cursor_id = self.cursors[&self.buffer];
-                        buffer.goto_cursor(cursor_id, [0, line_idx as isize], true);
-                        self.input.refocus(buffer, cursor_id);
+                        let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
+                        buffer.goto_cursor(*cursor_id, [0, line_idx as isize], true);
+                        input.refocus(buffer, *cursor_id);
                     }
                     Ok(Resp::handled(None))
                 }
@@ -169,8 +166,7 @@ impl Element for Doc {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);
                 };
-                self.input
-                    .handle(&mut state.clipboard, buffer, cursor_id, event)
+                input.handle(&mut state.clipboard, buffer, *cursor_id, event)
             }
         }
     }
@@ -181,7 +177,7 @@ impl Visual for Doc {
         let Some(buffer) = state.buffers.get(self.buffer) else {
             return;
         };
-        let cursor_id = self.cursors[&self.buffer];
+        let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
 
         if frame.has_focus() {
             frame.set_title(if let Some(path) = &buffer.path {
@@ -201,11 +197,11 @@ impl Visual for Doc {
             )
             .with_focus(true /*self.finder.is_none()*/)
             .with(|f| {
-                self.input.render(
+                input.render(
                     state,
                     buffer.name().as_deref(),
                     buffer,
-                    cursor_id,
+                    *cursor_id,
                     self.finder.as_ref(),
                     f,
                 )
