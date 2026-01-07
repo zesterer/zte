@@ -53,6 +53,7 @@ impl Input {
         for i in 0..2 {
             self.focus[i] = self.focus[i]
                 .max(coord[i] - self.last_area.size()[i] as isize + 1)
+                .max(0)
                 .min(coord[i]);
         }
     }
@@ -119,8 +120,8 @@ impl Input {
                     Dir::Left => [-1, 0],
                     Dir::Right => [1, 0],
                 };
-                self.focus[0] += dfocus[0] * dist[0] as isize;
-                self.focus[1] += dfocus[1] * dist[1] as isize;
+                self.focus[0] = (self.focus[0] + dfocus[0] * dist[0] as isize).max(0);
+                self.focus[1] = (self.focus[1] + dfocus[1] * dist[1] as isize).max(0);
                 Ok(Resp::handled(None))
             }
             Some(Action::Indent(forward)) => {
