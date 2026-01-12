@@ -110,27 +110,25 @@ impl LangPack {
         *i += 1;
         let mut children = Vec::new();
         loop {
-            match s.get(*i) {
-                Some(c) if c == end => {
+            if let Some(c) = s.get(*i) {
+                if c == end {
                     *i += 1;
                     break Some(DelimTree {
                         span: start_pos..*i,
                         children,
                     });
+                } else if self.delims.iter().any(|(_, e)| e == c) {
+                    return None;
+                } else if let Some(tree) = self.parse_tree(s, i) {
+                    children.push(tree);
+                } else {
+                    *i += 1
                 }
-                Some(c) => {
-                    if let Some(tree) = self.parse_tree(s, i) {
-                        children.push(tree);
-                    } else {
-                        *i += 1
-                    }
-                }
-                None => {
-                    break Some(DelimTree {
-                        span: start_pos..*i,
-                        children,
-                    });
-                }
+            } else {
+                break Some(DelimTree {
+                    span: start_pos..*i,
+                    children,
+                });
             }
         }
     }
