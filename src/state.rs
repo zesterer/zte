@@ -417,6 +417,8 @@ impl Buffer {
             Dir::Left => {
                 cursor.pos = if !retain_base && cursor.base < cursor.pos {
                     cursor.base
+                } else if !retain_base && cursor.base > cursor.pos {
+                    cursor.pos
                 } else if let (true, Some(mut pos)) = (word, cursor.pos.checked_sub(1)) {
                     let mut class = self.text.chars().get(pos).copied().and_then(classify);
                     loop {
@@ -445,6 +447,8 @@ impl Buffer {
             Dir::Right => {
                 cursor.pos = if !retain_base && cursor.base > cursor.pos {
                     cursor.base
+                } else if !retain_base && cursor.base < cursor.pos {
+                    cursor.pos
                 } else if word {
                     let mut pos = cursor.pos;
                     let mut class = self.text.chars().get(pos).copied().and_then(classify);
