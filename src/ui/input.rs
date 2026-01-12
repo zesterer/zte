@@ -139,7 +139,8 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(Action::SelectToken) => {
-                buffer.select_token_cursor(cursor_id);
+                // buffer.select_token_cursor(cursor_id);
+                buffer.select_block_cursor(cursor_id);
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
@@ -293,6 +294,15 @@ impl Input {
         };
         let cursor_coord = buffer.text.to_coord(cursor.pos);
 
+        let cursor_delim = buffer
+            .highlights
+            .get_delim_at(|s| (s.start..=s.end).contains(&cursor.pos));
+        let cursor_block = buffer.highlights.get_delim_at(|s| {
+            (s.start..=s.end).contains(&cursor.pos)
+                && buffer.text.to_coord(s.start)[1]
+                    != buffer.text.to_coord(s.end.saturating_sub(1))[1]
+        });
+
         let mut pos = 0;
         for (i, (line_num, (line_pos, line))) in buffer
             .text
@@ -329,6 +339,10 @@ impl Input {
 
             let line_highlight_selected = matches!(self.mode, Mode::Doc)
                 && buffer.text.to_coord(cursor.pos)[1] == line_num as isize;
+
+            let block_col = cursor_block
+                .as_ref()
+                .map(|(_, s)| buffer.text.to_coord(s.end.saturating_sub(1))[0]);
 
             // Line
             {
@@ -377,9 +391,30 @@ impl Input {
                             }
                         }
                     };
+                    // Block marker line
+                    let (c, fg) = if block_col == Some(coord)
+                        && c.is_whitespace()
+                        && let Some((_, span)) = &cursor_block
+                        && span.contains(&(line_pos + coord as usize))
+                    {
+                        ('┆', state.theme.margin_line_num)
+                    } else {
+                        (c, fg)
+                    };
+                    // Matching delimiters
+                    let uline = if cursor_delim
+                        .as_ref()
+                        .zip(pos)
+                        .map_or(false, |((_, s), pos)| s.start == pos || s.end == pos + 1)
+                    {
+                        Some(Color::White)
+                    } else {
+                        None
+                    };
                     frame
                         .with_bg(bg)
                         .with_fg(fg)
+                        .with_uline(uline)
                         .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
                 }
 

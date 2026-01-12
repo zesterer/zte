@@ -25,11 +25,12 @@
 
 - [ ] Replace
 - [ ] Terminal buffers
-- [ ] Matching delimiter highlighting
 - [ ] Ability to close buffers
 - [ ] Tabbed sessions
 
 ## Issues to fix
+
+- Ctrl + Del should delete line
 
 # Keybindings
 

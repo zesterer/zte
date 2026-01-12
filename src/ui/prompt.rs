@@ -88,7 +88,15 @@ impl Element<()> for Prompt {
                     Action::Show(Some(format!("Error")), err).into(),
                 ))),
             },
-            _ => Ok(Resp::handled(None)),
+            _ => self
+                .input
+                .handle(
+                    &mut state.clipboard,
+                    &mut self.buffer,
+                    self.cursor_id,
+                    event,
+                )
+                .map(Resp::into_can_end),
         }
     }
 }
@@ -120,8 +128,7 @@ impl Element<()> for Show {
                 .or_else(|| e.to_continue())
                 .or_else(|| e.to_char().map(Action::Char))
         }) {
-            // Shows cannot be cancelled, so pass the cancel along to the parent task
-            Some(Action::Cancel) => Ok(Resp::end(Some(Action::Cancel.into()))),
+            Some(Action::Cancel) => Ok(Resp::end(None)),
             // A continue ends the show
             Some(Action::Continue) => Ok(Resp::end(None)),
             // All other events end the show and get passed to the parent

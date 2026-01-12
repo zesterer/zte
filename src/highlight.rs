@@ -1,3 +1,4 @@
+use crate::lang::LangPack;
 use std::ops::Range;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -97,16 +98,75 @@ impl Highlighter {
         }
         tokens
     }
+}
+
+impl LangPack {
+    fn parse_tree(&self, s: &[char], i: &mut usize) -> Option<DelimTree> {
+        let start_pos = *i;
+        let (_, end) = match s.get(*i) {
+            Some(c) => self.delims.iter().find(|(s, _)| s == c)?,
+            None => return None,
+        };
+        *i += 1;
+        let mut children = Vec::new();
+        loop {
+            match s.get(*i) {
+                Some(c) if c == end => {
+                    *i += 1;
+                    break Some(DelimTree {
+                        span: start_pos..*i,
+                        children,
+                    });
+                }
+                Some(c) => {
+                    if let Some(tree) = self.parse_tree(s, i) {
+                        children.push(tree);
+                    } else {
+                        *i += 1
+                    }
+                }
+                None => {
+                    break Some(DelimTree {
+                        span: start_pos..*i,
+                        children,
+                    });
+                }
+            }
+        }
+    }
+
+    fn delims(&self, s: &[char]) -> Vec<DelimTree> {
+        let mut delims = Vec::new();
+        let mut i = 0;
+        loop {
+            if let Some(tree) = self.parse_tree(s, &mut i) {
+                delims.push(tree);
+            } else if s.get(i).is_none() {
+                break delims;
+            } else {
+                i += 1;
+            }
+        }
+    }
 
     pub fn highlight(&self, s: &[char]) -> Highlights {
-        let tokens = self.highlight_str(s);
-        Highlights { tokens }
+        let tokens = self.highlighter.highlight_str(s);
+        Highlights {
+            tokens,
+            delims: self.delims(s),
+        }
     }
+}
+
+pub struct DelimTree {
+    span: Range<usize>,
+    children: Vec<Self>,
 }
 
 #[derive(Default)]
 pub struct Highlights {
     tokens: Vec<Token>,
+    delims: Vec<DelimTree>,
 }
 
 #[derive(Clone)]
@@ -116,8 +176,6 @@ pub struct Token {
 }
 
 impl Highlights {
-    pub fn insert(&mut self, at: usize, s: &str) {}
-
     pub fn get_at(&self, pos: usize) -> Option<&Token> {
         let idx = self.tokens
             .binary_search_by_key(&pos, |tok| tok.range.start)
@@ -131,6 +189,35 @@ impl Highlights {
         } else {
             None
         }
+    }
+
+    fn get_delim_at_inner(
+        &self,
+        delim: &DelimTree,
+        f: &mut impl FnMut(Range<usize>) -> bool,
+    ) -> Option<(usize, Range<usize>)> {
+        if f(delim.span.clone()) {
+            for c in &delim.children {
+                if let Some((depth, range)) = self.get_delim_at_inner(c, f) {
+                    return Some((depth + 1, range));
+                }
+            }
+            Some((0, delim.span.clone()))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_delim_at(
+        &self,
+        mut f: impl FnMut(Range<usize>) -> bool,
+    ) -> Option<(usize, Range<usize>)> {
+        for d in &self.delims {
+            if let Some((depth, range)) = self.get_delim_at_inner(d, &mut f) {
+                return Some((depth, range));
+            }
+        }
+        None
     }
 }
 

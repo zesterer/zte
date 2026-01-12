@@ -5,6 +5,7 @@ use std::path::Path;
 pub struct LangPack {
     pub highlighter: Highlighter,
     pub comment_syntax: Option<Vec<char>>,
+    pub delims: Vec<(char, char)>,
 }
 
 impl LangPack {
@@ -13,54 +14,52 @@ impl LangPack {
             file_name.file_name().and_then(|e| e.to_str()).unwrap_or(""),
             file_name.extension().and_then(|e| e.to_str()).unwrap_or(""),
         ) {
-            (_, "rs" | "ron") => Self {
-                highlighter: Highlighter::code().rust(),
-                comment_syntax: Some(vec!['/', '/', ' ']),
-            },
+            (_, "rs" | "ron") => Self::clike(Highlighter::code().rust()),
             (_, "md") => Self {
                 highlighter: Highlighter::code().markdown(),
                 comment_syntax: None,
+                delims: Vec::new(),
             },
             ("Cargo.lock", _) | (_, "toml") => Self {
                 highlighter: Highlighter::code().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
+                delims: vec![('{', '}')],
             },
             (_, "yaml" | "yml") => Self {
                 highlighter: Highlighter::code().yaml(),
                 comment_syntax: Some(vec!['#', ' ']),
+                delims: Vec::new(),
             },
-            (_, "c" | "h" | "cpp" | "hpp" | "cxx") => Self {
-                highlighter: Highlighter::code().cpp(),
-                comment_syntax: Some(vec!['/', '/', ' ']),
-            },
-            (_, "js" | "ts" | "go" | "sh") => Self {
-                highlighter: Highlighter::code().generic_clike(),
-                comment_syntax: Some(vec!['/', '/', ' ']),
-            },
-            (_, "glsl" | "vert" | "frag") => Self {
-                highlighter: Highlighter::code().glsl(),
-                comment_syntax: Some(vec!['/', '/', ' ']),
-            },
-            (_, "py") => Self {
-                highlighter: Highlighter::code().python(),
-                comment_syntax: Some(vec!['#', ' ']),
-            },
-            (_, "tao") => Self {
-                highlighter: Highlighter::code().tao(),
-                comment_syntax: Some(vec!['#', ' ']),
-            },
-            ("makefile" | "Makefile", _) => Self {
-                highlighter: Highlighter::code().makefile(),
-                comment_syntax: Some(vec!['#', ' ']),
-            },
-            (_, "proto" | "json") => Self {
-                highlighter: Highlighter::code().clike_comments().generic_delimited(),
-                comment_syntax: Some(vec!['/', '/', ' ']),
-            },
+            (_, "c" | "h" | "cpp" | "hpp" | "cxx") => Self::clike(Highlighter::code().cpp()),
+            (_, "js" | "ts" | "go" | "sh") => Self::clike(Highlighter::code().generic_clike()),
+            (_, "glsl" | "vert" | "frag") => Self::clike(Highlighter::code().glsl()),
+            (_, "py") => Self::pythonic(Highlighter::code().python()),
+            (_, "tao") => Self::pythonic(Highlighter::code().tao()),
+            ("makefile" | "Makefile", _) => Self::pythonic(Highlighter::code().makefile()),
+            (_, "proto" | "json") => {
+                Self::clike(Highlighter::code().clike_comments().generic_delimited())
+            }
             _ => Self {
                 highlighter: Highlighter::code(),
                 comment_syntax: None,
+                delims: Vec::new(),
             },
+        }
+    }
+
+    fn clike(highlighter: Highlighter) -> Self {
+        Self {
+            highlighter,
+            comment_syntax: Some(vec!['/', '/', ' ']),
+            delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
+        }
+    }
+
+    fn pythonic(highlighter: Highlighter) -> Self {
+        Self {
+            highlighter,
+            comment_syntax: Some(vec!['#', ' ']),
+            delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
         }
     }
 }

@@ -1,7 +1,9 @@
 use crate::{Error, theme};
 
 pub use crossterm::{
-    cursor::SetCursorStyle as CursorStyle, event::Event as TerminalEvent, style::Color,
+    cursor::SetCursorStyle as CursorStyle,
+    event::Event as TerminalEvent,
+    style::{Attribute, Attributes, Color},
 };
 
 use crossterm::{
@@ -19,6 +21,8 @@ struct Cell {
     c: char,
     fg: Color,
     bg: Color,
+    uline: Color,
+    attr: Attributes,
 }
 
 impl Default for Cell {
@@ -27,6 +31,8 @@ impl Default for Cell {
             c: ' ',
             fg: Color::Reset,
             bg: Color::Reset,
+            uline: Color::Reset,
+            attr: Attributes::none().with(Attribute::Reset),
         }
     }
 }
@@ -66,6 +72,8 @@ impl Area {
 pub struct Rect<'a> {
     pub fg: Color,
     pub bg: Color,
+    pub uline: Color,
+    pub attr: Attributes,
     area: Area,
     fb: &'a mut Framebuffer,
     has_focus: bool,
@@ -102,6 +110,8 @@ impl<'a> Rect<'a> {
             },
             fg: self.fg,
             bg: self.bg,
+            uline: self.uline,
+            attr: self.attr,
             fb: self.fb,
             has_focus: self.has_focus,
         }
@@ -165,6 +175,8 @@ impl<'a> Rect<'a> {
         Rect {
             fg,
             bg: self.bg,
+            uline: self.uline,
+            attr: self.attr,
             area: self.area,
             fb: self.fb,
             has_focus: self.has_focus,
@@ -175,6 +187,24 @@ impl<'a> Rect<'a> {
         Rect {
             fg: self.fg,
             bg,
+            uline: self.uline,
+            attr: self.attr,
+            area: self.area,
+            fb: self.fb,
+            has_focus: self.has_focus,
+        }
+    }
+
+    pub fn with_uline(&mut self, uline: Option<Color>) -> Rect<'_> {
+        Rect {
+            fg: self.fg,
+            bg: self.bg,
+            uline: uline.unwrap_or(self.uline),
+            attr: if uline.is_some() {
+                self.attr.with(Attribute::Underlined)
+            } else {
+                self.attr.without(Attribute::Underlined)
+            },
             area: self.area,
             fb: self.fb,
             has_focus: self.has_focus,
@@ -190,6 +220,8 @@ impl<'a> Rect<'a> {
         Rect {
             fg: self.fg,
             bg: self.bg,
+            uline: self.uline,
+            attr: self.attr,
             area: self.area,
             fb: self.fb,
             has_focus: self.has_focus && focus,
@@ -215,6 +247,8 @@ impl<'a> Rect<'a> {
                     c,
                     fg: self.fg,
                     bg: self.bg,
+                    uline: self.uline,
+                    attr: self.attr,
                 };
                 if let Some(c) = self.get_mut([col, row]) {
                     *c = cell;
@@ -232,6 +266,8 @@ impl<'a> Rect<'a> {
                     c: *c.borrow(),
                     fg: self.fg,
                     bg: self.bg,
+                    uline: self.uline,
+                    attr: self.attr,
                 };
                 if let Some(c) =
                     self.get_mut([(origin[0] + idx as isize) as usize, origin[1] as usize])
@@ -277,6 +313,8 @@ impl Framebuffer {
         Rect {
             fg: Color::Reset,
             bg: Color::Reset,
+            uline: Color::Reset,
+            attr: Attributes::none().with(Attribute::Reset),
             area: Area {
                 origin: [0, 0],
                 size: self.size,
@@ -371,12 +409,18 @@ impl<'a> Terminal<'a> {
                 let mut cursor_pos = [0, 0];
                 let mut fg = Color::Reset;
                 let mut bg = Color::Reset;
+                let mut uline = Color::Reset;
+                let mut attr = Attributes::none().with(Attribute::Reset);
                 stdout
                     .queue(cursor::MoveTo(cursor_pos[0], cursor_pos[1]))
                     .unwrap()
                     .queue(style::SetForegroundColor(fg))
                     .unwrap()
                     .queue(style::SetBackgroundColor(bg))
+                    .unwrap()
+                    .queue(style::SetUnderlineColor(uline))
+                    .unwrap()
+                    .queue(style::SetAttributes(attr))
                     .unwrap()
                     .queue(cursor::Hide)
                     .unwrap();
@@ -409,6 +453,19 @@ impl<'a> Terminal<'a> {
                             if bg != cell.bg {
                                 bg = cell.bg;
                                 stdout.queue(style::SetBackgroundColor(bg)).unwrap();
+                            }
+                            if uline != cell.uline {
+                                uline = cell.uline;
+                                stdout.queue(style::SetUnderlineColor(uline)).unwrap();
+                            }
+                            if attr != cell.attr {
+                                attr = cell.attr;
+                                stdout
+                                    .queue(style::SetAttributes(attr.with(Attribute::Reset)))
+                                    .unwrap();
+                                stdout.queue(style::SetForegroundColor(fg)).unwrap();
+                                stdout.queue(style::SetBackgroundColor(bg)).unwrap();
+                                stdout.queue(style::SetUnderlineColor(uline)).unwrap();
                             }
 
                             // Convert non-printable chars

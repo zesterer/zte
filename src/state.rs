@@ -205,7 +205,7 @@ impl Buffer {
         Self {
             unsaved,
             diverged: false,
-            highlights: lang.highlighter.highlight(&chars),
+            highlights: lang.highlight(&chars),
             highlights_stale: false,
             lang,
             text: Text { chars },
@@ -323,6 +323,24 @@ impl Buffer {
                 .find(|i| self.text.chars.get(*i).copied().and_then(classify) != Some(class))
         {
             cursor.select(start..end);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn select_block_cursor(&mut self, cursor_id: CursorId) -> bool {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return false;
+        };
+
+        if let Some((_, span)) = self.highlights.get_delim_at(|s| {
+            (s.start..=s.end).contains(&cursor.pos)
+                && Some(s.clone()) != cursor.selection()
+                && self.text.to_coord(s.start)[1] != self.text.to_coord(s.end)[1]
+        }) {
+            cursor.select(span.end..span.start);
+            cursor.reset_desired_col(&self.text);
             true
         } else {
             false
@@ -985,7 +1003,7 @@ impl Buffer {
 
         // Update highlights, if necessary
         if self.highlights_stale {
-            self.highlights = self.lang.highlighter.highlight(self.text.chars());
+            self.highlights = self.lang.highlight(self.text.chars());
             self.highlights_stale = false;
         }
     }
