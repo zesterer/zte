@@ -1,4 +1,4 @@
-use crate::lang::LangPack;
+use crate::{lang::LangPack, state::Text};
 use std::ops::Range;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -101,16 +101,18 @@ impl Highlighter {
 }
 
 impl LangPack {
-    fn parse_tree(&self, s: &[char], i: &mut usize) -> Option<DelimTree> {
+    fn parse_tree(&self, text: &Text, i: &mut usize) -> Option<DelimTree> {
         let start_pos = *i;
-        let (_, end) = match s.get(*i) {
+        let (_, end) = match text.chars().get(*i) {
             Some(c) => self.delims.iter().find(|(s, _)| s == c)?,
             None => return None,
         };
+        let start_indent = text.indent_of_line(text.to_coord(*i)[1]);
         *i += 1;
         let mut children = Vec::new();
         loop {
-            if let Some(c) = s.get(*i) {
+            if let Some(c) = text.chars().get(*i) {
+                let mut j = *i;
                 if c == end {
                     *i += 1;
                     break Some(DelimTree {
@@ -118,11 +120,21 @@ impl LangPack {
                         children,
                     });
                 } else if self.delims.iter().any(|(_, e)| e == c) {
-                    return None;
-                } else if let Some(tree) = self.parse_tree(s, i) {
+                    // Use the indentation as a guide when parsing unclosed delimiters
+                    let end_indent = text.indent_of_line(text.to_coord(*i)[1]);
+                    if end_indent
+                        .strip_prefix(start_indent)
+                        .map_or(true, |s| s.is_empty())
+                    {
+                        return None;
+                    } else {
+                        *i += 1;
+                    }
+                } else if let Some(tree) = self.parse_tree(text, &mut j) {
+                    *i = j;
                     children.push(tree);
                 } else {
-                    *i += 1
+                    *i += 1;
                 }
             } else {
                 break Some(DelimTree {
@@ -133,13 +145,13 @@ impl LangPack {
         }
     }
 
-    fn delims(&self, s: &[char]) -> Vec<DelimTree> {
+    fn delims(&self, text: &Text) -> Vec<DelimTree> {
         let mut delims = Vec::new();
         let mut i = 0;
         loop {
-            if let Some(tree) = self.parse_tree(s, &mut i) {
+            if let Some(tree) = self.parse_tree(text, &mut i) {
                 delims.push(tree);
-            } else if s.get(i).is_none() {
+            } else if text.chars().get(i).is_none() {
                 break delims;
             } else {
                 i += 1;
@@ -147,11 +159,11 @@ impl LangPack {
         }
     }
 
-    pub fn highlight(&self, s: &[char]) -> Highlights {
-        let tokens = self.highlighter.highlight_str(s);
+    pub fn highlight(&self, text: &Text) -> Highlights {
+        let tokens = self.highlighter.highlight_str(text.chars());
         Highlights {
             tokens,
-            delims: self.delims(s),
+            delims: self.delims(text),
         }
     }
 }

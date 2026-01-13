@@ -129,7 +129,7 @@ impl Text {
         })
     }
 
-    fn indent_of_line(&self, line: isize) -> &[char] {
+    pub fn indent_of_line(&self, line: isize) -> &[char] {
         let line_start = self.to_pos([0, line]);
         let mut i = 0;
         while self
@@ -202,13 +202,14 @@ impl Buffer {
 
     pub fn file(unsaved: bool, chars: Vec<char>, path: PathBuf) -> Self {
         let lang = LangPack::from_file_name(&path);
+        let text = Text { chars };
         Self {
             unsaved,
             diverged: false,
-            highlights: lang.highlight(&chars),
+            highlights: lang.highlight(&text),
             highlights_stale: false,
             lang,
-            text: Text { chars },
+            text,
             cursors: HopSlotMap::default(),
             path: Some(path),
             undo: Vec::new(),
@@ -1007,7 +1008,7 @@ impl Buffer {
 
         // Update highlights, if necessary
         if self.highlights_stale {
-            self.highlights = self.lang.highlight(self.text.chars());
+            self.highlights = self.lang.highlight(&self.text);
             self.highlights_stale = false;
         }
     }
