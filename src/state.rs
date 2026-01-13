@@ -679,6 +679,12 @@ impl Buffer {
         self.push_undo(change);
     }
 
+    // Assumes range is well-formed
+    pub fn replace(&mut self, range: Range<usize>, chars: impl IntoIterator<Item = char>) {
+        self.remove(range.clone());
+        self.insert(range.start, chars);
+    }
+
     pub fn insert_after(
         &mut self,
         cursor_id: CursorId,
@@ -705,6 +711,50 @@ impl Buffer {
             self.enter(cursor_id, chars);
         } else {
             self.insert(cursor.pos, chars);
+        }
+
+        if let Some(reflow_col) = self.lang.reflow_col {
+            let Some(cursor) = self.cursors.get(cursor_id) else {
+                return;
+            };
+            let old_cursor_pos = cursor.pos;
+            let mut line_idx = self.text.to_coord(cursor.pos)[1].max(0) as usize;
+
+            loop {
+                let Some(line) = self.text.lines().nth(line_idx) else {
+                    break;
+                };
+                // Find an appropriate place to split the line
+                if let Some((reflow_col, _)) = line
+                    .get(..reflow_col)
+                    .and_then(|line| line.iter().enumerate().rev().find(|(_, c)| **c == ' '))
+                    && reflow_col > 0
+                {
+                    let line_start = self.text.to_pos([0, line_idx as isize]);
+                    let next_line_char = self
+                        .text
+                        .lines()
+                        .nth(line_idx + 1)
+                        .and_then(|l| l.first().copied());
+                    if line.last() == Some(&'\n')
+                        && let Some(next_line_char) = next_line_char
+                        && !next_line_char.is_whitespace()
+                    {
+                        self.replace(
+                            line_start + line.len().saturating_sub(1)..line_start + line.len(),
+                            [' '],
+                        );
+                    }
+                    self.replace(line_start + reflow_col..line_start + reflow_col + 1, ['\n']);
+                    let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+                        return;
+                    };
+                    cursor.place_at(old_cursor_pos);
+                    line_idx += 1;
+                } else {
+                    break;
+                }
+            }
         }
     }
 

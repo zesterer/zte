@@ -6,6 +6,7 @@ pub struct LangPack {
     pub highlighter: Highlighter,
     pub comment_syntax: Option<Vec<char>>,
     pub delims: Vec<(char, char)>,
+    pub reflow_col: Option<usize>,
 }
 
 impl LangPack {
@@ -17,18 +18,19 @@ impl LangPack {
             (_, "rs" | "ron") => Self::clike(Highlighter::code().rust()),
             (_, "md") => Self {
                 highlighter: Highlighter::code().markdown(),
-                comment_syntax: None,
-                delims: Vec::new(),
+                reflow_col: Some(88),
+                ..Default::default()
             },
             ("Cargo.lock", _) | (_, "toml") => Self {
                 highlighter: Highlighter::code().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
                 delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
+                ..Default::default()
             },
             (_, "yaml" | "yml") => Self {
                 highlighter: Highlighter::code().yaml(),
                 comment_syntax: Some(vec!['#', ' ']),
-                delims: Vec::new(),
+                ..Default::default()
             },
             (_, "c" | "h" | "cpp" | "hpp" | "cxx") => Self::clike(Highlighter::code().cpp()),
             (_, "js" | "ts" | "go" | "sh") => Self::clike(Highlighter::code().generic_clike()),
@@ -41,8 +43,7 @@ impl LangPack {
             }
             _ => Self {
                 highlighter: Highlighter::code(),
-                comment_syntax: None,
-                delims: Vec::new(),
+                ..Default::default()
             },
         }
     }
@@ -52,6 +53,7 @@ impl LangPack {
             highlighter,
             comment_syntax: Some(vec!['/', '/', ' ']),
             delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
+            ..Default::default()
         }
     }
 
@@ -60,6 +62,7 @@ impl LangPack {
             highlighter,
             comment_syntax: Some(vec!['#', ' ']),
             delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
+            ..Default::default()
         }
     }
 }
