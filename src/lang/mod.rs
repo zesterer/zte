@@ -23,7 +23,7 @@ impl LangPack {
             ("Cargo.lock", _) | (_, "toml") => Self {
                 highlighter: Highlighter::code().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
-                delims: vec![('{', '}')],
+                delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
             },
             (_, "yaml" | "yml") => Self {
                 highlighter: Highlighter::code().yaml(),

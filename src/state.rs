@@ -777,9 +777,7 @@ impl Buffer {
             .map_or(cursor.pos, |s| s.start)
             .checked_sub(1)
             && let Some(last_char) = self.text.chars().get(last_pos)
-            && let Some((l, r)) = [('(', ')'), ('[', ']'), ('{', '}')]
-                .iter()
-                .find(|(l, _)| l == last_char)
+            && let Some((l, r)) = self.lang.delims.iter().find(|(l, _)| l == last_char)
             && let next_pos = cursor.selection().map_or(cursor.pos, |s| s.end)
         {
             let (end_of_block, end_needs_indent) = (cursor.pos..)
