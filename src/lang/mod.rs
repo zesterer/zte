@@ -11,50 +11,65 @@ pub struct LangPack {
 
 impl LangPack {
     pub fn from_file_name(file_name: &Path) -> Self {
-        match (
-            file_name.file_name().and_then(|e| e.to_str()).unwrap_or(""),
-            file_name.extension().and_then(|e| e.to_str()).unwrap_or(""),
-        ) {
-            (_, "rs" | "ron") => Self::clike(Highlighter::code().rust()),
-            (_, "md") => Self {
+        let fname = file_name.file_name().and_then(|e| e.to_str()).unwrap_or("");
+        let fprefix = file_name
+            .file_prefix()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let fextension = file_name.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        if matches!(fextension, "rs" | "ron") {
+            Self::clike(Highlighter::code().rust())
+        } else if matches!(fextension, "md") {
+            Self {
                 highlighter: Highlighter::code().markdown(),
                 reflow_col: Some(88),
                 ..Default::default()
-            },
-            ("Cargo.lock", _) | (_, "toml") => Self {
+            }
+        } else if matches!(fname, "Cargo.lock") || matches!(fextension, "toml") {
+            Self {
                 highlighter: Highlighter::code().toml(),
                 comment_syntax: Some(vec!['#', ' ']),
                 delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
                 ..Default::default()
-            },
-            (_, "yaml" | "yml") => Self {
+            }
+        } else if matches!(fextension, "yaml" | "yml") {
+            Self {
                 highlighter: Highlighter::code().yaml(),
                 comment_syntax: Some(vec!['#', ' ']),
                 ..Default::default()
-            },
-            (_, "c" | "h" | "cpp" | "hpp" | "cxx") => Self::clike(Highlighter::code().cpp()),
-            (_, "js" | "ts" | "go") => Self::clike(Highlighter::code().generic_clike()),
-            (_, "glsl" | "vert" | "frag") => Self::clike(Highlighter::code().glsl()),
-            (_, "py") => Self::pythonic(Highlighter::code().python()),
-            (_, "tao") => Self::pythonic(Highlighter::code().tao()),
-            ("makefile" | "Makefile", _) => Self::pythonic(Highlighter::code().makefile()),
-            (_, "proto" | "json") => {
-                Self::clike(Highlighter::code().clike_comments().generic_delimited())
             }
-            (_, "sh" | "bash" | "zsh") => Self {
+        } else if matches!(fextension, "c" | "h" | "cpp" | "hpp" | "cxx") {
+            Self::clike(Highlighter::code().cpp())
+        } else if matches!(fextension, "js" | "ts" | "go") {
+            Self::clike(Highlighter::code().generic_clike())
+        } else if matches!(fextension, "glsl" | "vert" | "frag") {
+            Self::clike(Highlighter::code().glsl())
+        } else if matches!(fextension, "py") {
+            Self::pythonic(Highlighter::code().python())
+        } else if matches!(fextension, "tao") {
+            Self::pythonic(Highlighter::code().tao())
+        } else if matches!(fname, "makefile" | "Makefile") {
+            Self::pythonic(Highlighter::code().makefile())
+        } else if matches!(fextension, "proto" | "json") {
+            Self::clike(Highlighter::code().clike_comments().generic_delimited())
+        } else if matches!(fextension, "sh" | "bash" | "zsh") {
+            Self {
                 highlighter: Highlighter::code().shell(),
                 comment_syntax: Some(vec!['#', ' ']),
                 ..Default::default()
-            },
-            ("Dockerfile", _) => Self {
+            }
+        } else if matches!(fprefix, "Dockerfile") {
+            Self {
                 highlighter: Highlighter::code().dockerfile(),
                 comment_syntax: Some(vec!['#', ' ']),
                 ..Default::default()
-            },
-            _ => Self {
+            }
+        } else {
+            Self {
                 highlighter: Highlighter::code(),
                 ..Default::default()
-            },
+            }
         }
     }
 
