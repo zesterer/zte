@@ -76,15 +76,15 @@ impl Element for Doc {
 
         match event.to_action(|e| {
             e.to_open_switcher()
-                .or_else(|| e.to_open_browser(&open_path))
+                .or_else(|| e.to_fs(&open_path))
                 .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
-                .or_else(|| e.to_save())
                 .or_else(|| e.to_path_search())
         }) {
             action @ Some(Action::OpenSwitcher)
             | action @ Some(Action::OpenOpener(_))
-            | action @ Some(Action::OpenSaver(_)) => Ok(Resp::handled(action.map(Into::into))),
+            | action @ Some(Action::OpenSaver(_))
+            | action @ Some(Action::OpenMover(_)) => Ok(Resp::handled(action.map(Into::into))),
             ref action @ Some(Action::OpenFinder(ref query)) => {
                 self.finder = Some(Finder::new(
                     buffer.cursors[*cursor_id],
@@ -109,7 +109,7 @@ impl Element for Doc {
                 self.switch_buffer(state, new_buffer);
                 Ok(Resp::handled(None))
             }
-            Some(Action::OpenFile(path, line_idx)) => match state.open(path) {
+            Some(Action::OpenFile(path, line_idx)) => match state.create(path) {
                 Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
                     if let Some(buffer) = state.buffers.get_mut(self.buffer)
@@ -125,20 +125,13 @@ impl Element for Doc {
                     Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
                 ))),
             },
-            Some(Action::CreateFile(path)) => match state.create(path) {
-                Ok(buffer_id) => {
-                    self.switch_buffer(state, buffer_id);
-                    Ok(Resp::handled(None))
-                }
-                Err(err) => Ok(Resp::handled(Some(
-                    Action::Show(Some(format!("Could not create file")), format!("{err}")).into(),
-                ))),
-            },
-            Some(Action::Save) => Ok(Resp::handled(if buffer.diverged {
+
+            // Save
+            Some(Action::SaveFile) => Ok(Resp::handled(if buffer.has_diverged() {
                 Some(
                     Action::Confirm(
                         format!("File has diverged on disk. Are you sure you wish to save (y/n)?"),
-                        Box::new(Action::Overwrite),
+                        Box::new(Action::SaveFileForce),
                     )
                     .into(),
                 )
@@ -149,14 +142,16 @@ impl Element for Doc {
                     Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
                 })
             })),
-            Some(Action::Overwrite) => Ok(Resp::handled(buffer.save().err().map(|err| {
+            Some(Action::SaveFileForce) => Ok(Resp::handled(buffer.save().err().map(|err| {
                 Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
             }))),
+
+            // Save as
             Some(Action::SaveFileAs(path)) => Ok(Resp::handled(if path.exists() {
                 Some(
                     Action::Confirm(
                         format!("File already exists on disk. Are you sure you wish to overwrite it (y/n)?"),
-                        Box::new(Action::OverwriteFileAs(path)),
+                        Box::new(Action::SaveFileAsForce(path)),
                     )
                     .into(),
                 )
@@ -165,11 +160,71 @@ impl Element for Doc {
                     Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
                 })
             })),
-            Some(Action::OverwriteFileAs(path)) => {
+            Some(Action::SaveFileAsForce(path)) => {
                 Ok(Resp::handled(buffer.save_as(path).err().map(|err| {
                     Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
                 })))
             }
+
+            // Move
+            Some(Action::MoveFile(path)) => Ok(Resp::handled(if path.exists() {
+                Some(
+                    Action::Confirm(
+                        format!("File already exists on disk. Are you sure you wish to overwrite it (y/n)?"),
+                        Box::new(Action::MoveFileForce(path)),
+                    )
+                    .into(),
+                )
+            } else {
+                buffer.move_to(path).err().map(|err| {
+                    Action::Show(Some("Could not save file".to_string()), err.to_string()).into()
+                })
+            })),
+            Some(Action::MoveFileForce(path)) => {
+                Ok(Resp::handled(buffer.move_to(path).err().map(|err| {
+                    Action::Show(Some("Could not move file".to_string()), err.to_string()).into()
+                })))
+            }
+
+            Some(Action::CloseFile) => {
+                if buffer.has_diverged() {
+                    Ok(Resp::handled(Some(
+                    Action::Confirm(
+                        format!("File has diverged on disk. Are you sure you wish to lose your changes (y/n)?"),
+                        Box::new(Action::CloseFileForce),
+                    )
+                    .into(),
+                )))
+                } else {
+                    state.close(self.buffer);
+                    // Switch to another buffer, or open a new one
+                    let new_buffer = state
+                        .most_recent()
+                        .first()
+                        .copied()
+                        .unwrap_or_else(|| state.new_anonymous());
+                    self.switch_buffer(state, new_buffer);
+                    Ok(Resp::handled(None))
+                }
+            }
+            Some(Action::CloseFileForce) => {
+                state.close(self.buffer);
+                // Switch to another buffer, or open a new one
+                let new_buffer = state
+                    .most_recent()
+                    .first()
+                    .copied()
+                    .unwrap_or_else(|| state.new_anonymous());
+                self.switch_buffer(state, new_buffer);
+                Ok(Resp::handled(None))
+            }
+
+            Some(Action::NewFile) => {
+                let buffer_id = state.new_anonymous();
+                self.switch_buffer(state, buffer_id);
+                Ok(Resp::handled(None))
+            }
+
             Some(Action::Reload) => {
                 buffer.reload();
                 Ok(Resp::handled(None))

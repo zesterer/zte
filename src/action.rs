@@ -47,19 +47,31 @@ pub enum Action {
     Show(Option<String>, String),
     // Open the buffer switcher
     OpenSwitcher,
-    // Open the file opener
+    // Open the file browser
     OpenOpener(PathBuf),
     OpenSaver(PathBuf),
+    OpenMover(PathBuf),
     // Open the finder, with the given default query
     OpenFinder(Option<String>),
     // Switch the current pane to the given buffer
     SwitchBuffer(BufferId),
-    // Open the file (on the given line) and switch the current pane to it
+    // Open or create the file (on the given line) and switch the current pane to it
     OpenFile(PathBuf, Option<usize>),
-    // Create a new file and switch the current pane to it
-    CreateFile(PathBuf),
+    // Save the current buffer
+    SaveFile,
+    SaveFileForce,
     // Save the file in the current pane to the possibly-new path
     SaveFileAs(PathBuf),
+    SaveFileAsForce(PathBuf),
+    // Move the file in the current pane to the possibly-new path
+    MoveFile(PathBuf),
+    MoveFileForce(PathBuf),
+    // Close the file in the current pane
+    CloseFile,
+    CloseFileForce,
+    NewFile,
+    // Reload the current file from disk, losing unsaved changes
+    Reload,
     // Start a new command
     CommandStart(&'static str),
     // Go to the specified file line
@@ -72,14 +84,6 @@ pub enum Action {
     SelectBlock,
     // Fully select the entire input
     SelectAll,
-    // Save the current buffer
-    Save,
-    // Save the current buffer, forcefully
-    Overwrite,
-    // Save the current buffer as a new path, forcefully
-    OverwriteFileAs(PathBuf),
-    // Reload the current file from disk, losing unsaved changes
-    Reload,
     // (action, pos, is_ctrl, drag_id)
     Mouse(MouseAction, [isize; 2], bool, usize),
     Confirm(String, Box<Self>),
@@ -334,7 +338,7 @@ impl RawEvent {
         }
     }
 
-    pub fn to_open_browser(&self, path: &PathBuf) -> Option<Action> {
+    pub fn to_fs(&self, path: &PathBuf) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -349,12 +353,52 @@ impl RawEvent {
             &self.0,
             TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Char('s'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::SaveFile)
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('s'),
                 modifiers,
                 kind: KeyEventKind::Press,
                 ..
             }) if *modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT
         ) {
             Some(Action::OpenSaver(path.clone()))
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('m'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenMover(path.clone()))
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('q'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::CloseFile)
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('n'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::NewFile)
         } else {
             None
         }
@@ -477,22 +521,6 @@ impl RawEvent {
     pub fn to_no(&self) -> Option<Action> {
         if matches!(self.to_char(), Some('n' | 'N')) {
             Some(Action::No)
-        } else {
-            None
-        }
-    }
-
-    pub fn to_save(&self) -> Option<Action> {
-        if matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('s'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        ) {
-            Some(Action::Save)
         } else {
             None
         }

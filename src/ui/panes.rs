@@ -34,6 +34,13 @@ impl Element for Pane {
                 )));
                 Ok(Resp::handled(None))
             }
+            Some(Action::OpenMover(path)) => {
+                self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
+                    path,
+                    FileBrowserMode::Move,
+                )));
+                Ok(Resp::handled(None))
+            }
             Some(Action::OpenSwitcher) => {
                 let most_recent = state.most_recent();
                 if most_recent.is_empty() {

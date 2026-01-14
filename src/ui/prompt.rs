@@ -311,6 +311,7 @@ impl Visual for BufferId {
 pub enum FileBrowserMode {
     Opener,
     Save,
+    Move,
 }
 
 pub struct FileBrowser {
@@ -462,13 +463,10 @@ impl Element<()> for FileBrowser {
                         self.set_string(&format!("{}/", file.path.display()));
                         Ok(Resp::handled(None))
                     },
-                    FileKind::File => match &self.mode {
+                    FileKind::File | FileKind::New => match &self.mode {
                         FileBrowserMode::Opener => Ok(Resp::end(Some(Action::OpenFile(file.path, None).into()))),
                         FileBrowserMode::Save => Ok(Resp::end(Some(Action::SaveFileAs(file.path).into()))),
-                    },
-                    FileKind::New => match &self.mode {
-                        FileBrowserMode::Opener => Ok(Resp::end(Some(Action::CreateFile(file.path).into()))),
-                        FileBrowserMode::Save => Ok(Resp::end(Some(Action::SaveFileAs(file.path).into()))),
+                        FileBrowserMode::Move => Ok(Resp::end(Some(Action::MoveFile(file.path).into()))),
                     },
                     FileKind::Unknown => Ok(Resp::handled(None)),
                 }
@@ -526,7 +524,7 @@ impl Visual for FileOption {
             FileKind::Dir => format!("Directory{is_link}"),
             FileKind::Unknown => format!("Unknown{is_link}"),
             FileKind::File => format!("File{is_link}"),
-            FileKind::New => format!("Create new file{is_link}"),
+            FileKind::New => format!("New file{is_link}"),
         };
         frame
             .with_fg(match self.kind {
@@ -580,6 +578,7 @@ impl Visual for FileBrowser {
                 let title = match &self.mode {
                     FileBrowserMode::Opener => "Open file",
                     FileBrowserMode::Save => "Save file",
+                    FileBrowserMode::Move => "Move file",
                 };
                 self.input
                     .render(state, Some(title), &self.buffer, self.cursor_id, None, f)

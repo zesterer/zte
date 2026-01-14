@@ -22,10 +22,12 @@ struct Args {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("io: {0}")]
+    #[error("{0}")]
     Io(#[from] io::Error),
-    #[error("no such buffer")]
+    #[error("No such buffer")]
     NoSuchBuffer,
+    #[error("File is not yet on disk")]
+    FileNotOnDisk,
 }
 
 fn main() -> Result<(), Error> {

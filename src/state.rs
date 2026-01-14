@@ -160,7 +160,7 @@ impl Text {
 #[derive(Default)]
 pub struct Buffer {
     pub unsaved: bool,
-    pub diverged: bool,
+    diverged: bool,
     pub text: Text,
     pub lang: LangPack,
     pub cursors: HopSlotMap<CursorId, Cursor>,
@@ -257,6 +257,16 @@ impl Buffer {
         } else {
             // TODO: Not okay!
             Ok(())
+        }
+    }
+
+    pub fn move_to(&mut self, path: PathBuf) -> Result<(), Error> {
+        if let Some(old_path) = self.path.take() {
+            self.save_as(path)?;
+            std::fs::remove_file(&old_path)?;
+            Ok(())
+        } else {
+            Err(Error::FileNotOnDisk)
         }
     }
 
@@ -1050,7 +1060,7 @@ impl Buffer {
         }
     }
 
-    pub fn tick(&mut self, needs_render: &mut bool) {
+    fn check_diverged(&mut self, needs_render: &mut bool) {
         if let Some(path) = &self.path {
             let stale = std::fs::metadata(path)
                 .and_then(|m| m.modified())
@@ -1068,7 +1078,18 @@ impl Buffer {
                     *needs_render = true;
                 }
             }
+        } else {
+            self.diverged = true;
         }
+    }
+
+    pub fn has_diverged(&mut self) -> bool {
+        self.check_diverged(&mut false);
+        self.diverged
+    }
+
+    pub fn tick(&mut self, needs_render: &mut bool) {
+        self.check_diverged(needs_render);
 
         // Update highlights, if necessary
         if self.highlights_stale {
@@ -1169,6 +1190,10 @@ impl State {
             }
             Err(err) => Err(err),
         }
+    }
+
+    pub fn close(&mut self, buffer: BufferId) {
+        self.buffers.remove(buffer);
     }
 
     pub fn new_anonymous(&mut self) -> BufferId {

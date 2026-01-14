@@ -25,7 +25,6 @@
 
 - [ ] Replace
 - [ ] Terminal buffers
-- [ ] Ability to close buffers
 - [ ] Tabbed sessions
 
 ## Issues to fix
@@ -39,10 +38,13 @@
 Buffers represent open files and are tracked independently of view panes.
 
 ```
+Ctrl + n = New buffer
 Ctrl + o = Open buffer
 Ctrl + s = Save buffer
 Ctrl + Shift + s = Save buffer as
-Ctrl + b = Switch buffer
+Ctrl + m = Move buffer
+Ctrl + b = Switch to buffer
+Ctrl + q = Close buffer
 ```
 
 ## Search and command prompt
@@ -61,6 +63,8 @@ Alt + Return = Open command prompt
 ## Navigation & panes
 
 ```
+Escape = Cancel current task or close editor
+
 Alt + w = Select pane above
 Alt + a = Select pane left
 Alt + s = Select pane down
@@ -85,7 +89,7 @@ Alt + Subtract = Shrink current pane vertically
 
 ```
 Ctrl + l = Go to line
-Ctrl + Space = Select token
+Ctrl + Space = Select containing block
 Ctrl + a = Select all
 Ctrl + f = Open finder
 
