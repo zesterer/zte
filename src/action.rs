@@ -68,8 +68,8 @@ pub enum Action {
     BeginSearch(Option<String>),
     // Start a project-wide search with the given location and needle. `None` implies file path search.
     OpenSearcher(PathBuf, Option<String>),
-    // Fully select the token under the cursor
-    SelectToken,
+    // Fully select the block under the cursor
+    SelectBlock,
     // Fully select the entire input
     SelectAll,
     // Save the current buffer
@@ -256,7 +256,7 @@ impl RawEvent {
         Some(Action::Move(dir, dist, retain_base, word))
     }
 
-    pub fn to_select_token(&self) -> Option<Action> {
+    pub fn to_select_block(&self) -> Option<Action> {
         if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
@@ -266,7 +266,7 @@ impl RawEvent {
                 ..
             })
         ) {
-            Some(Action::SelectToken)
+            Some(Action::SelectBlock)
         } else {
             None
         }

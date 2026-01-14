@@ -37,47 +37,39 @@ pub enum TokenKind {
     Function,
     /// An active merge conflict
     MergeConflict,
+    /// A clickable URL
+    Url,
 }
 
 #[derive(Default)]
 pub struct Highlighter {
     matchers: Vec<Regex>,
-    entries: Vec<TokenKind>,
+    entries: Vec<(TokenKind, Option<Highlighter>)>,
 }
 
 impl Highlighter {
-    pub fn new_from_regex<P: AsRef<str>>(
-        patterns: impl IntoIterator<Item = (TokenKind, P)>,
-    ) -> Self {
-        let (entries, patterns): (_, Vec<_>) = patterns.into_iter().unzip();
-
-        let matchers = patterns
-            .iter()
-            .map(|p| Regex::parser().parse(p.as_ref()).unwrap())
-            .collect();
-
-        Self { entries, matchers }
-    }
-
-    pub fn with(self, token: TokenKind, p: impl AsRef<str>) -> Self {
-        self.with_many([(token, p)])
-    }
-
-    pub fn with_many<P: AsRef<str>>(
-        mut self,
-        patterns: impl IntoIterator<Item = (TokenKind, P)>,
-    ) -> Self {
-        for (token, p) in patterns {
-            self.entries.push(token);
-            self.matchers
-                .push(Regex::parser().parse(p.as_ref()).unwrap());
-        }
+    pub fn with(mut self, token: TokenKind, p: impl AsRef<str>) -> Self {
+        self.entries.push((token, None));
+        self.matchers
+            .push(Regex::parser().parse(p.as_ref()).unwrap());
         self
     }
 
-    fn highlight_str(&self, s: &[char]) -> Vec<Token> {
+    pub fn with_child_syntax(
+        mut self,
+        token: TokenKind,
+        p: impl AsRef<str>,
+        child: Highlighter,
+    ) -> Self {
+        self.entries.push((token, Some(child)));
+        self.matchers
+            .push(Regex::parser().parse(p.as_ref()).unwrap());
+        self
+    }
+
+    fn highlight_str(&self, s: &[char], range: Range<usize>) -> Vec<Token> {
         let mut tokens = Vec::new();
-        let mut i = 0;
+        let mut i = range.start;
         loop {
             i = if let Some((idx, n)) = self
                 .matchers
@@ -85,12 +77,18 @@ impl Highlighter {
                 .enumerate()
                 .find_map(|(idx, r)| Some((idx, r.matches(s, i)?)))
             {
+                let (kind, child_highlighter) = &self.entries[idx];
                 tokens.push(Token {
-                    kind: self.entries[idx],
+                    kind: *kind,
                     range: i..n,
+                    children: if let Some(child_highlighter) = child_highlighter {
+                        child_highlighter.highlight_str(s, i..n)
+                    } else {
+                        Vec::new()
+                    },
                 });
                 n
-            } else if i < s.len() {
+            } else if i < range.end.min(s.len()) {
                 i + 1
             } else {
                 break;
@@ -107,7 +105,6 @@ impl LangPack {
             Some(c) => self.delims.iter().find(|(s, _)| s == c)?,
             None => return None,
         };
-        let start_indent = text.indent_of_line(text.to_coord(*i)[1]);
         *i += 1;
         let mut children = Vec::new();
         loop {
@@ -121,6 +118,7 @@ impl LangPack {
                     });
                 } else if self.delims.iter().any(|(_, e)| e == c) {
                     // Use the indentation as a guide when parsing unclosed delimiters
+                    let start_indent = text.indent_of_line(text.to_coord(start_pos)[1]);
                     let end_indent = text.indent_of_line(text.to_coord(*i)[1]);
                     if end_indent
                         .strip_prefix(start_indent)
@@ -160,7 +158,9 @@ impl LangPack {
     }
 
     pub fn highlight(&self, text: &Text) -> Highlights {
-        let tokens = self.highlighter.highlight_str(text.chars());
+        let tokens = self
+            .highlighter
+            .highlight_str(text.chars(), 0..text.chars().len());
         Highlights {
             tokens,
             delims: self.delims(text),
@@ -179,26 +179,36 @@ pub struct Highlights {
     delims: Vec<DelimTree>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub range: Range<usize>,
+    pub children: Vec<Token>,
 }
 
 impl Highlights {
-    pub fn get_at(&self, pos: usize) -> Option<&Token> {
-        let idx = self.tokens
+    fn get_at_inner(tokens: &[Token], pos: usize) -> Option<&Token> {
+        let idx = tokens
             .binary_search_by_key(&pos, |tok| tok.range.start)
-            // .ok()?
-            .unwrap_or_else(|p| p.saturating_sub(1))
-            // .saturating_sub(1)
-        ;
-        let tok = self.tokens.get(idx)?;
+            .unwrap_or_else(|p| p.saturating_sub(1));
+        let tok = tokens.get(idx)?;
         if tok.range.contains(&pos) {
+            // Check child tokens too
+            let tok = if !tok.children.is_empty()
+                && let Some(tok) = Self::get_at_inner(&tok.children, pos)
+            {
+                tok
+            } else {
+                tok
+            };
             Some(tok)
         } else {
             None
         }
+    }
+
+    pub fn get_at(&self, pos: usize) -> Option<&Token> {
+        Self::get_at_inner(&self.tokens, pos)
     }
 
     fn get_delim_at_inner(

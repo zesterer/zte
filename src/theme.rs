@@ -66,6 +66,7 @@ pub struct Theme {
     pub hl_token_function: Color,
 
     pub hl_merge_conflict: Color,
+    pub hl_url: Color,
 
     pub hl_matching_delimiter: Color,
 }
@@ -109,6 +110,7 @@ impl Default for Theme {
             hl_token_function: Color::AnsiValue(122),
 
             hl_merge_conflict: Color::AnsiValue(124),
+            hl_url: Color::AnsiValue(123),
 
             hl_matching_delimiter: Color::AnsiValue(123),
         }
@@ -135,6 +137,7 @@ impl Theme {
             TokenKind::Constant => self.hl_token_constant,
             TokenKind::Function => self.hl_token_function,
             TokenKind::MergeConflict => self.text,
+            TokenKind::Url => self.hl_url,
         };
         let bg = match token {
             TokenKind::MergeConflict => Some(self.hl_merge_conflict),

@@ -33,7 +33,7 @@ impl LangPack {
                 ..Default::default()
             },
             (_, "c" | "h" | "cpp" | "hpp" | "cxx") => Self::clike(Highlighter::code().cpp()),
-            (_, "js" | "ts" | "go" | "sh") => Self::clike(Highlighter::code().generic_clike()),
+            (_, "js" | "ts" | "go") => Self::clike(Highlighter::code().generic_clike()),
             (_, "glsl" | "vert" | "frag") => Self::clike(Highlighter::code().glsl()),
             (_, "py") => Self::pythonic(Highlighter::code().python()),
             (_, "tao") => Self::pythonic(Highlighter::code().tao()),
@@ -41,6 +41,16 @@ impl LangPack {
             (_, "proto" | "json") => {
                 Self::clike(Highlighter::code().clike_comments().generic_delimited())
             }
+            (_, "sh" | "bash" | "zsh") => Self {
+                highlighter: Highlighter::code().shell(),
+                comment_syntax: Some(vec!['#', ' ']),
+                ..Default::default()
+            },
+            ("Dockerfile", _) => Self {
+                highlighter: Highlighter::code().dockerfile(),
+                comment_syntax: Some(vec!['#', ' ']),
+                ..Default::default()
+            },
             _ => Self {
                 highlighter: Highlighter::code(),
                 ..Default::default()
@@ -72,6 +82,10 @@ impl Highlighter {
         Self::default().git()
     }
 
+    pub fn with_comment(self, regex: &str) -> Self {
+        self.with_child_syntax(TokenKind::Comment, regex, Self::default().url())
+    }
+
     pub fn markdown(self) -> Self {
         self
             // Links
@@ -95,10 +109,10 @@ impl Highlighter {
     pub fn rust(self) -> Self {
         self
             // Both kinds of comments match multiple lines
-            .with(TokenKind::Doc, r"\/\/[\/!][^\n]*$(\n[[:space:]]\/\/[\/!][^\n]*$)*")
-            .with(TokenKind::Comment, r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*")
+            .with_child_syntax(TokenKind::Doc, r"\/\/[\/!][^\n]*$(\n[[:space:]]\/\/[\/!][^\n]*$)*", Self::default().url())
+            .with_comment(r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*")
             // Multi-line comment
-            .with(TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/")
+            .with_comment(r"\/\*[^(\*\/)]*\*\/")
             .with(
                 TokenKind::Keyword,
                 r"\b[(async)(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(mut)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
@@ -151,9 +165,9 @@ impl Highlighter {
                 r"\/\/[\/!][^\n]*$(\n[[:space:]]\/\/[\/!][^\n]*$)*",
             )
             // Regular comment
-            .with(TokenKind::Comment, r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*")
+            .with_comment(r"\/\/[^$]*$(\n[[:space:]]\/\/[^$]*$)*")
             // Multi-line comment
-            .with(TokenKind::Comment, r"\/\*[^(\*\/)]*\*\/")
+            .with_comment(r"\/\*[^(\*\/)]*\*\/")
     }
 
     fn clike_preprocessor(self) -> Self {
@@ -232,7 +246,7 @@ impl Highlighter {
             // Doc comments
             .with(TokenKind::Doc, r"^[[:space:]]##[^$]*$")
             // Comments
-            .with(TokenKind::Comment, r"#[^$]*$")
+            .with_comment(r"#[^$]*$")
             .clike()
     }
 
@@ -247,7 +261,7 @@ impl Highlighter {
             // Doc comments
             .with(TokenKind::Doc, r"^[[:space:]]##[^$]*$")
             // Comments
-            .with(TokenKind::Comment, r"#[^$]*$")
+            .with_comment(r"#[^$]*$")
             // Attributes
             .with(TokenKind::Attribute, r"\$!?\[[^\]]*\]")
             .clike()
@@ -278,7 +292,7 @@ impl Highlighter {
             // Identifier
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_\-]*\b")
             // Comments
-            .with(TokenKind::Comment, r"#[^$]*$")
+            .with_comment(r"#[^$]*$")
     }
 
     pub fn yaml(self) -> Self {
@@ -304,18 +318,17 @@ impl Highlighter {
             // Identifier
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_\-]*\b")
             // Comments
-            .with(TokenKind::Comment, r"#[^$]*$")
+            .with_comment(r"#[^$]*$")
     }
 
-    pub fn makefile(self) -> Self {
-        self
-            // Keywords
-            .with(
-                TokenKind::Keyword,
-                r"\b[(if(n)?[(eq)(def)]?)(endif)(else)]\b",
-            )
+    pub fn shell(self) -> Self {
+        self.url()
+            // Argument tag (like `--foo`)
+            .with(TokenKind::Property, r"\-\-?[A-Za-z0-9_\-:\.\/]+\b")
+            // Identifier/name/file
+            .with(TokenKind::Ident, r"\b[A-Za-z0-9_\-:\.\/]+\b")
             // Operators
-            .with(TokenKind::Operator, r"[=,:\@\+(\+\+)\+]")
+            .with(TokenKind::Operator, r"[=,:\@\+(\+\+)\+\\(&&)\|(\-\-)\-]")
             // Double-quoted strings
             .with(
                 TokenKind::String,
@@ -326,12 +339,37 @@ impl Highlighter {
                 TokenKind::String,
                 r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#,
             )
-            // Rules
-            .with(TokenKind::Type, r"^[A-Za-z0-9_\-\.]*:")
+            // Backtick-quoted strings
+            .with(
+                TokenKind::String,
+                r#"b?`[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^`]]*`"#,
+            )
             // Variables
             .with(TokenKind::Constant, r"\$\([A-Za-z_][A-Za-z0-9_\-]*\)")
             // Comments
-            .with(TokenKind::Comment, r"#[^$]*$")
+            .with_comment(r"#[^$]*$")
+    }
+
+    pub fn makefile(self) -> Self {
+        self
+            // Keywords
+            .with(
+                TokenKind::Keyword,
+                r"\b[(if(n)?[(eq)(def)]?)(endif)(else)]\b",
+            )
+            // Rules
+            .with(TokenKind::Type, r"^[A-Za-z0-9_\-\.]*:")
+            .shell()
+    }
+
+    pub fn dockerfile(self) -> Self {
+        self
+            // Keywords
+            .with(
+                TokenKind::Keyword,
+                r"\b[(ADD)(ARG)(CMD)(COPY)(ENTRYPOINT)(ENV)(EXPOSE)(FROM)(AS)(HEALTHCHECK)(LABEL)(MAINTAINER)(ONBUILD)(RUN)(SHELL)(STOPSIGNAL)(USER)(VOLUME)(WORKDIR)]\b",
+            )
+            .shell()
     }
 
     pub fn git(self) -> Self {
@@ -339,5 +377,11 @@ impl Highlighter {
             TokenKind::MergeConflict,
             r"^[(<<<<<<<)(=======)(>>>>>>>)]( [^$]*)?$",
         )
+    }
+
+    pub fn url(self) -> Self {
+        self
+            // Automatically detect URLs
+            .with(TokenKind::Url, r"\b(https?):\/\/[A-Za-z0-9_\-:\.\/]+")
     }
 }

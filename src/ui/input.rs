@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    highlight::TokenKind,
     state::{Buffer, Clipboard, CursorId},
     terminal::CursorStyle,
 };
@@ -79,7 +80,7 @@ impl Input {
             e.to_char()
                 .map(Action::Char)
                 .or_else(|| e.to_move())
-                .or_else(|| e.to_select_token())
+                .or_else(|| e.to_select_block())
                 .or_else(|| e.to_select_all())
                 .or_else(|| e.to_indent())
                 .or_else(|| e.to_edit())
@@ -138,8 +139,7 @@ impl Input {
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::SelectToken) => {
-                // buffer.select_token_cursor(cursor_id);
+            Some(Action::SelectBlock) => {
                 buffer.select_block_cursor(cursor_id);
                 self.refocus(buffer, cursor_id);
                 Ok(Resp::handled(None))
@@ -163,8 +163,22 @@ impl Input {
                     if let Some(cursor) = buffer.cursors.get(cursor_id)
                         && cursor.selection().is_none()
                         && buffer.text.to_coord(cursor.pos) == pos
+                        && let Some(token) = buffer.token_at_coord(pos)
+                        && let TokenKind::Url = token.kind
                     {
-                        buffer.select_token_cursor(cursor_id);
+                        let token_range = token.range.clone();
+                        buffer.select_cursor(cursor_id, token_range)
+                        // let url = url.iter().copied().collect::<String>();
+                        // if let Ok(url) = url.parse() {
+                        //     url_open::open(&url);
+                        // } else {
+                        //     return Ok(Resp::handled(Some(Action::Show(Some(format!("Could not open URL")), format!("`{url}` is not a valid URL")).into())));
+                        // }
+                    } else if let Some(cursor) = buffer.cursors.get(cursor_id)
+                        && cursor.selection().is_none()
+                        && buffer.text.to_coord(cursor.pos) == pos
+                    {
+                        buffer.select_word_cursor(cursor_id);
                     } else {
                         buffer.goto_cursor(cursor_id, pos, true);
                     }

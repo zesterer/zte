@@ -1,4 +1,9 @@
-use crate::{Args, Dir, Error, highlight::Highlights, lang::LangPack, theme};
+use crate::{
+    Args, Dir, Error,
+    highlight::{Highlights, Token},
+    lang::LangPack,
+    theme,
+};
 #[cfg(feature = "clipboard")]
 use clipboard::{ClipboardContext, ClipboardProvider};
 use slotmap::{HopSlotMap, new_key_type};
@@ -296,7 +301,18 @@ impl Buffer {
         }
     }
 
-    pub fn select_token_cursor(&mut self, cursor_id: CursorId) -> bool {
+    pub fn token_at_coord(&mut self, coord: [isize; 2]) -> Option<&Token> {
+        self.highlights.get_at(self.text.to_pos(coord))
+    }
+
+    pub fn select_cursor(&mut self, cursor_id: CursorId, range: Range<usize>) {
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+        cursor.select(range);
+    }
+
+    pub fn select_word_cursor(&mut self, cursor_id: CursorId) -> bool {
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return false;
         };
