@@ -201,8 +201,16 @@ impl<T> Element<T> for Options<T> {
                 if self.last_area.contains(pos).is_some() =>
             {
                 if let Some(pos) = self.last_area.contains(pos) {
-                    self.selected =
+                    let new_selected =
                         ((pos[1] - self.focus as isize).max(0) as usize).min(self.ranking.len());
+                    if self.selected == new_selected {
+                        return Ok(Resp::end_with(
+                            self.options.remove(self.ranking[self.selected]),
+                            None,
+                        ));
+                    } else {
+                        self.selected = new_selected;
+                    }
                 }
                 Ok(Resp::handled(None))
             }
