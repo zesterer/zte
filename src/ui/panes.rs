@@ -3,6 +3,7 @@ use super::*;
 pub enum PaneKind {
     Empty,
     Doc(Doc),
+    Term(Term),
 }
 
 enum PaneTask {
@@ -18,7 +19,12 @@ pub struct Pane {
 
 impl Element for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
-        match event.to_action(|_| None) {
+        match event.to_action(|e| e.to_new_term(None)) {
+            Some(Action::NewTerm(path)) => {
+                // TODO: Close other kinds
+                self.kind = PaneKind::Term(Term::new(path));
+                Ok(Resp::handled(None))
+            },
             Some(Action::OpenOpener(path)) => {
                 self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
                     path,
@@ -71,6 +77,7 @@ impl Element for Pane {
                 match &mut self.kind {
                     PaneKind::Empty => Err(event),
                     PaneKind::Doc(doc) => doc.handle(state, event),
+                    PaneKind::Term(term) => term.handle(state, event),
                 }
             }
         }
@@ -99,6 +106,10 @@ impl Visual for Pane {
             match &mut self.kind {
                 PaneKind::Empty => {}
                 PaneKind::Doc(doc) => doc.render(
+                    state,
+                    &mut frame.with_focus(self.task.is_none()).rect(pos, sz),
+                ),
+                PaneKind::Term(term) => term.render(
                     state,
                     &mut frame.with_focus(self.task.is_none()).rect(pos, sz),
                 ),
@@ -135,6 +146,7 @@ impl Element<()> for HBox {
                     match self.panes.remove(self.selected).kind {
                         PaneKind::Empty => {}
                         PaneKind::Doc(doc) => doc.close(state),
+                        PaneKind::Term(term) => term.close(state),
                     }
                     self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
                     if self.panes.is_empty() {

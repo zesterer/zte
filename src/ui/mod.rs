@@ -4,6 +4,7 @@ mod panes;
 mod prompt;
 mod root;
 mod search;
+mod term;
 
 pub use self::{
     doc::{Doc, Finder},
@@ -12,6 +13,7 @@ pub use self::{
     prompt::{Confirm, FileBrowser, FileBrowserMode, Prompt, Show, Switcher},
     root::Root,
     search::Searcher,
+    term::Term,
 };
 
 use super::*;

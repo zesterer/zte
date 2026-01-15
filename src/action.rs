@@ -67,6 +67,7 @@ pub enum Action {
     CloseFile,
     CloseFileForce,
     NewFile,
+    NewTerm(Option<PathBuf>),
     // Reload the current file from disk, losing unsaved changes
     Reload,
     // Start a new command
@@ -412,6 +413,22 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenFinder(query))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_new_term(&self, path: Option<&PathBuf>) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('t'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::NewTerm(path.cloned()))
         } else {
             None
         }
