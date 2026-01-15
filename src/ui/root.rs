@@ -1,9 +1,7 @@
 use super::*;
-use crate::state::BufferId;
 
 pub struct Root {
     panes: Panes,
-    status: Status,
     tasks: Vec<Task>,
     drag_id_counter: usize,
 }
@@ -30,7 +28,6 @@ impl Root {
     pub fn new(state: &mut State, args: &Args) -> Self {
         Self {
             panes: Panes::new(state, args),
-            status: Status,
             tasks: Vec::new(),
             drag_id_counter: 0,
         }
@@ -38,7 +35,7 @@ impl Root {
 }
 
 impl Element<()> for Root {
-    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<()>, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         // Perform any top-level conversion of raw events
         let mut event = event
             .to_action(|e| e.to_mouse(&mut self.drag_id_counter))

@@ -4,7 +4,6 @@ mod panes;
 mod prompt;
 mod root;
 mod search;
-mod status;
 
 pub use self::{
     doc::{Doc, Finder},
@@ -13,7 +12,6 @@ pub use self::{
     prompt::{Confirm, FileBrowser, FileBrowserMode, Prompt, Show, Switcher},
     root::Root,
     search::Searcher,
-    status::Status,
 };
 
 use super::*;
@@ -98,7 +96,7 @@ impl Label {
 }
 
 impl Visual for Label {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, _state: &State, frame: &mut Rect) {
         frame.with(|frame| {
             for (idx, line) in self.lines().enumerate() {
                 frame.text([0, idx as isize], &line);
@@ -186,7 +184,7 @@ impl<T> Options<T> {
 }
 
 impl<T> Element<T> for Options<T> {
-    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<T>, Event> {
+    fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp<T>, Event> {
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
             Some(Action::Move(
                 dir @ (Dir::Up | Dir::Down),

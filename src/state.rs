@@ -417,8 +417,10 @@ impl Buffer {
             let line_range = self.text.to_coord(range.start)[1]..=self.text.to_coord(range.end)[1];
             for line in line_range {
                 // For maximum flexibility, indent/deindent from the end of the indentation
-                let mut pos = self.text.to_pos([0, line]) + self.text.indent_of_line(line).len();
-                self.indent_at(pos, forward);
+                self.indent_at(
+                    self.text.to_pos([0, line]) + self.text.indent_of_line(line).len(),
+                    forward,
+                );
             }
         } else {
             let pos = cursor.pos;
@@ -834,9 +836,7 @@ impl Buffer {
         };
 
         let coord = self.text.to_coord(cursor.pos);
-        let line_start = self.text.to_pos([0, coord[1]]);
         let next_line_start = self.text.to_pos([0, coord[1] + 1]);
-        let line_end = self.text.to_pos([1000000, coord[1]]);
 
         let prev_indent = self
             .text
@@ -853,13 +853,12 @@ impl Buffer {
             .map_or(cursor.pos, |s| s.start)
             .checked_sub(1)
             && let Some(last_char) = self.text.chars().get(last_pos)
-            && let Some((l, r)) = self.lang.delims.iter().find(|(l, _)| l == last_char)
-            && let next_pos = cursor.selection().map_or(cursor.pos, |s| s.end)
+            && let Some((_, r)) = self.lang.delims.iter().find(|(l, _)| l == last_char)
         {
             let (end_of_block, end_needs_indent) = (cursor.pos..)
                 .map(|pos| (pos, self.text.chars().get(pos).copied().unwrap_or('\n')))
                 .take_while(|(_, c)| *c != '\n')
-                .find(|(pos, c)| c == r)
+                .find(|(_, c)| c == r)
                 .map(|(pos, _)| (pos, true))
                 .or_else(|| {
                     let end_of_block = self.text.start_of_line_text(coord[1] + 1).ok()?;
@@ -957,7 +956,7 @@ impl Buffer {
             return;
         };
 
-        if let Some(s) = cursor.selection()
+        if cursor.selection().is_some()
             && let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
         {
             // cursor.place_at(s.end);
@@ -1142,7 +1141,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(args: &Args) -> Self {
+    pub fn new(_args: &Args) -> Self {
         Self {
             buffers: HopSlotMap::default(),
             tick: 0,

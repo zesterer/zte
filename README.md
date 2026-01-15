@@ -29,7 +29,9 @@
 
 ## Issues to fix
 
-- Ctrl + Del should delete line
+- Ctrl + Del should delete word
+- Ctrl + Backspace should backspace word
+- Add line deletion
 
 # Keybindings
 

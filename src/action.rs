@@ -1,7 +1,4 @@
-use crate::{
-    state::BufferId,
-    terminal::{Area, TerminalEvent},
-};
+use crate::{state::BufferId, terminal::TerminalEvent};
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };

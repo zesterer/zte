@@ -33,7 +33,6 @@ impl Default for BorderTheme {
 }
 
 pub struct Theme {
-    pub ui_bg: Color,
     pub select_bg: Color,
     pub line_select_bg: Color,
     pub unfocus_select_bg: Color,
@@ -67,14 +66,11 @@ pub struct Theme {
 
     pub hl_merge_conflict: Color,
     pub hl_url: Color,
-
-    pub hl_matching_delimiter: Color,
 }
 
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            ui_bg: Color::AnsiValue(235),
             select_bg: Color::AnsiValue(8),
             line_select_bg: Color::AnsiValue(238),
             unfocus_select_bg: Color::AnsiValue(238),
@@ -111,8 +107,6 @@ impl Default for Theme {
 
             hl_merge_conflict: Color::AnsiValue(124),
             hl_url: Color::AnsiValue(123),
-
-            hl_matching_delimiter: Color::AnsiValue(123),
         }
     }
 }

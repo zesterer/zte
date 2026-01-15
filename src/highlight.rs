@@ -2,6 +2,7 @@ use crate::{lang::LangPack, state::Text};
 use std::ops::Range;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum TokenKind {
     /// Non-structural whitespace
     Whitespace,

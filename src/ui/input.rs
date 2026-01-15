@@ -16,7 +16,7 @@ enum Mode {
 
 #[derive(Clone, Default)]
 pub struct Input {
-    pub mode: Mode,
+    mode: Mode,
     line_offset: usize,
     // x/y location in the buffer that the pane is trying to focus on
     pub focus: [isize; 2],
@@ -190,7 +190,7 @@ impl Input {
                     && self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
             {
                 if let Some((_, offset)) = self.scroll_grab
-                    && let Some((_, scroll_sz, frame_sz)) = self.last_scroll_pos
+                    && let Some((_, _, frame_sz)) = self.last_scroll_pos
                 {
                     self.focus[1] = ((self.frame_area.translate(pos)[1] - offset).max(0) as usize
                         * buffer.text.lines().count()
@@ -440,8 +440,6 @@ impl Input {
                     );
                 }
             }
-
-            pos += line.len();
         }
 
         // TODO: Clean this up

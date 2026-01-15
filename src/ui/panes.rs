@@ -1,5 +1,4 @@
 use super::*;
-use crate::state::BufferId;
 
 pub enum PaneKind {
     Empty,
@@ -168,7 +167,7 @@ impl Element<()> for HBox {
                 self.selected = new_idx;
                 Ok(Resp::handled(None))
             }
-            Some(action @ Action::Mouse(m_action, pos, is_ctrl, drag_id)) => {
+            Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
                 for (i, pane) in self.panes.iter_mut().enumerate() {
                     if pane.last_area.contains(pos).is_some() {
                         if matches!(m_action, MouseAction::Click) {
@@ -269,15 +268,6 @@ impl Panes {
         }
     }
 
-    pub fn selected_mut(&mut self) -> Option<&mut Pane> {
-        let hbox = self.hboxes.get_mut(self.selected)?;
-        hbox.panes.get_mut(hbox.selected)
-    }
-
-    pub fn selected_hbox_mut(&mut self) -> Option<&mut HBox> {
-        self.hboxes.get_mut(self.selected)
-    }
-
     fn rescale(&mut self) {
         let total_weight = self.hboxes.iter().map(|h| h.size_weight).sum::<f32>();
         let sz = self.last_area.size()[1] as f32;
@@ -337,7 +327,7 @@ impl Element for Panes {
                 }
                 Ok(Resp::handled(None))
             }
-            Some(action @ Action::Mouse(m_action, pos, is_ctrl, drag_id)) => {
+            Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
                 for (i, hbox) in self.hboxes.iter_mut().enumerate() {
                     if hbox.last_area.contains(pos).is_some() {
                         if matches!(m_action, MouseAction::Click) {
@@ -357,7 +347,7 @@ impl Element for Panes {
             action => {
                 let mut to_handle = self.selected;
                 // Set selected hbox on mouse click
-                if let Some(Action::Mouse(ref m_action, pos, is_ctrl, drag_id)) = action {
+                if let Some(Action::Mouse(ref m_action, pos, _is_ctrl, _drag_id)) = action {
                     for (i, hbox) in self.hboxes.iter_mut().enumerate() {
                         if hbox.last_area.contains(pos).is_some() {
                             if matches!(m_action, MouseAction::Click) {

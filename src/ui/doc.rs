@@ -65,7 +65,7 @@ impl Element for Doc {
             return Err(event);
         };
 
-        let mut open_path = buffer
+        let open_path = buffer
             .path
             .to_owned()
             .map(|mut p| {
@@ -85,14 +85,13 @@ impl Element for Doc {
             | action @ Some(Action::OpenOpener(_))
             | action @ Some(Action::OpenSaver(_))
             | action @ Some(Action::OpenMover(_)) => Ok(Resp::handled(action.map(Into::into))),
-            ref action @ Some(Action::OpenFinder(ref query)) => {
+            Some(Action::OpenFinder(ref query)) => {
                 self.finder = Some(Finder::new(
                     buffer.cursors[*cursor_id],
                     query.clone(),
                     state,
                     input,
                     self.buffer,
-                    *cursor_id,
                 ));
                 Ok(Resp::handled(None))
             }
@@ -306,7 +305,6 @@ impl Finder {
         state: &mut State,
         input: &mut Input,
         buffer_id: BufferId,
-        cursor_id: CursorId,
     ) -> Self {
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
@@ -326,7 +324,7 @@ impl Finder {
             results: Vec::new(),
         };
 
-        this.update(state, input, buffer_id, cursor_id);
+        this.update(state, buffer_id);
         this.refocus_selected(&mut state.buffers[buffer_id], input, cursor_id);
 
         this
@@ -344,13 +342,7 @@ impl Finder {
             .map(|_| idx == self.selected)
     }
 
-    fn update(
-        &mut self,
-        state: &mut State,
-        input: &mut Input,
-        buffer_id: BufferId,
-        cursor_id: CursorId,
-    ) {
+    fn update(&mut self, state: &mut State, buffer_id: BufferId) {
         let buffer = &mut state.buffers[buffer_id];
 
         let needle = self.buffer.text.chars();
@@ -423,7 +415,7 @@ impl Finder {
             }
         };
 
-        self.update(state, input, buffer_id, cursor_id);
+        self.update(state, buffer_id);
 
         res
     }

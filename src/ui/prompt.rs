@@ -1,7 +1,7 @@
 use super::*;
 use crate::state::{Buffer, BufferId, CursorId};
 use slotmap::Key;
-use std::{cmp::Reverse, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 pub struct Prompt {
     buffer: Buffer,
@@ -122,7 +122,7 @@ impl Show {
 }
 
 impl Element<()> for Show {
-    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
+    fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         match event.to_action(|e| {
             e.to_cancel()
                 .or_else(|| e.to_continue())
@@ -171,7 +171,7 @@ impl Confirm {
 }
 
 impl Element<()> for Confirm {
-    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
+    fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         match event.to_action(|e| e.to_yes().or_else(|| e.to_no()).or_else(|| e.to_cancel())) {
             Some(Action::Yes) => Ok(Resp::end(Some(self.action.clone().into()))),
             Some(Action::No | Action::Cancel) => Ok(Resp::end(None)),
@@ -347,11 +347,6 @@ impl FileBrowser {
         this
     }
 
-    pub fn requested_height(&self) -> usize {
-        !0
-        // self.options.requested_height() * 2 + 3
-    }
-
     fn set_string(&mut self, s: &str) {
         self.buffer.reset();
         self.buffer.enter(self.cursor_id, s.chars());
@@ -419,7 +414,8 @@ impl FileBrowser {
                     }
                 })
             }
-            Err(err) => self.options.set_options(
+            // TODO: Don't assume error is due to non-existent directory!
+            Err(_) => self.options.set_options(
                 if filter != "" {
                     vec![FileOption {
                         path: [dir, &file_name].into_iter().collect(),
@@ -508,7 +504,7 @@ enum FileKind {
 #[derive(Clone)]
 pub struct FileOption {
     pub path: PathBuf,
-    pub kind: FileKind,
+    kind: FileKind,
     pub is_link: bool,
 }
 
