@@ -382,7 +382,7 @@ impl Highlighter {
             // Keywords
             .with(
                 TokenKind::Keyword,
-                r"\b[(ADD)(ARG)(CMD)(COPY)(ENTRYPOINT)(ENV)(EXPOSE)(FROM)(AS)(HEALTHCHECK)(LABEL)(MAINTAINER)(ONBUILD)(RUN)(SHELL)(STOPSIGNAL)(USER)(VOLUME)(WORKDIR)]\b",
+                r"\b[(ADD)(ARG)(CMD)(COPY)(ENTRYPOINT)(ENV)(EXPOSE)(FROM)(AS)(HEALTHCHECK)(LABEL)(MAINTAINER)(ONBUILD)(RUN)(SHELL)(STOPSIGNAL)(USER)(VOLUME)(WORKDIR)(INCLUDE_ARGS)(INCLUDE_ENVS)(INCLUDE_LABELS)(INCLUDE)]\b",
             )
             .shell()
     }

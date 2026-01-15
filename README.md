@@ -32,6 +32,7 @@
 - Ctrl + Del should delete word
 - Ctrl + Backspace should backspace word
 - Add line deletion
+- Moving a file should rename it, not delete/recreate it
 
 # Keybindings
 
