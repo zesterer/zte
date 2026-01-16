@@ -102,7 +102,7 @@ impl Element<()> for Prompt {
 }
 
 impl Visual for Prompt {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         frame.with(|f| {
             self.input
                 .render(state, None, &self.buffer, self.cursor_id, None, f)
@@ -138,7 +138,7 @@ impl Element<()> for Show {
 }
 
 impl Visual for Show {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let mut frame = frame.with_border(
             if frame.has_focus() {
                 &state.theme.focus_border
@@ -182,7 +182,7 @@ impl Element<()> for Confirm {
 }
 
 impl Visual for Confirm {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let mut frame = frame.with_border(
             if frame.has_focus() {
                 &state.theme.focus_border
@@ -275,7 +275,7 @@ impl Element<()> for Switcher {
 }
 
 impl Visual for Switcher {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         frame
             .rect([0, 0], [frame.size()[0], frame.size()[1].saturating_sub(3)])
             .with(|f| self.options.render(state, f));
@@ -289,7 +289,7 @@ impl Visual for Switcher {
 }
 
 impl Visual for BufferId {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let Some(buffer) = state.buffers.get(*self) else {
             return;
         };
@@ -509,7 +509,7 @@ pub struct FileOption {
 }
 
 impl Visual for FileOption {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let name = match self.path.file_name().and_then(|n| n.to_str()) {
             Some(name) if matches!(self.kind, FileKind::Dir) => format!("{name}/"),
             Some(name) => format!("{name}"),
@@ -536,7 +536,7 @@ impl Visual for FileOption {
 }
 
 impl Visual for FileBrowser {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         self.preview = self.options.selected().and_then(|f| {
             self.preview
                 .take()

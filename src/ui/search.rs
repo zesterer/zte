@@ -234,7 +234,7 @@ struct SearchResult {
 }
 
 impl Visual for SearchResult {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let name = match self.loc.path.file_name().and_then(|n| n.to_str()) {
             Some(name) => format!("{name}"),
             None => format!("Unknown"),
@@ -266,7 +266,7 @@ impl Visual for SearchResult {
 }
 
 impl Visual for Searcher {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let path_input_sz = 3;
         let remaining_sz = frame.size()[1].saturating_sub(path_input_sz);
         let (preview_sz, options_sz) = if remaining_sz > 12 {

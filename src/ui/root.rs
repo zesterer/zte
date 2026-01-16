@@ -161,7 +161,7 @@ impl Element<()> for Root {
 }
 
 impl Visual for Root {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         frame.fill(' ');
 
         let task_has_focus = !self.tasks.is_empty();

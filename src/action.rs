@@ -147,7 +147,7 @@ impl Event {
 const ALT_SHIFT: KeyModifiers = KeyModifiers::ALT.union(KeyModifiers::SHIFT);
 
 #[derive(Debug)]
-pub struct RawEvent(TerminalEvent);
+pub struct RawEvent(pub TerminalEvent);
 
 impl RawEvent {
     pub fn to_char(&self) -> Option<char> {

@@ -20,7 +20,7 @@ use super::*;
 
 use crate::{
     Action, Dir, Event, State,
-    terminal::{Color, Rect},
+    terminal::{Color, CursorStyle, Rect},
 };
 
 pub enum CannotEnd {}
@@ -79,7 +79,7 @@ pub trait Element<CanEnd = CannotEnd> {
 }
 
 pub trait Visual {
-    fn render(&mut self, state: &State, frame: &mut Rect);
+    fn render(&mut self, state: &mut State, frame: &mut Rect);
 }
 
 pub struct Label(String);
@@ -98,7 +98,7 @@ impl Label {
 }
 
 impl Visual for Label {
-    fn render(&mut self, _state: &State, frame: &mut Rect) {
+    fn render(&mut self, _state: &mut State, frame: &mut Rect) {
         frame.with(|frame| {
             for (idx, line) in self.lines().enumerate() {
                 frame.text([0, idx as isize], &line);
@@ -236,7 +236,7 @@ impl<T> Element<T> for Options<T> {
 }
 
 impl<T: Visual> Visual for Options<T> {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let mut frame = frame.with_border(
             if frame.has_focus() {
                 &state.theme.focus_border

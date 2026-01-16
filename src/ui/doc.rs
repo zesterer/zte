@@ -239,7 +239,7 @@ impl Element for Doc {
 }
 
 impl Visual for Doc {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let Some(buffer) = state.buffers.get(self.buffer) else {
             return;
         };
@@ -422,7 +422,7 @@ impl Finder {
 }
 
 impl Visual for Finder {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let title = if self.results.is_empty() {
             format!("No results found")
         } else {

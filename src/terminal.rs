@@ -2,7 +2,7 @@ use crate::{Error, theme};
 
 pub use crossterm::{
     cursor::SetCursorStyle as CursorStyle,
-    event::Event as TerminalEvent,
+    event::{Event as TerminalEvent, EventStream},
     style::{Attribute, Attributes, Color},
 };
 
@@ -13,7 +13,6 @@ use std::{
     borrow::Borrow,
     io::{self, StdoutLock, Write as _},
     panic,
-    time::Duration,
 };
 
 #[derive(Copy, Clone, PartialEq)]
@@ -505,17 +504,7 @@ impl<'a> Terminal<'a> {
         self.fb.swap(0, 1);
     }
 
-    // Get the next pending event, if one is available.
-    pub fn get_event(&mut self) -> Option<TerminalEvent> {
-        if event::poll(Duration::ZERO).ok()? {
-            event::read().ok()
-        } else {
-            None
-        }
-    }
-
-    // Wait for the given duration or until an event arrives.
-    pub fn wait_at_least(&mut self, dur: Duration) {
-        event::poll(dur).unwrap();
+    pub fn event_stream(&mut self) -> EventStream {
+        EventStream::new()
     }
 }

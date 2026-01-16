@@ -17,14 +17,31 @@ pub struct Pane {
     task: Option<PaneTask>,
 }
 
+impl Pane {
+    fn should_close(&mut self) -> bool {
+        match &self.kind {
+            PaneKind::Empty | PaneKind::Doc(_) => false,
+            PaneKind::Term(term) => term.should_close(),
+        }
+    }
+}
+
 impl Element for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
         match event.to_action(|e| e.to_new_term(None)) {
             Some(Action::NewTerm(path)) => {
                 // TODO: Close other kinds
-                self.kind = PaneKind::Term(Term::new(path));
-                Ok(Resp::handled(None))
-            },
+                match Term::new(path, state) {
+                    Ok(term) => {
+                        self.kind = PaneKind::Term(term);
+                        Ok(Resp::handled(None))
+                    }
+                    Err(err) => Ok(Resp::handled(Some(
+                        Action::Show(Some(format!("Failed to spawn terminal")), format!("{err}"))
+                            .into(),
+                    ))),
+                }
+            }
             Some(Action::OpenOpener(path)) => {
                 self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
                     path,
@@ -85,7 +102,7 @@ impl Element for Pane {
 }
 
 impl Visual for Pane {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let remaining_space = match &mut self.task {
             Some(PaneTask::FileBrowser(browser)) => {
                 browser.render(state, frame);
@@ -207,12 +224,26 @@ impl Element<()> for HBox {
 }
 
 impl Visual for HBox {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let n = self.panes.len();
         let frame_w = frame.size()[0];
         let boundary = |i| frame_w * i / n;
 
         self.last_area = frame.area();
+
+        // Close panes that request to be closed
+        for (i, pane) in self.panes.iter_mut().enumerate() {
+            if pane.should_close() {
+                match self.panes.remove(i).kind {
+                    PaneKind::Empty => {}
+                    PaneKind::Doc(doc) => doc.close(state),
+                    PaneKind::Term(term) => term.close(state),
+                }
+                self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
+                state.wakeup.notify_one();
+                break;
+            }
+        }
 
         for (i, pane) in self.panes.iter_mut().enumerate() {
             let (x0, x1) = (boundary(i), boundary(i + 1));
@@ -391,7 +422,7 @@ impl Element for Panes {
 }
 
 impl Visual for Panes {
-    fn render(&mut self, state: &State, frame: &mut Rect) {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let n = self.hboxes.len();
         if n == 0 {
             return;
@@ -400,6 +431,17 @@ impl Visual for Panes {
         let total_weight = self.hboxes.iter().map(|h| h.size_weight).sum::<f32>();
 
         self.last_area = frame.area();
+
+        // Remove any empty hboxes
+        for (i, hbox) in self.hboxes.iter_mut().enumerate() {
+            if hbox.panes.is_empty() {
+                self.hboxes.remove(i);
+                self.selected = self.selected.min(self.hboxes.len().saturating_sub(1));
+                self.rescale();
+                state.wakeup.notify_one();
+                break;
+            }
+        }
 
         let mut y0 = 0;
         for (i, hbox) in self.hboxes.iter_mut().enumerate() {

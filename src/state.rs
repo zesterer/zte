@@ -12,6 +12,7 @@ use std::{
     io,
     ops::Range,
     path::{Path, PathBuf},
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -1138,10 +1139,11 @@ pub struct State {
     pub theme: theme::Theme,
     pub most_recent_counter: usize,
     pub clipboard: Clipboard,
+    pub wakeup: Arc<tokio::sync::Notify>,
 }
 
 impl State {
-    pub fn new(_args: &Args) -> Self {
+    pub fn new(_args: &Args, wakeup: Arc<tokio::sync::Notify>) -> Self {
         Self {
             buffers: HopSlotMap::default(),
             tick: 0,
@@ -1154,6 +1156,7 @@ impl State {
                 }
                 Clipboard::Local(String::new())
             },
+            wakeup,
         }
     }
 }
