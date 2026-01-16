@@ -9,22 +9,22 @@
 - [x] Basic cursor movement
 - [x] Multiple panes
 - [x] Pane creation/deletion
-- [x] Opener
+- [x] Open
 - [x] Save
 - [x] Save as
+- [x] Move
 - [x] Find
 - [x] Search in buffer switcher
-- [x] File saving
 - [x] Syntax highlighting
 - [x] Project search (including file path search)
 - [x] Auto-indent (and related features)
 - [x] Undo/redo
 - [x] Ability to resize panes
+- [x] Terminal buffers
 
 ## Todo
 
 - [ ] Replace
-- [ ] Terminal buffers
 - [ ] Tabbed sessions
 
 ## Issues to fix
@@ -48,6 +48,8 @@ Ctrl + Shift + s = Save buffer as
 Ctrl + m = Move buffer
 Ctrl + b = Switch to buffer
 Ctrl + q = Close buffer
+
+Ctrl + t = New terminal pane (WIP)
 ```
 
 ## Search and command prompt
