@@ -89,30 +89,20 @@ impl Term {
 
 impl Element for Term {
     fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp, Event> {
-        use crate::action::RawEvent;
-        use crossterm::event::{KeyCode, KeyEvent};
-
-        match event.to_action(|e| e.to_char().map(Action::Char).or_else(|| e.to_move())) {
-            Some(Action::Char(c)) => {
-                self.send_bytes(c.encode_utf8(&mut [0; 4]));
-                Ok(Resp::handled(None))
-            }
-            _ => match event {
-                Event::Raw(RawEvent(TerminalEvent::Key(KeyEvent { code, .. }))) => {
-                    match code {
-                        KeyCode::Left => self.send_bytes("\x1B[D"),
-                        KeyCode::Right => self.send_bytes("\x1B[C"),
-                        KeyCode::Up => self.send_bytes("\x1B[A"),
-                        KeyCode::Down => self.send_bytes("\x1B[B"),
-                        KeyCode::Home => self.send_bytes("\x1B[H"),
-                        KeyCode::End => self.send_bytes("\x1B[F"),
-                        KeyCode::BackTab => self.send_bytes("\x1B[Z"),
-                        _ => {}
-                    }
+        match event {
+            Event::Raw(ref ev) => {
+                if let Some(s) = ev.to_esc_seq() {
+                    self.send_bytes(s);
+                    Ok(Resp::handled(None))
+                } else {
+                    // Ok(Resp::handled(Some(Action::Show(
+                    //     Some(format!("Failed to handle event")),
+                    //     format!("{ev:?}"),
+                    // ).into())))
                     Err(event)
                 }
-                event => Err(event),
-            },
+            }
+            event => Err(event),
         }
     }
 }
@@ -176,5 +166,123 @@ impl Visual for Term {
                         );
                 }
             });
+    }
+}
+
+use crate::action::RawEvent;
+impl RawEvent {
+    fn to_esc_seq(&self) -> Option<String> {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+        match &self.0 {
+            TerminalEvent::Key(KeyEvent {
+                code,
+                modifiers,
+                kind,
+                state,
+            }) => {
+                // Base on `https://www.leonerd.org.uk/hacks/fixterms/`
+
+                match kind {
+                    KeyEventKind::Press => {}
+                    _ => return None,
+                }
+
+                if state.contains(KeyEventState::KEYPAD) {
+                    return None;
+                }
+                if state.contains(KeyEventState::CAPS_LOCK) {
+                    return None;
+                }
+                if state.contains(KeyEventState::NUM_LOCK) {
+                    return None;
+                }
+
+                enum Class {
+                    Unicode(char),
+                    ModifiedC0(&'static str),
+                    Special(u8),
+                    ReallySpecial(char),
+                }
+
+                let class = match code {
+                    KeyCode::Enter => Class::Unicode('\r'),
+                    KeyCode::Tab => Class::Unicode('\t'),
+                    KeyCode::BackTab => Class::ModifiedC0("\x1B[Z"),
+                    KeyCode::Backspace => Class::Unicode('\x7F'),
+                    KeyCode::Left => Class::ReallySpecial('D'),
+                    KeyCode::Right => Class::ReallySpecial('C'),
+                    KeyCode::Up => Class::ReallySpecial('A'),
+                    KeyCode::Down => Class::ReallySpecial('B'),
+                    KeyCode::Home => Class::ReallySpecial('H'),
+                    KeyCode::End => Class::ReallySpecial('F'),
+                    KeyCode::F(1) => Class::ReallySpecial('P'),
+                    KeyCode::F(2) => Class::ReallySpecial('Q'),
+                    KeyCode::F(3) => Class::ReallySpecial('R'),
+                    KeyCode::F(4) => Class::ReallySpecial('S'),
+                    KeyCode::Insert => Class::Special(2),
+                    KeyCode::Delete => Class::Special(3),
+                    KeyCode::PageUp => Class::Special(5),
+                    KeyCode::PageDown => Class::Special(6),
+                    KeyCode::F(5) => Class::Special(15),
+                    KeyCode::F(6) => Class::Special(17),
+                    KeyCode::F(7) => Class::Special(18),
+                    KeyCode::F(8) => Class::Special(19),
+                    KeyCode::F(9) => Class::Special(20),
+                    KeyCode::F(10) => Class::Special(21),
+                    KeyCode::F(11) => Class::Special(23),
+                    KeyCode::F(12) => Class::Special(24),
+                    KeyCode::F(_) => return None, // Should be unreachable
+                    // KeyCode::Esc => Class::Unicode('\x1B'),
+                    KeyCode::Char(c) => Class::Unicode(*c),
+                    // Not handled
+                    KeyCode::Null
+                    | KeyCode::Esc
+                    | KeyCode::CapsLock
+                    | KeyCode::ScrollLock
+                    | KeyCode::NumLock
+                    | KeyCode::PrintScreen
+                    | KeyCode::Pause
+                    | KeyCode::Menu
+                    | KeyCode::KeypadBegin
+                    | KeyCode::Media(_)
+                    | KeyCode::Modifier(_) => return None,
+                    // _ => return None,
+                };
+
+                let mut modifiers = *modifiers;
+
+                // Shift is removed for unicode
+                if matches!(&class, Class::Unicode(_)) {
+                    modifiers.remove(KeyModifiers::SHIFT);
+                }
+
+                let modifiers = 1
+                    + (0 | (modifiers.contains(KeyModifiers::SHIFT) as u32) << 0
+                        | (modifiers.contains(KeyModifiers::ALT) as u32) << 1
+                        | (modifiers.contains(KeyModifiers::CONTROL) as u32) << 2);
+
+                Some(match class {
+                    Class::Unicode(c) if modifiers == 1 => format!("{c}"),
+                    // Special cases
+                    Class::Unicode(c @ ('i' | 'm' | '[' | '@')) if modifiers == 5 => {
+                        format!("\x1B[{};{modifiers}{c}~", c as u8)
+                    }
+                    Class::Unicode(c @ 'a'..='z') if modifiers == 5 => {
+                        format!("{}", (c as u8 & 0x1F) as char)
+                    }
+                    Class::Unicode(c) => format!("\x1B[{};{modifiers}{c}", c as u8),
+
+                    Class::ModifiedC0(s) => format!("{s}"),
+
+                    Class::Special(c) if modifiers == 1 => format!("\x1B[{c}~"),
+                    Class::Special(c) => format!("\x1B[;{modifiers}{c}~"),
+
+                    Class::ReallySpecial(c) if modifiers == 1 => format!("\x1B[{c}"),
+                    Class::ReallySpecial(c) => format!("\x1B[1;{modifiers}{c}"),
+                })
+            }
+            _ => None,
+        }
     }
 }
