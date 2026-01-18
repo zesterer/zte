@@ -135,14 +135,14 @@ impl Visual for Pane {
     }
 }
 
-pub struct HBox {
+pub struct VBox {
     selected: usize,
     panes: Vec<Pane>,
     last_area: Area,
     size_weight: f32,
 }
 
-impl Element<()> for HBox {
+impl Element<()> for VBox {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         match event.to_action(|e| {
             e.to_pane_move()
@@ -150,11 +150,11 @@ impl Element<()> for HBox {
                 .or_else(|| e.to_pane_open().map(Action::PaneOpen))
                 .or_else(|| e.to_pane_close())
         }) {
-            Some(Action::PaneMove(Dir::Left)) => {
+            Some(Action::PaneMove(Dir::Up)) => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::PaneMove(Dir::Right)) => {
+            Some(Action::PaneMove(Dir::Down)) => {
                 self.selected = (self.selected + 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
@@ -177,9 +177,9 @@ impl Element<()> for HBox {
             }
             Some(Action::PaneOpen(dir)) => {
                 let new_idx = match dir {
-                    Dir::Left => self.selected.clamp(0, self.panes.len()),
-                    Dir::Right => (self.selected + 1).min(self.panes.len()),
-                    Dir::Up | Dir::Down => return Err(event),
+                    Dir::Up => self.selected.clamp(0, self.panes.len()),
+                    Dir::Down => (self.selected + 1).min(self.panes.len()),
+                    Dir::Left | Dir::Right => return Err(event),
                 };
                 let kind = match state.buffers.keys().next() {
                     Some(b) => PaneKind::Doc(Doc::new(state, b)),
@@ -223,11 +223,11 @@ impl Element<()> for HBox {
     }
 }
 
-impl Visual for HBox {
+impl Visual for VBox {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let n = self.panes.len();
-        let frame_w = frame.size()[0];
-        let boundary = |i| frame_w * i / n;
+        let frame_sz = frame.size()[1];
+        let boundary = |i| frame_sz * i / n;
 
         self.last_area = frame.area();
 
@@ -246,11 +246,11 @@ impl Visual for HBox {
         }
 
         for (i, pane) in self.panes.iter_mut().enumerate() {
-            let (x0, x1) = (boundary(i), boundary(i + 1));
+            let (y0, y1) = (boundary(i), boundary(i + 1));
 
             // Draw pane contents
             frame
-                .rect([x0, 0], [x1 - x0, frame.size()[0]])
+                .rect([0, y0], [frame.size()[0], y1 - y0])
                 .with_focus(self.selected == i)
                 .with(|frame| {
                     pane.last_area = frame.area();
@@ -262,7 +262,7 @@ impl Visual for HBox {
 
 pub struct Panes {
     selected: usize,
-    hboxes: Vec<HBox>,
+    vboxes: Vec<VBox>,
     last_area: Area,
 }
 
@@ -270,7 +270,7 @@ impl Panes {
     pub fn new(state: &mut State, args: &Args) -> Self {
         Self {
             selected: 0,
-            hboxes: args
+            vboxes: args
                 .paths
                 .iter()
                 .map(Some)
@@ -295,7 +295,7 @@ impl Panes {
                     } else {
                         (state.new_anonymous(), None)
                     };
-                    Some(HBox {
+                    Some(VBox {
                         selected: 0,
                         panes: vec![Pane {
                             kind: PaneKind::Doc(Doc::new(state, buffer_id)),
@@ -312,9 +312,9 @@ impl Panes {
     }
 
     fn rescale(&mut self) {
-        let total_weight = self.hboxes.iter().map(|h| h.size_weight).sum::<f32>();
+        let total_weight = self.vboxes.iter().map(|h| h.size_weight).sum::<f32>();
         let sz = self.last_area.size()[1] as f32;
-        self.hboxes
+        self.vboxes
             .iter_mut()
             .for_each(|h| h.size_weight = (h.size_weight / total_weight).max(3.0 / sz).min(10.0));
     }
@@ -329,28 +329,28 @@ impl Element for Panes {
                 .or_else(|| e.to_pane_close())
                 .or_else(|| e.to_pane_resize())
         }) {
-            Some(Action::PaneMove(Dir::Up)) => {
-                self.selected = (self.selected + self.hboxes.len() - 1) % self.hboxes.len();
+            Some(Action::PaneMove(Dir::Left)) => {
+                self.selected = (self.selected + self.vboxes.len() - 1) % self.vboxes.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::PaneMove(Dir::Down)) => {
-                self.selected = (self.selected + 1) % self.hboxes.len();
+            Some(Action::PaneMove(Dir::Right)) => {
+                self.selected = (self.selected + 1) % self.vboxes.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::PaneOpen(dir @ (Dir::Up | Dir::Down))) => {
+            Some(Action::PaneOpen(dir @ (Dir::Left | Dir::Right))) => {
                 let new_idx = match dir {
-                    Dir::Up => self.selected.clamp(0, self.hboxes.len()),
-                    Dir::Down => (self.selected + 1).min(self.hboxes.len()),
+                    Dir::Left => self.selected.clamp(0, self.vboxes.len()),
+                    Dir::Right => (self.selected + 1).min(self.vboxes.len()),
                     _ => unreachable!(),
                 };
                 let kind = match state.buffers.keys().next() {
                     Some(b) => PaneKind::Doc(Doc::new(state, b)),
                     None => PaneKind::Empty,
                 };
-                let size_weight = 1.0 / self.hboxes.len().max(1) as f32;
-                self.hboxes.insert(
+                let size_weight = 1.0 / self.vboxes.len().max(1) as f32;
+                self.vboxes.insert(
                     new_idx,
-                    HBox {
+                    VBox {
                         selected: 0,
                         panes: vec![Pane {
                             kind,
@@ -365,21 +365,21 @@ impl Element for Panes {
                 Ok(Resp::handled(None))
             }
             Some(Action::PaneResize(by)) => {
-                if let Some(hbox) = self.hboxes.get_mut(self.selected) {
-                    hbox.size_weight *= 1.2f32.powi(by);
+                if let Some(vbox) = self.vboxes.get_mut(self.selected) {
+                    vbox.size_weight *= 1.2f32.powi(by);
                 }
                 Ok(Resp::handled(None))
             }
             Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
-                for (i, hbox) in self.hboxes.iter_mut().enumerate() {
-                    if hbox.last_area.contains(pos).is_some() {
+                for (i, vbox) in self.vboxes.iter_mut().enumerate() {
+                    if vbox.last_area.contains(pos).is_some() {
                         if matches!(m_action, MouseAction::Click) {
                             self.selected = i;
                         }
-                        let resp = hbox.handle(state, action.clone().into())?;
+                        let resp = vbox.handle(state, action.clone().into())?;
                         if resp.is_end() {
-                            self.hboxes.remove(self.selected);
-                            self.selected = self.selected.min(self.hboxes.len()).saturating_sub(1);
+                            self.vboxes.remove(self.selected);
+                            self.selected = self.selected.min(self.vboxes.len()).saturating_sub(1);
                         }
                         return Ok(Resp::handled(resp.event));
                     }
@@ -389,10 +389,10 @@ impl Element for Panes {
             // Pass anything else through to the active pane
             action => {
                 let mut to_handle = self.selected;
-                // Set selected hbox on mouse click
+                // Set selected vbox on mouse click
                 if let Some(Action::Mouse(ref m_action, pos, _is_ctrl, _drag_id)) = action {
-                    for (i, hbox) in self.hboxes.iter_mut().enumerate() {
-                        if hbox.last_area.contains(pos).is_some() {
+                    for (i, vbox) in self.vboxes.iter_mut().enumerate() {
+                        if vbox.last_area.contains(pos).is_some() {
                             if matches!(m_action, MouseAction::Click) {
                                 self.selected = i;
                             }
@@ -402,12 +402,12 @@ impl Element for Panes {
                     }
                 }
 
-                if let Some(hbox) = self.hboxes.get_mut(to_handle) {
-                    // Pass to hbox
-                    let resp = hbox.handle(state, event)?;
+                if let Some(vbox) = self.vboxes.get_mut(to_handle) {
+                    // Pass to vbox
+                    let resp = vbox.handle(state, event)?;
                     if resp.is_end() {
-                        self.hboxes.remove(self.selected);
-                        self.selected = self.selected.min(self.hboxes.len().saturating_sub(1));
+                        self.vboxes.remove(self.selected);
+                        self.selected = self.selected.min(self.vboxes.len().saturating_sub(1));
                     }
                     Ok(Resp::handled(resp.event))
                 } else {
@@ -423,32 +423,32 @@ impl Element for Panes {
 
 impl Visual for Panes {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let n = self.hboxes.len();
+        let n = self.vboxes.len();
         if n == 0 {
             return;
         }
 
-        let total_weight = self.hboxes.iter().map(|h| h.size_weight).sum::<f32>();
+        let total_weight = self.vboxes.iter().map(|h| h.size_weight).sum::<f32>();
 
         self.last_area = frame.area();
 
-        // Remove any empty hboxes
-        for (i, hbox) in self.hboxes.iter_mut().enumerate() {
-            if hbox.panes.is_empty() {
-                self.hboxes.remove(i);
-                self.selected = self.selected.min(self.hboxes.len().saturating_sub(1));
+        // Remove any empty vboxes
+        for (i, vbox) in self.vboxes.iter_mut().enumerate() {
+            if vbox.panes.is_empty() {
+                self.vboxes.remove(i);
+                self.selected = self.selected.min(self.vboxes.len().saturating_sub(1));
                 self.rescale();
                 state.wakeup.notify_one();
                 break;
             }
         }
 
-        let mut y0 = 0;
-        for (i, hbox) in self.hboxes.iter_mut().enumerate() {
-            let y1 = if i == n - 1 {
-                frame.size()[1]
+        let mut x0 = 0;
+        for (i, vbox) in self.vboxes.iter_mut().enumerate() {
+            let x1 = if i == n - 1 {
+                frame.size()[0]
             } else {
-                y0 + ((hbox.size_weight * frame.size()[1] as f32 / total_weight)
+                x0 + ((vbox.size_weight * frame.size()[0] as f32 / total_weight)
                     .round()
                     .max(1.0) as usize)
                     .min(/*frame.size()[1] - (n - 1) * 3*/ !0)
@@ -456,11 +456,11 @@ impl Visual for Panes {
 
             // Draw pane contents
             frame
-                .rect([0, y0], [frame.size()[0], y1.saturating_sub(y0)])
+                .rect([x0, 0], [x1.saturating_sub(x0), frame.size()[1]])
                 .with_focus(self.selected == i)
-                .with(|frame| hbox.render(state, frame));
+                .with(|frame| vbox.render(state, frame));
 
-            y0 = y1;
+            x0 = x1;
         }
     }
 }

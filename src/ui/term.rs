@@ -22,7 +22,7 @@ pub struct Term {
     ansi: ansi::Processor,
     in_tx: Sender<Input>,
     out_rx: Receiver<Vec<u8>>,
-    cmd: task::JoinHandle<Option<()>>,
+    cmd: task::JoinHandle<()>,
 }
 
 impl Term {
@@ -44,7 +44,7 @@ impl Term {
 
         let cmd = task::spawn(async move {
             let (mut pty_read, mut pty_write) = pty.into_split();
-            loop {
+            (async || loop {
                 let mut bytes = [0; 1024];
                 tokio::select! {
                     n = pty_read.read(&mut bytes) => {
@@ -57,7 +57,9 @@ impl Term {
                         None => break Some(()),
                     },
                 }
-            }
+            })().await;
+            // If the command exits, wake up to update the UI
+            wakeup.notify_one();
         });
 
         Ok(Self {
