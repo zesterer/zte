@@ -1,14 +1,17 @@
 use super::*;
 use alacritty_terminal::{
     Term as Alacritty,
-    event::VoidListener,
+    event::{Event as TermEvent, EventListener},
     grid::{Dimensions as _, Scroll},
-    term::{Config as AlacrittyConfig, test::TermSize},
+    term::{ClipboardType, Config as AlacrittyConfig, TermMode, test::TermSize},
     vte::ansi,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        Notify,
+        mpsc::{self, Receiver, Sender},
+    },
     task,
 };
 
@@ -17,12 +20,27 @@ enum Input {
     Bytes(Vec<u8>),
 }
 
+enum Output {
+    Bytes(Vec<u8>),
+    Event(TermEvent),
+}
+
+struct Listener(Sender<Output>, Arc<Notify>);
+
+impl EventListener for Listener {
+    fn send_event(&self, event: TermEvent) {
+        let _ = self.0.try_send(Output::Event(event));
+        self.1.notify_one();
+    }
+}
+
 pub struct Term {
-    term: Alacritty<VoidListener>,
+    term: Alacritty<Listener>,
     old_term_size: Option<[usize; 2]>,
+    title: Option<String>,
     ansi: ansi::Processor,
     in_tx: Sender<Input>,
-    out_rx: Receiver<Vec<u8>>,
+    out_rx: Receiver<Output>,
     cmd: task::JoinHandle<()>,
     scroller: Scroller,
 }
@@ -44,32 +62,37 @@ impl Term {
         };
         cmd.spawn(pts).map_err(Error::ShellProcessFailed)?;
 
-        let cmd = task::spawn(async move {
-            let (mut pty_read, mut pty_write) = pty.into_split();
-            (async || loop {
-                let mut bytes = [0; 1024];
-                tokio::select! {
-                    n = pty_read.read(&mut bytes) => {
-                        out_tx.send(bytes[..n.ok()?].to_vec()).await.ok()?;
-                        wakeup.notify_one();
-                    },
-                    input = in_rx.recv() => match input {
-                        Some(Input::Resize(sz)) => pty_write.resize(pty_process::Size::new(sz[1] as u16, sz[0] as u16)).ok()?,
-                        Some(Input::Bytes(mut bytes)) => pty_write.write_all(&mut bytes).await.ok()?,
-                        None => break Some(()),
-                    },
-                }
-            })().await;
-            // If the command exits, wake up to update the UI
-            wakeup.notify_one();
+        let cmd = task::spawn({
+            let wakeup = wakeup.clone();
+            let out_tx = out_tx.clone();
+            async move {
+                let (mut pty_read, mut pty_write) = pty.into_split();
+                (async || loop {
+                    let mut bytes = [0; 1024];
+                    tokio::select! {
+                        n = pty_read.read(&mut bytes) => {
+                            out_tx.send(Output::Bytes(bytes[..n.ok()?].to_vec())).await.ok()?;
+                            wakeup.notify_one();
+                        },
+                        input = in_rx.recv() => match input {
+                            Some(Input::Resize(sz)) => pty_write.resize(pty_process::Size::new(sz[1] as u16, sz[0] as u16)).ok()?,
+                            Some(Input::Bytes(mut bytes)) => pty_write.write_all(&mut bytes).await.ok()?,
+                            None => break Some(()),
+                        },
+                    }
+                })().await;
+                // If the command exits, wake up to update the UI
+                wakeup.notify_one();
+            }
         });
 
         Ok(Self {
             term: Alacritty::new(
                 AlacrittyConfig::default(),
                 &TermSize::new(40, 15),
-                VoidListener,
+                Listener(out_tx.clone(), wakeup.clone()),
             ),
+            title: None,
             old_term_size: None,
             ansi: Default::default(),
             in_tx,
@@ -93,7 +116,33 @@ impl Term {
 }
 
 impl Element for Term {
-    fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp, Event> {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        if let Event::Tick = event {
+            while let Ok(out) = self.out_rx.try_recv() {
+                match out {
+                    Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
+                    // Title changes
+                    Output::Event(TermEvent::Title(title)) => self.title = Some(title),
+                    Output::Event(TermEvent::ResetTitle) => self.title = None,
+                    // Proxy clipboard events to our internal clipboard
+                    Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
+                        _ = state.clipboard.set(s)
+                    }
+                    Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
+                        if let Ok(s) = state.clipboard.get() {
+                            let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
+                        }
+                    }
+                    // Pass bell events on to host
+                    Output::Event(TermEvent::Bell) => {
+                        return Ok(Resp::handled(Some(Action::Bell.into())));
+                    }
+                    Output::Event(_) => {}
+                }
+            }
+        }
+
+        // First, handle scroller events
         let old_focus = [
             0,
             self.term.total_lines() as isize
@@ -113,9 +162,38 @@ impl Element for Term {
             Err(event) => event,
         };
 
-        match event {
-            Event::Raw(ref ev) => {
-                if let Some(s) = ev.to_esc_seq() {
+        match event.to_action(|e| e.to_move().or_else(|| e.to_edit())) {
+            Some(Action::Move(dir, dist @ (Dist::Doc | Dist::Page), false, false))
+                if !self.term.mode().contains(TermMode::ALT_SCREEN) =>
+            {
+                let dir = match dir {
+                    Dir::Up => 1,
+                    Dir::Down => -1,
+                    _ => 0,
+                };
+                let dist = match dist {
+                    Dist::Doc => self.term.total_lines(),
+                    Dist::Page => self.term.screen_lines(),
+                    Dist::Char => 1,
+                };
+                self.term.scroll_display(Scroll::Delta(dir * dist as i32));
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Paste) => {
+                if let Ok(s) = state.clipboard.get() {
+                    let s = if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
+                        format!("\x1B[200~{s}\x1B[201~")
+                    } else {
+                        s
+                    };
+                    self.send_bytes(s);
+                }
+                Ok(Resp::handled(None))
+            }
+            _ => {
+                if let Event::Raw(ref ev) = event
+                    && let Some(s) = ev.to_esc_seq()
+                {
                     self.send_bytes(s);
                     Ok(Resp::handled(None))
                 } else {
@@ -126,18 +204,19 @@ impl Element for Term {
                     Err(event)
                 }
             }
-            _ => Err(event),
         }
     }
 }
 
 impl Visual for Term {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        while let Ok(bytes) = self.out_rx.try_recv() {
-            self.ansi.advance(&mut self.term, &bytes);
-        }
-
         let display_offset = self.term.grid().display_offset() as isize;
+
+        if frame.has_focus()
+            && let Some(title) = &self.title
+        {
+            frame.set_title(format!("{}: {title}", env!("CARGO_PKG_NAME")));
+        }
 
         frame
             .with_border(
@@ -146,7 +225,7 @@ impl Visual for Term {
                 } else {
                     &state.theme.border
                 },
-                None,
+                self.title.as_deref(),
             )
             .with(|frame| {
                 // Resize terminal if needed

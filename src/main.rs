@@ -54,31 +54,44 @@ fn main() -> Result<(), Error> {
             let mut interval = tokio::time::interval(Duration::from_millis(250));
 
             loop {
-                tokio::select! {
+                let event = tokio::select! {
                     ev = events.next() => {
                         if let Some(Ok(ev)) = ev {
                             needs_render = true; // TODO: Don't always rerender?
 
                             // Resize events are special and need handling by the terminal
-                            if let TerminalEvent::Resize(cols, rows) = ev {
-                                term.set_size([cols, rows]);
+                            if let TerminalEvent::Resize(cols, rows) = &ev {
+                                term.set_size([*cols, *rows]);
+                                Event::Tick // Actually a resize, but we don't consider resizing to be special
+                            } else if let TerminalEvent::Paste(s) = &ev {
+                                let _ = state.clipboard.set_no_dirty(s.clone());
+                                Event::Action(Action::Paste)
+                            } else {
+                                Event::from_raw(ev)
                             }
-
-                            // Have the UI handle events
-                            match ui.handle(&mut state, Event::from_raw(ev)) {
-                                Ok(r) if r.is_end() => return Ok(()),
-                                Ok(_) => {}
-                                Err(Event::Bell) => term.ring_bell(),
-                                // Unhandled event!
-                                Err(_) => {}
-                            }
+                        } else {
+                            // Ummm...?
+                            Event::Tick
                         }
                     },
-                    _ = notify.notified() => {},
-                    _ = interval.tick() => {},
+                    _ = notify.notified() => Event::Tick,
+                    _ = interval.tick() => Event::Tick,
+                };
+
+                // Have the UI handle the event
+                match ui.handle(&mut state, event) {
+                    Ok(r) if r.is_end() => return Ok(()),
+                    Ok(_) => {}
+                    Err(Event::Action(Action::Bell)) => term.ring_bell(),
+                    // Unhandled event!
+                    Err(_) => {}
                 }
 
                 state.tick(&mut needs_render);
+
+                if let Some(content) = state.clipboard.get_local_clear_dirty() {
+                    term.copy(content);
+                }
 
                 // Render the state to the screen
                 if needs_render {

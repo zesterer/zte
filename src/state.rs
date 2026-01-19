@@ -6,7 +6,7 @@ use crate::{
 };
 #[cfg(feature = "clipboard")]
 use clipboard::{ClipboardContext, ClipboardProvider};
-use slotmap::{HopSlotMap, new_key_type};
+use slotmap::{DenseSlotMap, new_key_type};
 use std::{
     collections::HashMap,
     io,
@@ -164,7 +164,7 @@ pub struct Buffer {
     diverged: bool,
     pub text: Text,
     pub lang: LangPack,
-    pub cursors: HopSlotMap<CursorId, Cursor>,
+    pub cursors: DenseSlotMap<CursorId, Cursor>,
     pub path: Option<PathBuf>,
     pub undo: Vec<Change>,
     pub redo: Vec<Change>,
@@ -216,7 +216,7 @@ impl Buffer {
             highlights_stale: false,
             lang,
             text,
-            cursors: HopSlotMap::default(),
+            cursors: DenseSlotMap::default(),
             path: Some(path),
             undo: Vec::new(),
             redo: Vec::new(),
@@ -263,9 +263,16 @@ impl Buffer {
 
     pub fn move_to(&mut self, path: PathBuf) -> Result<(), Error> {
         if let Some(old_path) = self.path.take() {
-            self.save_as(path)?;
-            std::fs::remove_file(&old_path)?;
-            Ok(())
+            // First, try renaming the old file
+            if std::fs::rename(&old_path, &path).is_ok() {
+                self.path = Some(path);
+                Ok(())
+            } else {
+                // If that didn't work, save it in the new location and remove the old one
+                self.save_as(path)?;
+                std::fs::remove_file(&old_path)?;
+                Ok(())
+            }
         } else {
             Err(Error::FileNotOnDisk)
         }
@@ -1112,29 +1119,58 @@ fn classify(c: char) -> Option<u8> {
 pub enum Clipboard {
     #[cfg(feature = "clipboard")]
     Global(ClipboardContext),
-    Local(String),
+    Local {
+        dirty: bool,
+        content: String,
+    },
 }
 
 impl Clipboard {
-    fn get(&mut self) -> Result<String, ()> {
-        match self {
-            #[cfg(feature = "clipboard")]
-            Self::Global(ctx) => ctx.get_contents().map_err(|_| ()),
-            Self::Local(contents) => Ok(contents.clone()),
+    /// Used at the end of an update to determine whether the clipboard contents need communicating to the host terminal.
+    pub(super) fn get_local_clear_dirty(&mut self) -> Option<&str> {
+        if let Self::Local { dirty, content } = self
+            && *dirty
+        {
+            *dirty = false;
+            Some(content.as_str())
+        } else {
+            None
         }
     }
 
-    fn set(&mut self, text: String) -> Result<(), ()> {
+    pub fn get(&mut self) -> Result<String, ()> {
+        match self {
+            #[cfg(feature = "clipboard")]
+            Self::Global(ctx) => ctx.get_contents().map_err(|_| ()),
+            Self::Local { content, .. } => Ok(content.clone()),
+        }
+    }
+
+    pub(super) fn set_no_dirty(&mut self, text: String) -> Result<(), ()> {
         match self {
             #[cfg(feature = "clipboard")]
             Self::Global(ctx) => ctx.set_contents(text).map_err(|_| ()),
-            Self::Local(contents) => Ok(*contents = text),
+            Self::Local { .. } => Ok(*self = Self::Local {
+                dirty: false,
+                content: text,
+            }),
+        }
+    }
+
+    pub fn set(&mut self, text: String) -> Result<(), ()> {
+        match self {
+            #[cfg(feature = "clipboard")]
+            Self::Global(ctx) => ctx.set_contents(text).map_err(|_| ()),
+            Self::Local { .. } => Ok(*self = Self::Local {
+                dirty: true,
+                content: text,
+            }),
         }
     }
 }
 
 pub struct State {
-    pub buffers: HopSlotMap<BufferId, Buffer>,
+    pub buffers: DenseSlotMap<BufferId, Buffer>,
     pub tick: u64,
     pub theme: theme::Theme,
     pub most_recent_counter: usize,
@@ -1145,7 +1181,7 @@ pub struct State {
 impl State {
     pub fn new(_args: &Args, wakeup: Arc<tokio::sync::Notify>) -> Self {
         Self {
-            buffers: HopSlotMap::default(),
+            buffers: DenseSlotMap::default(),
             tick: 0,
             theme: theme::Theme::default(),
             most_recent_counter: 0,
@@ -1154,7 +1190,10 @@ impl State {
                 if let Ok(ctx) = ClipboardContext::new() {
                     break 'clipboard Clipboard::Global(ctx);
                 }
-                Clipboard::Local(String::new())
+                Clipboard::Local {
+                    dirty: false,
+                    content: String::new(),
+                }
             },
             wakeup,
         }

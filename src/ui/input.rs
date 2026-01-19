@@ -193,7 +193,7 @@ impl Input {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
-                    Ok(Resp::handled(Some(Event::Bell)))
+                    Ok(Resp::handled(Some(Action::Bell.into())))
                 }
             }
             Some(Action::Redo) => {
@@ -201,7 +201,7 @@ impl Input {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
-                    Ok(Resp::handled(Some(Event::Bell)))
+                    Ok(Resp::handled(Some(Action::Bell.into())))
                 }
             }
             Some(Action::Copy) => {
@@ -209,7 +209,7 @@ impl Input {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
-                    Ok(Resp::handled(Some(Event::Bell)))
+                    Ok(Resp::handled(Some(Action::Bell.into())))
                 }
             }
             Some(Action::Cut) => {
@@ -217,7 +217,7 @@ impl Input {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
-                    Ok(Resp::handled(Some(Event::Bell)))
+                    Ok(Resp::handled(Some(Action::Bell.into())))
                 }
             }
             Some(Action::Paste) => {
@@ -225,7 +225,7 @@ impl Input {
                     self.refocus(buffer, cursor_id);
                     Ok(Resp::handled(None))
                 } else {
-                    Ok(Resp::handled(Some(Event::Bell)))
+                    Ok(Resp::handled(Some(Action::Bell.into())))
                 }
             }
             Some(Action::Duplicate) => {

@@ -1,6 +1,7 @@
 use crate::{Error, theme};
 
 pub use crossterm::{
+    clipboard as cb,
     cursor::SetCursorStyle as CursorStyle,
     event::{Event as TerminalEvent, EventStream},
     style::{Attribute, Attributes, Color},
@@ -329,6 +330,7 @@ pub struct Terminal<'a> {
     size: [u16; 2],
     fb: [Framebuffer; 2],
     bell: bool,
+    copy_to_clipboard: Option<String>,
 }
 
 impl<'a> Terminal<'a> {
@@ -337,6 +339,7 @@ impl<'a> Terminal<'a> {
         let _ = stdout.execute(terminal::EnterAlternateScreen);
         let _ = stdout.execute(terminal::DisableLineWrap);
         let _ = stdout.execute(event::EnableMouseCapture);
+        let _ = stdout.execute(event::EnableBracketedPaste);
     }
 
     fn leave(mut stdout: impl io::Write) {
@@ -345,6 +348,7 @@ impl<'a> Terminal<'a> {
         let _ = stdout.execute(terminal::EnableLineWrap);
         let _ = stdout.execute(cursor::Show);
         let _ = stdout.execute(event::DisableMouseCapture);
+        let _ = stdout.execute(event::DisableBracketedPaste);
     }
 
     pub fn with<T>(
@@ -359,6 +363,7 @@ impl<'a> Terminal<'a> {
             size: [size.columns, size.rows],
             fb: [Framebuffer::default(), Framebuffer::default()],
             bell: false,
+            copy_to_clipboard: None,
         };
 
         let hook = panic::take_hook();
@@ -381,6 +386,10 @@ impl<'a> Terminal<'a> {
         self.bell = true;
     }
 
+    pub fn copy(&mut self, s: &str) {
+        self.copy_to_clipboard = Some(s.to_string());
+    }
+
     pub fn update(&mut self, render: impl FnOnce(&mut Rect)) {
         // Reset framebuffer
         if self.fb[0].size != self.size {
@@ -399,6 +408,12 @@ impl<'a> Terminal<'a> {
                 if self.bell {
                     self.bell = false;
                     stdout.queue(style::Print('\x07')).unwrap();
+                }
+
+                if let Some(content) = self.copy_to_clipboard.take() {
+                    stdout
+                        .queue(cb::CopyToClipboard::to_clipboard_from(content))
+                        .unwrap();
                 }
 
                 if self.fb[0].title != self.fb[1].title {

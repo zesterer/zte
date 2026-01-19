@@ -158,18 +158,34 @@ impl Element<()> for VBox {
                 self.selected = (self.selected + 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::PaneClose) => {
+            Some(action @ (Action::PaneClose | Action::PaneCloseForce)) => {
                 if self.selected < self.panes.len() {
-                    match self.panes.remove(self.selected).kind {
-                        PaneKind::Empty => {}
-                        PaneKind::Doc(doc) => doc.close(state),
-                        PaneKind::Term(term) => term.close(state),
-                    }
-                    self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
-                    if self.panes.is_empty() {
-                        Ok(Resp::end(None))
+                    // If not forced, ask the user if they want to close terminal panes
+                    if matches!(action, Action::PaneClose)
+                        && matches!(
+                            &self.panes.get(self.selected).map(|p| &p.kind),
+                            Some(PaneKind::Term(_))
+                        )
+                    {
+                        Ok(Resp::handled(Some(
+                            Action::Confirm(
+                                format!("Are you sure you wish to close the terminal? (y/n)"),
+                                Box::new(Action::PaneCloseForce),
+                            )
+                            .into(),
+                        )))
                     } else {
-                        Ok(Resp::handled(None))
+                        match self.panes.remove(self.selected).kind {
+                            PaneKind::Empty => {}
+                            PaneKind::Doc(doc) => doc.close(state),
+                            PaneKind::Term(term) => term.close(state),
+                        }
+                        self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
+                        if self.panes.is_empty() {
+                            Ok(Resp::end(None))
+                        } else {
+                            Ok(Resp::handled(None))
+                        }
                     }
                 } else {
                     Err(event)
