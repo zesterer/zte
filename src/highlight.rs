@@ -40,6 +40,8 @@ pub enum TokenKind {
     MergeConflict,
     /// A clickable URL
     Url,
+    /// An important note, such as a TODO comment
+    Important,
 }
 
 #[derive(Default)]

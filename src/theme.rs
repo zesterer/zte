@@ -32,88 +32,108 @@ impl Default for BorderTheme {
     }
 }
 
+#[derive(Copy, Clone, Default)]
+pub struct CellTheme {
+    pub fg: Option<Color>,
+    pub bg: Option<Color>,
+}
+
+impl CellTheme {
+    pub fn fg(mut self, fg: Color) -> Self {
+        self.fg = Some(fg);
+        self
+    }
+
+    pub fn bg(mut self, bg: Color) -> Self {
+        self.bg = Some(bg);
+        self
+    }
+}
+
 pub struct Theme {
-    pub select_bg: Color,
-    pub line_select_bg: Color,
-    pub unfocus_select_bg: Color,
-    pub search_result_bg: Color,
-    pub margin_bg: Color,
-    pub margin_line_num: Color,
+    pub select: CellTheme,
+    pub line_select: CellTheme,
+    pub unfocus_select: CellTheme,
+    pub search_result: CellTheme,
+    pub margin: CellTheme,
     pub border: BorderTheme,
     pub focus_border: BorderTheme,
-    pub text: Color,
-    pub whitespace: Color,
-    pub option_dir: Color,
-    pub option_file: Color,
-    pub option_new: Color,
+    pub whitespace: CellTheme,
+    pub option_dir: CellTheme,
+    pub option_file: CellTheme,
+    pub option_new: CellTheme,
 
-    pub hl_token_whitespace: Color,
-    pub hl_token_ident: Color,
-    pub hl_token_keyword: Color,
-    pub hl_token_number: Color,
-    pub hl_token_type: Color,
-    pub hl_token_comment: Color,
-    pub hl_token_operator: Color,
-    pub hl_token_delimiter: Color,
-    pub hl_token_doc: Color,
-    pub hl_token_attribute: Color,
-    pub hl_token_property: Color,
-    pub hl_token_macro: Color,
-    pub hl_token_string: Color,
-    pub hl_token_special: Color,
-    pub hl_token_constant: Color,
-    pub hl_token_function: Color,
+    pub hl_token_whitespace: CellTheme,
+    pub hl_token_ident: CellTheme,
+    pub hl_token_keyword: CellTheme,
+    pub hl_token_number: CellTheme,
+    pub hl_token_type: CellTheme,
+    pub hl_token_comment: CellTheme,
+    pub hl_token_operator: CellTheme,
+    pub hl_token_delimiter: CellTheme,
+    pub hl_token_doc: CellTheme,
+    pub hl_token_attribute: CellTheme,
+    pub hl_token_property: CellTheme,
+    pub hl_token_macro: CellTheme,
+    pub hl_token_string: CellTheme,
+    pub hl_token_special: CellTheme,
+    pub hl_token_constant: CellTheme,
+    pub hl_token_function: CellTheme,
 
-    pub hl_merge_conflict: Color,
-    pub hl_url: Color,
+    pub hl_merge_conflict: CellTheme,
+    pub hl_url: CellTheme,
+    pub hl_important: CellTheme,
 }
 
 impl Default for Theme {
     fn default() -> Self {
+        let none = CellTheme::default();
+        let fg = |fg| CellTheme::default().fg(fg);
+        let bg = |bg| CellTheme::default().bg(bg);
+
         Self {
-            select_bg: Color::AnsiValue(8),
-            line_select_bg: Color::AnsiValue(238),
-            unfocus_select_bg: Color::AnsiValue(238),
-            search_result_bg: Color::AnsiValue(60),
-            margin_bg: Color::Reset,
-            margin_line_num: Color::AnsiValue(245),
+            select: bg(Color::AnsiValue(8)),
+            line_select: bg(Color::AnsiValue(238)),
+            unfocus_select: bg(Color::AnsiValue(238)),
+            search_result: bg(Color::AnsiValue(60)),
+            margin: fg(Color::AnsiValue(245)),
             border: BorderTheme::default(),
             focus_border: BorderTheme {
                 fg: Color::White,
                 ..BorderTheme::default()
             },
-            text: Color::Reset,
-            whitespace: Color::AnsiValue(245),
-            option_dir: Color::AnsiValue(178),
-            option_file: Color::Reset,
-            option_new: Color::AnsiValue(148),
+            whitespace: fg(Color::AnsiValue(245)),
+            option_dir: fg(Color::AnsiValue(178)),
+            option_file: none,
+            option_new: fg(Color::AnsiValue(148)),
 
-            hl_token_whitespace: Color::Reset,
-            hl_token_ident: Color::AnsiValue(15),
-            hl_token_keyword: Color::AnsiValue(112),
-            hl_token_number: Color::AnsiValue(45),
-            hl_token_type: Color::AnsiValue(210),
-            hl_token_comment: Color::AnsiValue(145),
-            hl_token_operator: Color::AnsiValue(111),
-            hl_token_delimiter: Color::AnsiValue(37),
-            hl_token_doc: Color::AnsiValue(180),
-            hl_token_attribute: Color::AnsiValue(146),
-            hl_token_property: Color::AnsiValue(152),
-            hl_token_macro: Color::AnsiValue(117),
-            hl_token_string: Color::AnsiValue(179),
-            hl_token_special: Color::AnsiValue(160),
-            hl_token_constant: Color::AnsiValue(81),
-            hl_token_function: Color::AnsiValue(122),
+            hl_token_whitespace: none,
+            hl_token_ident: fg(Color::AnsiValue(15)),
+            hl_token_keyword: fg(Color::AnsiValue(112)),
+            hl_token_number: fg(Color::AnsiValue(45)),
+            hl_token_type: fg(Color::AnsiValue(210)),
+            hl_token_comment: fg(Color::AnsiValue(145)),
+            hl_token_operator: fg(Color::AnsiValue(111)),
+            hl_token_delimiter: fg(Color::AnsiValue(37)),
+            hl_token_doc: fg(Color::AnsiValue(180)),
+            hl_token_attribute: fg(Color::AnsiValue(146)),
+            hl_token_property: fg(Color::AnsiValue(152)),
+            hl_token_macro: fg(Color::AnsiValue(117)),
+            hl_token_string: fg(Color::AnsiValue(179)),
+            hl_token_special: fg(Color::AnsiValue(160)),
+            hl_token_constant: fg(Color::AnsiValue(81)),
+            hl_token_function: fg(Color::AnsiValue(122)),
 
-            hl_merge_conflict: Color::AnsiValue(124),
-            hl_url: Color::AnsiValue(123),
+            hl_merge_conflict: fg(Color::AnsiValue(124)),
+            hl_url: fg(Color::AnsiValue(123)),
+            hl_important: none.bg(Color::AnsiValue(52)),
         }
     }
 }
 
 impl Theme {
-    pub fn token_color(&self, token: TokenKind) -> (Color, Option<Color>) {
-        let fg = match token {
+    pub fn token_theme(&self, token: TokenKind) -> CellTheme {
+        match token {
             TokenKind::Whitespace => self.hl_token_whitespace,
             TokenKind::Ident => self.hl_token_ident,
             TokenKind::Keyword => self.hl_token_keyword,
@@ -130,13 +150,9 @@ impl Theme {
             TokenKind::Special => self.hl_token_special,
             TokenKind::Constant => self.hl_token_constant,
             TokenKind::Function => self.hl_token_function,
-            TokenKind::MergeConflict => self.text,
+            TokenKind::MergeConflict => self.hl_merge_conflict,
             TokenKind::Url => self.hl_url,
-        };
-        let bg = match token {
-            TokenKind::MergeConflict => Some(self.hl_merge_conflict),
-            _ => None,
-        };
-        (fg, bg)
+            TokenKind::Important => self.hl_important,
+        }
     }
 }

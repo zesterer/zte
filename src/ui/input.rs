@@ -267,7 +267,7 @@ impl Input {
         };
 
         let (line_num_w, margin_w) = match self.mode {
-            Mode::Prompt => (2, 0),
+            Mode::Prompt => (2, 2),
             Mode::Filter => (0, 0),
             Mode::Doc => {
                 let line_num_w = (self.line_offset + buffer.text.lines().count())
@@ -314,14 +314,12 @@ impl Input {
                 Mode::Filter => frame.rect([0, 0], frame.size()),
                 Mode::Prompt => frame
                     .rect([0, i], [1, 1])
-                    .with_bg_preference(state.theme.margin_bg)
-                    .with_fg(state.theme.margin_line_num)
+                    .with_theme(state.theme.margin)
                     .fill(' ')
                     .text([0, 0], ">"),
                 Mode::Doc | Mode::SearchResult => frame
                     .rect([0, i], [margin_w, 1])
-                    .with_bg_preference(state.theme.margin_bg)
-                    .with_fg(state.theme.margin_line_num)
+                    .with_theme(state.theme.margin)
                     .fill(' ')
                     .text(
                         [1, 0],
@@ -350,48 +348,50 @@ impl Input {
                         .selection()
                         .zip(pos)
                         .map_or(false, |(s, pos)| s.contains(&pos));
-                    let (fg, hl_bg, c) = match line.get(coord as usize).copied() {
-                        Some('\n') if selected => (state.theme.whitespace, None, '⮠'),
+
+                    let (mut frame, c) = match line.get(coord as usize).copied() {
+                        Some('\n') if selected => (frame.with_theme(state.theme.whitespace), '⮠'),
                         Some(c) => {
-                            if let Some((fg, bg)) = pos
+                            if let Some(theme) = pos
                                 .and_then(|pos| buffer.highlights.get_at(pos))
-                                .map(|tok| state.theme.token_color(tok.kind))
+                                .map(|tok| state.theme.token_theme(tok.kind))
                             {
-                                (fg, bg, c)
+                                (frame.with_theme(theme), c)
                             } else {
-                                (state.theme.text, None, c)
+                                (frame.with_theme(None), c)
                             }
                         }
-                        None => (Color::Reset, None, ' '),
+                        None => (frame.with_theme(None), ' '),
                     };
-                    let bg = match finder.map(|s| s.contains(pos?)) {
-                        Some(Some(true)) => state.theme.select_bg,
-                        Some(Some(false)) => state.theme.search_result_bg,
+                    let mut frame = match finder.map(|s| s.contains(pos?)) {
+                        Some(Some(true)) => frame.with_theme(state.theme.select),
+                        Some(Some(false)) => frame.with_theme(state.theme.search_result),
                         _ => {
                             if selected {
                                 if frame.has_focus() {
-                                    state.theme.select_bg
+                                    frame.with_theme(state.theme.select)
                                 } else {
-                                    state.theme.unfocus_select_bg
+                                    frame.with_theme(state.theme.unfocus_select)
                                 }
-                            } else if let Some(hl_bg) = hl_bg {
-                                hl_bg
-                            } else if line_highlight_selected && frame.has_focus() {
-                                state.theme.line_select_bg
+                            } else if frame.bg == Color::Reset
+                                && line_highlight_selected
+                                && frame.has_focus()
+                            {
+                                frame.with_theme(state.theme.line_select)
                             } else {
-                                frame.bg
+                                frame.with_theme(None)
                             }
                         }
                     };
                     // Block marker line
-                    let (c, fg) = if block_col == Some(coord)
+                    let (mut frame, c) = if block_col == Some(coord)
                         && c.is_whitespace()
                         && let Some((_, span)) = &cursor_block
                         && span.contains(&(line_pos + coord as usize))
                     {
-                        ('┆', state.theme.margin_line_num)
+                        (frame.with_theme(state.theme.margin), '┆')
                     } else {
-                        (c, fg)
+                        (frame.with_theme(None), c)
                     };
                     // Matching delimiters
                     let uline = if cursor_delim
@@ -404,8 +404,6 @@ impl Input {
                         None
                     };
                     frame
-                        .with_bg(bg)
-                        .with_fg(fg)
                         .with_uline(uline)
                         .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
                 }

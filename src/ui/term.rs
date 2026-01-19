@@ -171,6 +171,10 @@ impl Element for Term {
                 if let Event::Raw(ref ev) = event
                     && let Some(s) = ev.to_esc_seq()
                 {
+                    // Ensure the cursor is on-screen. TODO: Better way of differentiating this than `ALT_SCREEN`
+                    if !self.term.mode().contains(TermMode::ALT_SCREEN) {
+                        self.term.scroll_to_point(self.term.grid().cursor.point);
+                    }
                     self.send_bytes(s);
                     Ok(Resp::handled(None))
                 } else {

@@ -244,12 +244,12 @@ impl Visual for SearchResult {
         // Filename
         frame
             .rect([0, 0], [col_a, !0])
-            .with_fg(state.theme.option_file)
+            .with_theme(state.theme.option_file)
             .text([0, 0], &name);
         // Path
         frame
             .rect([col_a, 0], [col_b, !0])
-            .with_fg(state.theme.option_dir)
+            .with_theme(state.theme.option_dir)
             .text([0, 0], &self.rdir);
         // Code snippet
         if let Some((input, cursor, buffer)) = &mut self.line {

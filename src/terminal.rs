@@ -195,6 +195,19 @@ impl<'a> Rect<'a> {
         }
     }
 
+    pub fn with_theme(&mut self, theme: impl Into<Option<theme::CellTheme>>) -> Rect<'_> {
+        let theme = theme.into();
+        Rect {
+            fg: theme.and_then(|t| t.fg).unwrap_or(self.fg),
+            bg: theme.and_then(|t| t.bg).unwrap_or(self.bg),
+            uline: self.uline,
+            attr: self.attr,
+            area: self.area,
+            fb: self.fb,
+            has_focus: self.has_focus,
+        }
+    }
+
     pub fn with_uline(&mut self, uline: Option<Color>) -> Rect<'_> {
         Rect {
             fg: self.fg,
@@ -209,11 +222,6 @@ impl<'a> Rect<'a> {
             fb: self.fb,
             has_focus: self.has_focus,
         }
-    }
-
-    /// `with_bg`, but only if background color is not already set.
-    pub fn with_bg_preference(&mut self, bg: Color) -> Rect<'_> {
-        self.with_bg(if self.bg == Color::Reset { bg } else { self.bg })
     }
 
     pub fn with_focus(&mut self, focus: bool) -> Rect<'_> {

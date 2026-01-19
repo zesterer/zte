@@ -296,10 +296,10 @@ impl Visual for BufferId {
             return;
         };
         frame
-            .with_fg(state.theme.option_file)
+            .with_theme(state.theme.option_file)
             .text([0, 0], buffer.name().as_deref().unwrap_or("<unknown>"));
         let path_x = (frame.size()[0] as isize / 3).max(32);
-        frame.with_fg(state.theme.option_dir).text(
+        frame.with_theme(state.theme.option_dir).text(
             [path_x, 0],
             &buffer
                 .path
@@ -525,13 +525,13 @@ impl Visual for FileOption {
             FileKind::New => format!("New file{is_link}"),
         };
         frame
-            .with_fg(match self.kind {
+            .with_theme(match self.kind {
                 FileKind::Dir => state.theme.option_dir,
                 FileKind::File | FileKind::Unknown => state.theme.option_file,
                 FileKind::New => state.theme.option_new,
             })
             .text([0, 0], &name);
-        frame.with_fg(state.theme.margin_line_num).with(|f| {
+        frame.with_theme(state.theme.margin).with(|f| {
             f.text([f.size()[0] as isize / 2, 0], &desc);
         });
     }

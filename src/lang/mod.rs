@@ -98,7 +98,13 @@ impl Highlighter {
     }
 
     pub fn with_comment(self, regex: &str) -> Self {
-        self.with_child_syntax(TokenKind::Comment, regex, Self::default().url())
+        self.with_child_syntax(
+            TokenKind::Comment,
+            regex,
+            Self::default()
+                .url()
+                .with(TokenKind::Important, r"\b[Tt][Oo][Dd][Oo]\b"),
+        )
     }
 
     pub fn markdown(self) -> Self {

@@ -260,10 +260,10 @@ impl<T: Visual> Visual for Options<T> {
             let option = &mut self.options[*idx];
             frame
                 .rect([0, row], [frame.size()[0], 1])
-                .with_bg(if self.selected == i {
-                    state.theme.select_bg
+                .with_theme(if self.selected == i {
+                    Some(state.theme.select)
                 } else {
-                    Color::Reset
+                    None
                 })
                 .fill(' ')
                 .with(|f| option.render(state, f));
