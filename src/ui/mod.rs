@@ -270,3 +270,88 @@ impl<T: Visual> Visual for Options<T> {
         }
     }
 }
+
+#[derive(Clone, Default)]
+pub struct Scroller {
+    // Remember the last area for things like scrolling
+    pub last_area: Area,
+    pub last_scroll_pos: Option<([isize; 2], usize, usize)>,
+    pub scroll_grab: Option<(usize, isize)>,
+}
+
+impl Scroller {
+    fn handle(
+        &mut self,
+        event: Event,
+        line_count: usize,
+        focus: &mut [isize; 2],
+    ) -> Result<Resp, Event> {
+        match event.to_action(|_| None) {
+            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _))
+                if self.last_area.contains(pos).is_some() =>
+            {
+                let dist = [1, 1];
+                let dfocus = match dir {
+                    Dir::Up => [0, -1],
+                    Dir::Down => [0, 1],
+                    Dir::Left => [-1, 0],
+                    Dir::Right => [1, 0],
+                };
+                focus[0] = (focus[0] + dfocus[0] * dist[0] as isize).max(0);
+                focus[1] = (focus[1] + dfocus[1] * dist[1] as isize).max(0);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(MouseAction::Click, pos, false, drag_id))
+                if self.last_area.contains(pos).is_some() =>
+            {
+                if let Some((scroll_pos, h, _)) = self.last_scroll_pos
+                    && let Some(pos) = self.last_area.contains(pos)
+                    && scroll_pos[0] == pos[0]
+                    && (scroll_pos[1]..=scroll_pos[1] + h as isize).contains(&pos[1])
+                {
+                    self.scroll_grab = Some((drag_id, pos[1] - scroll_pos[1]));
+                    Ok(Resp::handled(None))
+                } else {
+                    Err(event)
+                }
+            }
+            Some(Action::Mouse(MouseAction::Drag, pos, false, drag_id))
+                if self.last_area.contains(pos).is_some()
+                    && self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
+            {
+                if let Some((_, offset)) = self.scroll_grab
+                    && let Some((_, _, frame_sz)) = self.last_scroll_pos
+                {
+                    focus[1] = ((self.last_area.translate(pos)[1] - offset).max(0) as usize
+                        * line_count
+                        / frame_sz) as isize;
+                }
+                Ok(Resp::handled(None))
+            }
+            _ => Err(event),
+        }
+    }
+
+    fn render(&mut self, frame: &mut Rect, line_count: usize, focus: [isize; 2]) {
+        self.last_area = frame.area();
+
+        let frame_sz = frame.size()[1].saturating_sub(2).max(1);
+        let scroll_sz = (frame_sz * frame_sz / line_count.max(1))
+            .max(1)
+            .min(frame_sz);
+        self.last_scroll_pos = if scroll_sz != frame_sz {
+            let lines2 = line_count.saturating_sub(frame_sz).max(1);
+            let offset = frame_sz.saturating_sub(scroll_sz)
+                * (focus[1].max(0) as usize).min(lines2)
+                / lines2;
+            let pos = [frame.size()[0].saturating_sub(1), 1 + offset];
+            frame
+                .rect(pos, [1, scroll_sz])
+                .with_bg(Color::White)
+                .fill(' ');
+            Some((pos.map(|e| e as isize), scroll_sz, frame_sz))
+        } else {
+            None
+        };
+    }
+}

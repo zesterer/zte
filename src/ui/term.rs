@@ -2,6 +2,7 @@ use super::*;
 use alacritty_terminal::{
     Term as Alacritty,
     event::VoidListener,
+    grid::{Dimensions as _, Scroll},
     term::{Config as AlacrittyConfig, test::TermSize},
     vte::ansi,
 };
@@ -23,6 +24,7 @@ pub struct Term {
     in_tx: Sender<Input>,
     out_rx: Receiver<Vec<u8>>,
     cmd: task::JoinHandle<()>,
+    scroller: Scroller,
 }
 
 impl Term {
@@ -73,6 +75,7 @@ impl Term {
             in_tx,
             out_rx,
             cmd,
+            scroller: Scroller::default(),
         })
     }
 
@@ -91,6 +94,25 @@ impl Term {
 
 impl Element for Term {
     fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp, Event> {
+        let old_focus = [
+            0,
+            self.term.total_lines() as isize
+                - self.term.screen_lines() as isize
+                - self.term.grid().display_offset() as isize,
+        ];
+        let mut focus = old_focus;
+        let event = match self
+            .scroller
+            .handle(event, self.term.total_lines(), &mut focus)
+        {
+            Ok(resp) => {
+                self.term
+                    .scroll_display(Scroll::Delta((old_focus[1] - focus[1]) as i32));
+                return Ok(resp);
+            }
+            Err(event) => event,
+        };
+
         match event {
             Event::Raw(ref ev) => {
                 if let Some(s) = ev.to_esc_seq() {
@@ -104,7 +126,7 @@ impl Element for Term {
                     Err(event)
                 }
             }
-            event => Err(event),
+            _ => Err(event),
         }
     }
 }
@@ -114,6 +136,8 @@ impl Visual for Term {
         while let Ok(bytes) = self.out_rx.try_recv() {
             self.ansi.advance(&mut self.term, &bytes);
         }
+
+        let display_offset = self.term.grid().display_offset() as isize;
 
         frame
             .with_border(
@@ -137,7 +161,7 @@ impl Visual for Term {
                     frame.set_cursor(
                         [
                             self.term.grid().cursor.point.column.0 as isize,
-                            self.term.grid().cursor.point.line.0 as isize,
+                            self.term.grid().cursor.point.line.0 as isize + display_offset,
                         ],
                         CursorStyle::BlinkingBlock,
                     );
@@ -163,11 +187,22 @@ impl Visual for Term {
                         .with_bg(map_color(cell.bg))
                         .with_fg(map_color(cell.fg))
                         .text(
-                            [cell.point.column.0 as isize, cell.point.line.0 as isize],
+                            [
+                                cell.point.column.0 as isize,
+                                cell.point.line.0 as isize + display_offset,
+                            ],
                             cell.cell.c.encode_utf8(&mut [0; 4]),
                         );
                 }
             });
+
+        let focus = [
+            0,
+            self.term.total_lines() as isize
+                - self.term.screen_lines() as isize
+                - self.term.grid().display_offset() as isize,
+        ];
+        self.scroller.render(frame, self.term.total_lines(), focus);
     }
 }
 

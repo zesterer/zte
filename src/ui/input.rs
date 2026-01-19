@@ -19,12 +19,10 @@ pub struct Input {
     mode: Mode,
     line_offset: usize,
     // x/y location in the buffer that the pane is trying to focus on
-    pub focus: [isize; 2],
-    // Remember the last area for things like scrolling
-    pub frame_area: Area,
-    pub last_area: Area,
-    pub last_scroll_pos: Option<([isize; 2], usize, usize)>,
-    pub scroll_grab: Option<(usize, isize)>,
+    focus: [isize; 2],
+    last_area: Area,
+    text_area: Area,
+    scroller: Scroller,
 }
 
 impl Input {
@@ -53,7 +51,7 @@ impl Input {
     pub fn focus(&mut self, coord: [isize; 2]) {
         for i in 0..2 {
             self.focus[i] = self.focus[i]
-                .max(coord[i] - self.last_area.size()[i] as isize + 1)
+                .max(coord[i] - self.text_area.size()[i] as isize + 1)
                 .max(0)
                 .min(coord[i]);
         }
@@ -76,6 +74,19 @@ impl Input {
     ) -> Result<Resp, Event> {
         buffer.begin_action();
         let is_doc = matches!(self.mode, Mode::Doc);
+
+        let event = if is_doc {
+            match self
+                .scroller
+                .handle(event, buffer.text.lines().count(), &mut self.focus)
+            {
+                Ok(resp) => return Ok(resp),
+                Err(event) => event,
+            }
+        } else {
+            event
+        };
+
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
@@ -103,26 +114,12 @@ impl Input {
             {
                 let dist = match dist {
                     Dist::Char => [1, 1],
-                    Dist::Page => self.last_area.size().map(|s| s.saturating_sub(3).max(1)),
+                    Dist::Page => self.text_area.size().map(|s| s.saturating_sub(3).max(1)),
                     // TODO: Don't just use an arbitrary very large number
                     Dist::Doc => [1_000_000_000; 2],
                 };
                 buffer.move_cursor(cursor_id, dir, dist, retain_base, word);
                 self.refocus(buffer, cursor_id);
-                Ok(Resp::handled(None))
-            }
-            Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _))
-                if is_doc && self.last_area.contains(pos).is_some() =>
-            {
-                let dist = [1, 1];
-                let dfocus = match dir {
-                    Dir::Up => [0, -1],
-                    Dir::Down => [0, 1],
-                    Dir::Left => [-1, 0],
-                    Dir::Right => [1, 0],
-                };
-                self.focus[0] = (self.focus[0] + dfocus[0] * dist[0] as isize).max(0);
-                self.focus[1] = (self.focus[1] + dfocus[1] * dist[1] as isize).max(0);
                 Ok(Resp::handled(None))
             }
             Some(Action::Indent(forward)) => {
@@ -149,15 +146,9 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(Action::Mouse(MouseAction::Click, pos, false, drag_id))
-                if self.frame_area.contains(pos).is_some() =>
+                if self.last_area.contains(pos).is_some() =>
             {
-                if let Some((scroll_pos, h, _)) = self.last_scroll_pos
-                    && let Some(pos) = self.frame_area.contains(pos)
-                    && scroll_pos[0] == pos[0]
-                    && (scroll_pos[1]..=scroll_pos[1] + h as isize).contains(&pos[1])
-                {
-                    self.scroll_grab = Some((drag_id, pos[1] - scroll_pos[1]));
-                } else if let Some(pos) = self.last_area.contains(pos) {
+                if let Some(pos) = self.text_area.contains(pos) {
                     let pos = [self.focus[0] + pos[0], self.focus[1] + pos[1]];
                     // If we're already in the right place, select the token instead
                     if let Some(cursor) = buffer.cursors.get(cursor_id)
@@ -185,24 +176,11 @@ impl Input {
                 }
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Drag, pos, false, drag_id))
-                if self.frame_area.contains(pos).is_some()
-                    && self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
-            {
-                if let Some((_, offset)) = self.scroll_grab
-                    && let Some((_, _, frame_sz)) = self.last_scroll_pos
-                {
-                    self.focus[1] = ((self.frame_area.translate(pos)[1] - offset).max(0) as usize
-                        * buffer.text.lines().count()
-                        / frame_sz) as isize;
-                }
-                Ok(Resp::handled(None))
-            }
             Some(
                 Action::Mouse(MouseAction::Drag, pos, false, _)
                 | Action::Mouse(MouseAction::Click, pos, true, _),
-            ) if self.frame_area.contains(pos).is_some() => {
-                let pos = self.last_area.translate(pos);
+            ) if self.last_area.contains(pos).is_some() => {
+                let pos = self.text_area.translate(pos);
                 buffer.goto_cursor(
                     cursor_id,
                     [self.focus[0] + pos[0], self.focus[1] + pos[1]],
@@ -272,7 +250,7 @@ impl Input {
         finder: Option<&Finder>,
         outer_frame: &mut Rect,
     ) {
-        self.frame_area = outer_frame.area();
+        self.last_area = outer_frame.area();
 
         // Add frame
         let mut frame = if matches!(self.mode, Mode::SearchResult) {
@@ -301,7 +279,7 @@ impl Input {
             Mode::SearchResult => (4, 6),
         };
 
-        self.last_area = frame.rect([margin_w, 0], [!0, !0]).area();
+        self.text_area = frame.rect([margin_w, 0], [!0, !0]).area();
 
         let Some(cursor) = buffer.cursors.get(cursor_id) else {
             return;
@@ -442,23 +420,7 @@ impl Input {
             }
         }
 
-        // TODO: Clean this up
-        let line_count = buffer.text.lines().count();
-        let frame_sz = outer_frame.size()[1].saturating_sub(2).max(1);
-        let scroll_sz = (frame_sz * frame_sz / line_count).max(1).min(frame_sz);
-        self.last_scroll_pos = if scroll_sz != frame_sz {
-            let lines2 = line_count.saturating_sub(frame_sz).max(1);
-            let offset = frame_sz.saturating_sub(scroll_sz)
-                * (self.focus[1].max(0) as usize).min(lines2)
-                / lines2;
-            let pos = [outer_frame.size()[0].saturating_sub(1), 1 + offset];
-            outer_frame
-                .rect(pos, [1, scroll_sz])
-                .with_bg(Color::White)
-                .fill(' ');
-            Some((pos.map(|e| e as isize), scroll_sz, frame_sz))
-        } else {
-            None
-        };
+        self.scroller
+            .render(outer_frame, buffer.text.lines().count(), self.focus);
     }
 }
