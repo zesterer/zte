@@ -145,7 +145,7 @@ impl Input {
                 buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false, drag_id))
+            Some(Action::Mouse(MouseAction::Click, pos, false, _drag_id))
                 if self.last_area.contains(pos).is_some() =>
             {
                 if let Some(pos) = self.text_area.contains(pos) {

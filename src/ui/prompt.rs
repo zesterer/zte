@@ -246,27 +246,29 @@ impl Element<()> for Switcher {
                         .map(Resp::into_can_end);
                     // Score entries
                     let filter = self.buffer.text.to_string().to_lowercase();
-                    self.options.apply_scoring(|b| {
-                        let Some(buffer) = state.buffers.get(*b) else {
-                            return None;
-                        };
-                        let name = buffer.name().as_deref().unwrap_or("").to_lowercase();
-                        let parent = buffer
-                            .path
-                            .as_ref()
-                            .and_then(|p| Some(p.parent()?.to_str()?.to_lowercase()));
-                        if name.starts_with(&filter) {
-                            Some(1)
-                        } else if name.contains(&filter) {
-                            Some(2)
-                        } else if let Some(parent) = parent
-                            && parent.contains(&filter)
-                        {
-                            Some(3)
-                        } else {
-                            None
-                        }
-                    });
+                    if res.is_ok() {
+                        self.options.apply_scoring(|b| {
+                            let Some(buffer) = state.buffers.get(*b) else {
+                                return None;
+                            };
+                            let name = buffer.name().as_deref().unwrap_or("").to_lowercase();
+                            let parent = buffer
+                                .path
+                                .as_ref()
+                                .and_then(|p| Some(p.parent()?.to_str()?.to_lowercase()));
+                            if name.starts_with(&filter) {
+                                Some(1)
+                            } else if name.contains(&filter) {
+                                Some(2)
+                            } else if let Some(parent) = parent
+                                && parent.contains(&filter)
+                            {
+                                Some(3)
+                            } else {
+                                None
+                            }
+                        });
+                    }
                     res
                 }
             },

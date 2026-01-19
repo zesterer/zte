@@ -298,6 +298,10 @@ impl<'a> Rect<'a> {
     pub fn set_title(&mut self, title: String) {
         self.fb.title = title;
     }
+
+    pub fn ring_bell(&mut self) {
+        self.fb.bell = true;
+    }
 }
 
 #[derive(Default)]
@@ -306,6 +310,7 @@ pub struct Framebuffer {
     cells: Vec<Cell>,
     cursor: Option<([u16; 2], CursorStyle)>,
     title: String,
+    bell: bool,
 }
 
 impl Framebuffer {
@@ -329,7 +334,6 @@ pub struct Terminal<'a> {
     stdout: StdoutLock<'a>,
     size: [u16; 2],
     fb: [Framebuffer; 2],
-    bell: bool,
     copy_to_clipboard: Option<String>,
 }
 
@@ -362,7 +366,6 @@ impl<'a> Terminal<'a> {
             stdout: io::stdout().lock(),
             size: [size.columns, size.rows],
             fb: [Framebuffer::default(), Framebuffer::default()],
-            bell: false,
             copy_to_clipboard: None,
         };
 
@@ -380,10 +383,6 @@ impl<'a> Terminal<'a> {
 
     pub fn set_size(&mut self, size: [u16; 2]) {
         self.size = size;
-    }
-
-    pub fn ring_bell(&mut self) {
-        self.bell = true;
     }
 
     pub fn copy(&mut self, s: &str) {
@@ -405,8 +404,8 @@ impl<'a> Terminal<'a> {
 
         self.stdout
             .sync_update(|stdout| {
-                if self.bell {
-                    self.bell = false;
+                if self.fb[0].bell {
+                    self.fb[0].bell = false;
                     stdout.queue(style::Print('\x07')).unwrap();
                 }
 
@@ -517,6 +516,10 @@ impl<'a> Terminal<'a> {
 
         // Switch front and back buffers
         self.fb.swap(0, 1);
+    }
+
+    pub fn frame(&mut self) -> Rect<'_> {
+        self.fb[0].rect()
     }
 
     pub fn event_stream(&mut self) -> EventStream {

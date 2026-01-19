@@ -82,7 +82,7 @@ fn main() -> Result<(), Error> {
                 match ui.handle(&mut state, event) {
                     Ok(r) if r.is_end() => return Ok(()),
                     Ok(_) => {}
-                    Err(Event::Action(Action::Bell)) => term.ring_bell(),
+                    Err(Event::Action(Action::Bell)) => term.frame().ring_bell(),
                     // Unhandled event!
                     Err(_) => {}
                 }
