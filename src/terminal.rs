@@ -491,6 +491,11 @@ impl<'a> Terminal<'a> {
                             }
                             if attr != cell.attr {
                                 attr = cell.attr;
+                                stdout
+                                    .queue(style::SetAttributes(
+                                        Attributes::none().with(Attribute::Reset),
+                                    ))
+                                    .unwrap();
                                 stdout.queue(style::SetAttributes(attr)).unwrap();
                                 stdout.queue(style::SetForegroundColor(fg)).unwrap();
                                 stdout.queue(style::SetBackgroundColor(bg)).unwrap();
