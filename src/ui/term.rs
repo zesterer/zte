@@ -10,10 +10,7 @@ use alacritty_terminal::{
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{
-        Notify,
-        mpsc::{self, Receiver, Sender},
-    },
+    sync::mpsc::{self, Receiver, Sender},
     task,
 };
 
@@ -27,12 +24,12 @@ enum Output {
     Event(TermEvent),
 }
 
-struct Listener(Sender<Output>, Arc<Notify>);
+struct Listener(Sender<Output>);
 
 impl EventListener for Listener {
     fn send_event(&self, event: TermEvent) {
         let _ = self.0.try_send(Output::Event(event));
-        self.1.notify_one();
+        // self.1.notify_one();
     }
 }
 
@@ -94,7 +91,7 @@ impl Term {
             term: Alacritty::new(
                 AlacrittyConfig::default(),
                 &TermSize::new(40, 15),
-                Listener(out_tx.clone(), wakeup.clone()),
+                Listener(out_tx.clone()),
             ),
             title: None,
             old_term_size: None,
@@ -123,6 +120,28 @@ impl Term {
 
 impl Element for Term {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        while let Ok(out) = self.out_rx.try_recv() {
+            state.needs_render = true;
+            match out {
+                Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
+                // Title changes
+                Output::Event(TermEvent::Title(title)) => self.title = Some(title),
+                Output::Event(TermEvent::ResetTitle) => self.title = None,
+                // Proxy clipboard events to our internal clipboard
+                Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
+                    _ = state.clipboard.set(s)
+                }
+                Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
+                    if let Ok(s) = state.clipboard.get() {
+                        let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
+                    }
+                }
+                // Pass bell events on to host
+                Output::Event(TermEvent::Bell) => self.bell = true,
+                Output::Event(_) => {}
+            }
+        }
+
         // First, handle scroller events
         let old_focus = [
             0,
@@ -232,27 +251,6 @@ impl Element for Term {
 
 impl Visual for Term {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        while let Ok(out) = self.out_rx.try_recv() {
-            match out {
-                Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
-                // Title changes
-                Output::Event(TermEvent::Title(title)) => self.title = Some(title),
-                Output::Event(TermEvent::ResetTitle) => self.title = None,
-                // Proxy clipboard events to our internal clipboard
-                Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
-                    _ = state.clipboard.set(s)
-                }
-                Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
-                    if let Ok(s) = state.clipboard.get() {
-                        let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
-                    }
-                }
-                // Pass bell events on to host
-                Output::Event(TermEvent::Bell) => self.bell = true,
-                Output::Event(_) => {}
-            }
-        }
-
         let display_offset = self.term.grid().display_offset() as isize;
 
         if frame.has_focus()

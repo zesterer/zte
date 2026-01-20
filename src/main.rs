@@ -13,7 +13,7 @@ use crate::{
     ui::{Element as _, Visual as _},
 };
 use clap::Parser;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use std::{io, path::PathBuf, sync::Arc, time::Duration};
 
 #[derive(Parser, Debug)]
@@ -52,13 +52,11 @@ fn main() -> Result<(), Error> {
             let mut events = term.event_stream();
             let mut interval = tokio::time::interval(Duration::from_millis(250));
             let mut close_requested = false;
-            let mut needs_render = true;
 
             while !close_requested {
                 let mut handle_event = |event| {
                     let event = match &event {
                         Event::Raw(ev) => {
-                            needs_render = true;
                             // Resize events are special and need handling by the terminal
                             if let TerminalEvent::Resize(cols, rows) = &ev.0 {
                                 term.set_size([*cols, *rows]);
@@ -72,11 +70,11 @@ fn main() -> Result<(), Error> {
                         }
                         Event::Internal => {
                             // Usually caused by a change to a terminal pane, so trigger a render
-                            needs_render = true;
+                            state.needs_render = true;
                             event
                         }
                         Event::Tick => {
-                            state.tick(&mut needs_render);
+                            state.tick();
                             event
                         }
                         _ => event,
@@ -85,7 +83,7 @@ fn main() -> Result<(), Error> {
                     // Have the UI handle the event
                     match ui.handle(&mut state, event) {
                         Ok(r) if r.is_end() => close_requested = true,
-                        Ok(_) => {}
+                        Ok(_) => state.needs_render = true,
                         Err(Event::Action(Action::Bell)) => term.frame().ring_bell(),
                         // Unhandled event!
                         Err(_) => {}
@@ -105,11 +103,11 @@ fn main() -> Result<(), Error> {
                 });
 
                 // Now that we're awake, speculatively process any extra events that happen to be immediately
-                // available to avoid wasting renders
-                // TODO: `.now_or_never()` doesn't work here, is EventStream not cancel-safe?
-                while let Ok(Some(Ok(ev))) =
-                    tokio::time::timeout(Duration::ZERO, events.next()).await
-                {
+                // available (or very soon after - we can't control the latency of terminal processes!) to
+                // avoid wasting renders
+                let soon = tokio::time::Instant::now() + Duration::from_millis(1000 / 60);
+                while let Ok(Some(Ok(ev))) = tokio::time::timeout_at(soon, events.next()).await {
+                    let _ = notify.notified().now_or_never(); // Clear any pending notifications - we're about to handle them!
                     handle_event(Event::from_raw(ev));
                 }
 
@@ -119,9 +117,11 @@ fn main() -> Result<(), Error> {
                 }
 
                 // Render the state to the screen
-                if needs_render {
-                    needs_render = false;
-                    term.update(|fb| ui.render(&mut state, fb));
+                if state.needs_render {
+                    state.needs_render = false;
+                    term.update(|fb| {
+                        ui.render(&mut state, fb);
+                    });
                 }
             }
 

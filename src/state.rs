@@ -1176,6 +1176,7 @@ pub struct State {
     pub most_recent_counter: usize,
     pub clipboard: Clipboard,
     pub wakeup: Arc<tokio::sync::Notify>,
+    pub needs_render: bool,
 }
 
 impl State {
@@ -1196,6 +1197,7 @@ impl State {
                 }
             },
             wakeup,
+            needs_render: true,
         }
     }
 }
@@ -1241,10 +1243,10 @@ impl State {
         self.buffers.insert(Buffer::anonymous())
     }
 
-    pub fn tick(&mut self, needs_render: &mut bool) {
+    pub fn tick(&mut self) {
         self.tick += 1;
         for b in self.buffers.values_mut() {
-            b.tick(needs_render);
+            b.tick(&mut self.needs_render);
         }
     }
 
