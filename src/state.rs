@@ -173,6 +173,7 @@ pub struct Buffer {
     action_counter: usize,
     most_recent_rank: usize,
 
+    // Note: ensure `sync_highlights` is called before use
     pub highlights: Highlights,
     highlights_stale: bool,
 }
@@ -319,7 +320,16 @@ impl Buffer {
         }
     }
 
+    pub fn sync_highlights(&mut self) {
+        // Update highlights, if necessary
+        if self.highlights_stale {
+            self.highlights = self.lang.highlight(&self.text);
+            self.highlights_stale = false;
+        }
+    }
+
     pub fn token_at_coord(&mut self, coord: [isize; 2]) -> Option<&Token> {
+        self.sync_highlights();
         self.highlights.get_at(self.text.to_pos(coord))
     }
 
@@ -1097,12 +1107,10 @@ impl Buffer {
 
     pub fn tick(&mut self, needs_render: &mut bool) {
         self.check_diverged(needs_render);
+    }
 
-        // Update highlights, if necessary
-        if self.highlights_stale {
-            self.highlights = self.lang.highlight(&self.text);
-            self.highlights_stale = false;
-        }
+    pub fn pre_render(&mut self) {
+        self.sync_highlights();
     }
 }
 
@@ -1247,6 +1255,12 @@ impl State {
         self.tick += 1;
         for b in self.buffers.values_mut() {
             b.tick(&mut self.needs_render);
+        }
+    }
+
+    pub fn pre_render(&mut self) {
+        for b in self.buffers.values_mut() {
+            b.pre_render();
         }
     }
 

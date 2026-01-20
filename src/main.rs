@@ -119,6 +119,7 @@ fn main() -> Result<(), Error> {
                 // Render the state to the screen
                 if state.needs_render {
                     state.needs_render = false;
+                    state.pre_render();
                     term.update(|fb| {
                         ui.render(&mut state, fb);
                     });

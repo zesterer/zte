@@ -120,28 +120,6 @@ impl Term {
 
 impl Element for Term {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
-        while let Ok(out) = self.out_rx.try_recv() {
-            state.needs_render = true;
-            match out {
-                Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
-                // Title changes
-                Output::Event(TermEvent::Title(title)) => self.title = Some(title),
-                Output::Event(TermEvent::ResetTitle) => self.title = None,
-                // Proxy clipboard events to our internal clipboard
-                Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
-                    _ = state.clipboard.set(s)
-                }
-                Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
-                    if let Ok(s) = state.clipboard.get() {
-                        let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
-                    }
-                }
-                // Pass bell events on to host
-                Output::Event(TermEvent::Bell) => self.bell = true,
-                Output::Event(_) => {}
-            }
-        }
-
         // First, handle scroller events
         let old_focus = [
             0,
@@ -251,6 +229,28 @@ impl Element for Term {
 
 impl Visual for Term {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
+        while let Ok(out) = self.out_rx.try_recv() {
+            state.needs_render = true;
+            match out {
+                Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
+                // Title changes
+                Output::Event(TermEvent::Title(title)) => self.title = Some(title),
+                Output::Event(TermEvent::ResetTitle) => self.title = None,
+                // Proxy clipboard events to our internal clipboard
+                Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
+                    _ = state.clipboard.set(s)
+                }
+                Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
+                    if let Ok(s) = state.clipboard.get() {
+                        let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
+                    }
+                }
+                // Pass bell events on to host
+                Output::Event(TermEvent::Bell) => self.bell = true,
+                Output::Event(_) => {}
+            }
+        }
+
         let display_offset = self.term.grid().display_offset() as isize;
 
         if frame.has_focus()
