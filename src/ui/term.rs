@@ -236,7 +236,7 @@ impl Visual for Term {
             )
             .with(|frame| {
                 // Resize terminal if needed
-                let term_size = frame.size();
+                let term_size = frame.size().map(|e| e.max(1));
                 if Some(term_size) != self.old_term_size {
                     self.old_term_size = Some(term_size);
                     self.term.resize(TermSize::new(term_size[0], term_size[1]));
