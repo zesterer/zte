@@ -267,7 +267,7 @@ impl<'a> Rect<'a> {
                 }
             }
         }
-        self.rect([0, 0], self.size())
+        self.reborrow()
     }
 
     pub fn text(&mut self, origin: [isize; 2], text: &str) -> Rect<'_> {
@@ -294,7 +294,7 @@ impl<'a> Rect<'a> {
                 }
             }
         }
-        self.rect([0, 0], self.size())
+        self.reborrow()
     }
 
     pub fn set_cursor(&mut self, cursor: [isize; 2], style: CursorStyle) -> Rect<'_> {
@@ -310,7 +310,12 @@ impl<'a> Rect<'a> {
                 style,
             ));
         }
-        self.rect([0, 0], self.size())
+        self.reborrow()
+    }
+
+    pub fn hide_cursor(&mut self) -> Rect<'_> {
+        self.fb.cursor = None;
+        self.reborrow()
     }
 
     pub fn set_title(&mut self, title: String) {

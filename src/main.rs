@@ -49,55 +49,83 @@ fn main() -> Result<(), Error> {
 
     Terminal::with(move |term| {
         rt.block_on(async {
-            let mut needs_render = true;
             let mut events = term.event_stream();
             let mut interval = tokio::time::interval(Duration::from_millis(250));
+            let mut close_requested = false;
+            let mut needs_render = true;
 
-            loop {
-                let event = tokio::select! {
-                    ev = events.next() => {
-                        if let Some(Ok(ev)) = ev {
-                            needs_render = true; // TODO: Don't always rerender?
-
+            while !close_requested {
+                let mut handle_event = |event| {
+                    let event = match &event {
+                        Event::Raw(ev) => {
+                            needs_render = true;
                             // Resize events are special and need handling by the terminal
-                            if let TerminalEvent::Resize(cols, rows) = &ev {
+                            if let TerminalEvent::Resize(cols, rows) = &ev.0 {
                                 term.set_size([*cols, *rows]);
                                 Event::Tick // Actually a resize, but we don't consider resizing to be special
-                            } else if let TerminalEvent::Paste(s) = &ev {
+                            } else if let TerminalEvent::Paste(s) = &ev.0 {
                                 let _ = state.clipboard.set_no_dirty(s.clone());
                                 Event::Action(Action::Paste)
                             } else {
-                                Event::from_raw(ev)
+                                event
                             }
-                        } else {
-                            // Ummm...?
-                            Event::Tick
                         }
-                    },
-                    _ = notify.notified() => Event::Tick,
-                    _ = interval.tick() => Event::Tick,
+                        Event::Internal => {
+                            // Usually caused by a change to a terminal pane, so trigger a render
+                            needs_render = true;
+                            event
+                        }
+                        Event::Tick => {
+                            state.tick(&mut needs_render);
+                            event
+                        }
+                        _ => event,
+                    };
+
+                    // Have the UI handle the event
+                    match ui.handle(&mut state, event) {
+                        Ok(r) if r.is_end() => close_requested = true,
+                        Ok(_) => {}
+                        Err(Event::Action(Action::Bell)) => term.frame().ring_bell(),
+                        // Unhandled event!
+                        Err(_) => {}
+                    }
                 };
 
-                // Have the UI handle the event
-                match ui.handle(&mut state, event) {
-                    Ok(r) if r.is_end() => return Ok(()),
-                    Ok(_) => {}
-                    Err(Event::Action(Action::Bell)) => term.frame().ring_bell(),
-                    // Unhandled event!
-                    Err(_) => {}
+                // Wait for the next event
+                handle_event(tokio::select! {
+                    ev = events.next() => if let Some(Ok(ev)) = ev {
+                        Event::from_raw(ev)
+                    } else {
+                        // Ummm...?
+                        Event::Tick
+                    },
+                    _ = notify.notified() => Event::Internal,
+                    _ = interval.tick() => Event::Tick,
+                });
+
+                // Now that we're awake, speculatively process any extra events that happen to be immediately
+                // available to avoid wasting renders
+                // TODO: `.now_or_never()` doesn't work here, is EventStream not cancel-safe?
+                while let Ok(Some(Ok(ev))) =
+                    tokio::time::timeout(Duration::ZERO, events.next()).await
+                {
+                    handle_event(Event::from_raw(ev));
                 }
 
-                state.tick(&mut needs_render);
-
+                // If the clipboard has changed, tell the host terminal about it
                 if let Some(content) = state.clipboard.get_local_clear_dirty() {
                     term.copy(content);
                 }
 
                 // Render the state to the screen
                 if needs_render {
+                    needs_render = false;
                     term.update(|fb| ui.render(&mut state, fb));
                 }
             }
+
+            Ok(())
         })
     })
 }

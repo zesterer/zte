@@ -315,6 +315,8 @@ impl Visual for Term {
                             ],
                             style,
                         );
+                    } else {
+                        frame.hide_cursor();
                     }
                 }
 
