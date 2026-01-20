@@ -112,7 +112,7 @@ impl Default for Theme {
                 ..BorderTheme::default()
             },
             focus_border: BorderTheme {
-                cells: fg(Color::White),
+                cells: fg(Color::AnsiValue(122)),
                 ..BorderTheme::default()
             },
             whitespace: fg(Color::AnsiValue(245)),

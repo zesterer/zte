@@ -277,7 +277,13 @@ impl<'a> Rect<'a> {
                     fg: self.fg,
                     bg: self.bg,
                     uline: self.uline,
-                    attr: self.attr,
+                    // Apply dimming to all unfocused things
+                    attr: self.attr
+                        | if self.has_focus {
+                            Attributes::none()
+                        } else {
+                            Attributes::none().with(Attribute::Dim)
+                        },
                 };
                 if let Some(c) =
                     self.get_mut([(origin[0] + idx as isize) as usize, origin[1] as usize])
