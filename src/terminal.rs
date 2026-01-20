@@ -188,16 +188,18 @@ impl<'a> Rect<'a> {
         }
     }
 
-    pub fn with_fg(&mut self, fg: Color) -> Rect<'_> {
+    pub fn with_fg(&mut self, fg: impl Into<Option<Color>>) -> Rect<'_> {
+        let fg = fg.into();
         Rect {
-            fg,
+            fg: fg.unwrap_or(self.fg),
             ..self.reborrow()
         }
     }
 
-    pub fn with_bg(&mut self, bg: Color) -> Rect<'_> {
+    pub fn with_bg(&mut self, bg: impl Into<Option<Color>>) -> Rect<'_> {
+        let bg = bg.into();
         Rect {
-            bg,
+            bg: bg.unwrap_or(self.bg),
             ..self.reborrow()
         }
     }

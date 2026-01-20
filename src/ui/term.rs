@@ -3,6 +3,8 @@ use alacritty_terminal::{
     Term as Alacritty,
     event::{Event as TermEvent, EventListener},
     grid::{Dimensions as _, Scroll},
+    index::{Column, Line, Point, Side},
+    selection::{Selection, SelectionType},
     term::{ClipboardType, Config as AlacrittyConfig, TermMode, cell::Flags, test::TermSize},
     vte::ansi,
 };
@@ -44,6 +46,7 @@ pub struct Term {
     cmd: task::JoinHandle<()>,
     scroller: Scroller,
     bell: bool,
+    term_area: Area,
 }
 
 impl Term {
@@ -101,6 +104,7 @@ impl Term {
             cmd,
             scroller: Scroller::default(),
             bell: false,
+            term_area: Area::default(),
         })
     }
 
@@ -156,6 +160,18 @@ impl Element for Term {
                 self.term.scroll_display(Scroll::Delta(dir * dist as i32));
                 Ok(Resp::handled(None))
             }
+            Some(Action::Copy)
+                if self
+                    .term
+                    .selection
+                    .as_ref()
+                    .map_or(false, |s| !s.is_empty()) =>
+            {
+                if let Some(s) = self.term.selection_to_string() {
+                    let _ = state.clipboard.set(s);
+                }
+                Ok(Resp::handled(None))
+            }
             Some(Action::Paste) => {
                 if let Ok(s) = state.clipboard.get() {
                     let s = if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
@@ -166,6 +182,31 @@ impl Element for Term {
                     self.send_bytes(s);
                 }
                 Ok(Resp::handled(None))
+            }
+            Some(Action::Mouse(MouseAction::Click, pos, false, _drag_id)) => {
+                if let Some(pos) = self.term_area.contains(pos) {
+                    self.term.selection = Some(Selection::new(
+                        SelectionType::Simple,
+                        Point::new(Line(pos[1] as i32), Column(pos[0].max(0) as usize)),
+                        Side::Left,
+                    ));
+                    Ok(Resp::handled(None))
+                } else {
+                    Err(event)
+                }
+            }
+            Some(Action::Mouse(MouseAction::Drag, pos, false, _drag_id)) => {
+                if let Some(pos) = self.term_area.contains(pos)
+                    && let Some(sel) = &mut self.term.selection
+                {
+                    sel.update(
+                        Point::new(Line(pos[1] as i32), Column(pos[0].max(0) as usize)),
+                        Side::Left,
+                    );
+                    Ok(Resp::handled(None))
+                } else {
+                    Err(event)
+                }
             }
             _ => {
                 if let Event::Raw(ref ev) = event
@@ -235,6 +276,8 @@ impl Visual for Term {
                 self.title.as_deref(),
             )
             .with(|frame| {
+                self.term_area = frame.area();
+
                 // Resize terminal if needed
                 let term_size = frame.size().map(|e| e.max(1));
                 if Some(term_size) != self.old_term_size {
@@ -325,6 +368,16 @@ impl Visual for Term {
                     frame
                         .with_bg(map_color(cell.bg))
                         .with_fg(map_color(cell.fg))
+                        .with_theme(
+                            if let Some(sel) = &self.term.selection
+                                && let Some(range) = sel.to_range(&self.term)
+                                && range.contains(cell.point)
+                            {
+                                Some(state.theme.select)
+                            } else {
+                                None
+                            },
+                        )
                         .with_attr(attr)
                         .text(
                             [
