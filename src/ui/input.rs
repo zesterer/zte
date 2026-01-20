@@ -394,18 +394,16 @@ impl Input {
                         (frame.with_theme(None), c)
                     };
                     // Matching delimiters
-                    let uline = if cursor_delim
+                    let mut frame = if cursor_delim
                         .as_ref()
                         .zip(pos)
                         .map_or(false, |((_, s), pos)| s.start == pos || s.end == pos + 1)
                     {
-                        Some(Color::White)
+                        frame.with_uline(Some(Color::White))
                     } else {
-                        None
+                        frame.with_theme(None)
                     };
-                    frame
-                        .with_uline(uline)
-                        .text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
+                    frame.text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
                 }
 
                 // Set cursor position

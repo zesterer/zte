@@ -40,8 +40,14 @@ pub enum TokenKind {
     MergeConflict,
     /// A clickable URL
     Url,
-    /// An important note, such as a TODO comment
+    /// An important warning, such as a TODO comment
     Important,
+    /// An underlined title
+    Title,
+    /// Italic element in a document
+    Italic,
+    /// Bold element in a document
+    Bold,
 }
 
 #[derive(Default)]

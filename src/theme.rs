@@ -1,4 +1,4 @@
-use crate::{Color, highlight::TokenKind};
+use super::{highlight::TokenKind, *};
 
 pub struct BorderTheme {
     pub left: char,
@@ -11,7 +11,8 @@ pub struct BorderTheme {
     pub bottom_right: char,
     pub join_left: char,
     pub join_right: char,
-    pub fg: Color,
+    pub edges: bool,
+    pub cells: CellTheme,
 }
 
 impl Default for BorderTheme {
@@ -27,7 +28,8 @@ impl Default for BorderTheme {
             bottom_right: '┘', //'╯',
             join_left: '├',
             join_right: '┤',
-            fg: Color::AnsiValue(244),
+            edges: true,
+            cells: CellTheme::default().fg(Color::AnsiValue(244)),
         }
     }
 }
@@ -36,6 +38,7 @@ impl Default for BorderTheme {
 pub struct CellTheme {
     pub fg: Option<Color>,
     pub bg: Option<Color>,
+    pub attr: Option<Attributes>,
 }
 
 impl CellTheme {
@@ -46,6 +49,11 @@ impl CellTheme {
 
     pub fn bg(mut self, bg: Color) -> Self {
         self.bg = Some(bg);
+        self
+    }
+
+    pub fn attr(mut self, attr: Attribute) -> Self {
+        self.attr = Some(self.attr.unwrap_or(Attributes::none()) | attr);
         self
     }
 }
@@ -79,10 +87,12 @@ pub struct Theme {
     pub hl_token_special: CellTheme,
     pub hl_token_constant: CellTheme,
     pub hl_token_function: CellTheme,
-
     pub hl_merge_conflict: CellTheme,
-    pub hl_url: CellTheme,
-    pub hl_important: CellTheme,
+    pub hl_token_url: CellTheme,
+    pub hl_token_important: CellTheme,
+    pub hl_token_title: CellTheme,
+    pub hl_token_italic: CellTheme,
+    pub hl_token_bold: CellTheme,
 }
 
 impl Default for Theme {
@@ -97,9 +107,12 @@ impl Default for Theme {
             unfocus_select: bg(Color::AnsiValue(238)),
             search_result: bg(Color::AnsiValue(60)),
             margin: fg(Color::AnsiValue(245)),
-            border: BorderTheme::default(),
+            border: BorderTheme {
+                cells: fg(Color::DarkGrey),
+                ..BorderTheme::default()
+            },
             focus_border: BorderTheme {
-                fg: Color::White,
+                cells: fg(Color::White),
                 ..BorderTheme::default()
             },
             whitespace: fg(Color::AnsiValue(245)),
@@ -123,10 +136,14 @@ impl Default for Theme {
             hl_token_special: fg(Color::AnsiValue(160)),
             hl_token_constant: fg(Color::AnsiValue(81)),
             hl_token_function: fg(Color::AnsiValue(122)),
-
             hl_merge_conflict: fg(Color::AnsiValue(124)),
-            hl_url: fg(Color::AnsiValue(123)),
-            hl_important: none.bg(Color::AnsiValue(52)),
+            hl_token_url: fg(Color::AnsiValue(123)).attr(Attribute::Underlined),
+            hl_token_important: none.bg(Color::AnsiValue(52)),
+            hl_token_title: fg(Color::AnsiValue(180))
+                .attr(Attribute::Bold)
+                .attr(Attribute::Underlined),
+            hl_token_italic: none.attr(Attribute::Italic),
+            hl_token_bold: none.attr(Attribute::Bold),
         }
     }
 }
@@ -151,8 +168,11 @@ impl Theme {
             TokenKind::Constant => self.hl_token_constant,
             TokenKind::Function => self.hl_token_function,
             TokenKind::MergeConflict => self.hl_merge_conflict,
-            TokenKind::Url => self.hl_url,
-            TokenKind::Important => self.hl_important,
+            TokenKind::Url => self.hl_token_url,
+            TokenKind::Important => self.hl_token_important,
+            TokenKind::Title => self.hl_token_title,
+            TokenKind::Italic => self.hl_token_italic,
+            TokenKind::Bold => self.hl_token_bold,
         }
     }
 }

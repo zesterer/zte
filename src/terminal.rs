@@ -25,6 +25,16 @@ struct Cell {
     attr: Attributes,
 }
 
+impl Cell {
+    fn apply(&mut self, c: char, theme: theme::CellTheme) {
+        self.c = c;
+        self.fg = theme.fg.unwrap_or(Color::Reset);
+        self.bg = theme.bg.unwrap_or(Color::Reset);
+        self.uline = Color::Reset;
+        self.attr = theme.attr.unwrap_or(Attributes::none());
+    }
+}
+
 impl Default for Cell {
     fn default() -> Self {
         Self {
@@ -79,6 +89,7 @@ pub struct Rect<'a> {
     has_focus: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> Rect<'a> {
     fn get_mut(&mut self, pos: [usize; 2]) -> Option<&mut Cell> {
         if pos[0] < self.size()[0] && pos[1] < self.size()[1] {
@@ -96,6 +107,18 @@ impl<'a> Rect<'a> {
         f(self)
     }
 
+    fn reborrow(&mut self) -> Rect<'_> {
+        Rect {
+            fg: self.fg,
+            bg: self.bg,
+            uline: self.uline,
+            attr: self.attr,
+            area: self.area,
+            fb: self.fb,
+            has_focus: self.has_focus,
+        }
+    }
+
     pub fn rect(&mut self, origin: [usize; 2], size: [usize; 2]) -> Rect<'_> {
         Rect {
             area: Area {
@@ -108,12 +131,7 @@ impl<'a> Rect<'a> {
                     size[1].min((self.area.size[1] as usize).saturating_sub(origin[1])) as u16,
                 ],
             },
-            fg: self.fg,
-            bg: self.bg,
-            uline: self.uline,
-            attr: self.attr,
-            fb: self.fb,
-            has_focus: self.has_focus,
+            ..self.reborrow()
         }
     }
 
@@ -121,39 +139,35 @@ impl<'a> Rect<'a> {
         let edge = self.size().map(|e| e.saturating_sub(1));
         for col in 0..edge[0] {
             self.get_mut([col, 0]).map(|c| {
-                c.c = theme.top;
-                c.fg = theme.fg;
+                c.apply(theme.top, theme.cells);
             });
-            self.get_mut([col, edge[1]]).map(|c| {
-                c.c = theme.bottom;
-                c.fg = theme.fg;
-            });
+            if theme.edges {
+                self.get_mut([col, edge[1]]).map(|c| {
+                    c.apply(theme.bottom, theme.cells);
+                });
+            }
         }
-        for row in 0..edge[1] {
-            self.get_mut([0, row]).map(|c| {
-                c.c = theme.left;
-                c.fg = theme.fg;
+        if theme.edges {
+            for row in 0..edge[1] {
+                self.get_mut([0, row]).map(|c| {
+                    c.apply(theme.left, theme.cells);
+                });
+                self.get_mut([edge[0], row]).map(|c| {
+                    c.apply(theme.right, theme.cells);
+                });
+            }
+            self.get_mut([0, edge[1]]).map(|c| {
+                c.apply(theme.bottom_left, theme.cells);
             });
-            self.get_mut([edge[0], row]).map(|c| {
-                c.c = theme.right;
-                c.fg = theme.fg;
+            self.get_mut([edge[0], edge[1]]).map(|c| {
+                c.apply(theme.bottom_right, theme.cells);
             });
         }
         self.get_mut([0, 0]).map(|c| {
-            c.c = theme.top_left;
-            c.fg = theme.fg;
+            c.apply(theme.top_left, theme.cells);
         });
         self.get_mut([edge[0], 0]).map(|c| {
-            c.c = theme.top_right;
-            c.fg = theme.fg;
-        });
-        self.get_mut([0, edge[1]]).map(|c| {
-            c.c = theme.bottom_left;
-            c.fg = theme.fg;
-        });
-        self.get_mut([edge[0], edge[1]]).map(|c| {
-            c.c = theme.bottom_right;
-            c.fg = theme.fg;
+            c.apply(theme.top_right, theme.cells);
         });
         if let Some(title) = title {
             for (i, c) in [theme.join_right, ' ']
@@ -163,35 +177,28 @@ impl<'a> Rect<'a> {
                 .enumerate()
             {
                 self.get_mut([2 + i, 0]).map(|cell| {
-                    cell.fg = theme.fg;
-                    cell.c = c
+                    cell.apply(c, theme.cells);
                 });
             }
         }
-        self.rect([1, 1], self.size().map(|e| e.saturating_sub(2)))
+        if theme.edges {
+            self.rect([1, 1], self.size().map(|e| e.saturating_sub(2)))
+        } else {
+            self.rect([0, 1], self.size().map(|e| e.saturating_sub(1)))
+        }
     }
 
     pub fn with_fg(&mut self, fg: Color) -> Rect<'_> {
         Rect {
             fg,
-            bg: self.bg,
-            uline: self.uline,
-            attr: self.attr,
-            area: self.area,
-            fb: self.fb,
-            has_focus: self.has_focus,
+            ..self.reborrow()
         }
     }
 
     pub fn with_bg(&mut self, bg: Color) -> Rect<'_> {
         Rect {
-            fg: self.fg,
             bg,
-            uline: self.uline,
-            attr: self.attr,
-            area: self.area,
-            fb: self.fb,
-            has_focus: self.has_focus,
+            ..self.reborrow()
         }
     }
 
@@ -200,39 +207,34 @@ impl<'a> Rect<'a> {
         Rect {
             fg: theme.and_then(|t| t.fg).unwrap_or(self.fg),
             bg: theme.and_then(|t| t.bg).unwrap_or(self.bg),
-            uline: self.uline,
-            attr: self.attr,
-            area: self.area,
-            fb: self.fb,
-            has_focus: self.has_focus,
+            attr: theme.and_then(|t| t.attr).unwrap_or(self.attr),
+            ..self.reborrow()
         }
     }
 
     pub fn with_uline(&mut self, uline: Option<Color>) -> Rect<'_> {
         Rect {
-            fg: self.fg,
-            bg: self.bg,
             uline: uline.unwrap_or(self.uline),
             attr: if uline.is_some() {
                 self.attr.with(Attribute::Underlined)
             } else {
                 self.attr.without(Attribute::Underlined)
             },
-            area: self.area,
-            fb: self.fb,
-            has_focus: self.has_focus,
+            ..self.reborrow()
+        }
+    }
+
+    pub fn with_attr(&mut self, attr: Attributes) -> Rect<'_> {
+        Rect {
+            attr: self.attr | attr,
+            ..self.reborrow()
         }
     }
 
     pub fn with_focus(&mut self, focus: bool) -> Rect<'_> {
         Rect {
-            fg: self.fg,
-            bg: self.bg,
-            uline: self.uline,
-            attr: self.attr,
-            area: self.area,
-            fb: self.fb,
             has_focus: self.has_focus && focus,
+            ..self.reborrow()
         }
     }
 
@@ -481,9 +483,7 @@ impl<'a> Terminal<'a> {
                             }
                             if attr != cell.attr {
                                 attr = cell.attr;
-                                stdout
-                                    .queue(style::SetAttributes(attr.with(Attribute::Reset)))
-                                    .unwrap();
+                                stdout.queue(style::SetAttributes(attr)).unwrap();
                                 stdout.queue(style::SetForegroundColor(fg)).unwrap();
                                 stdout.queue(style::SetBackgroundColor(bg)).unwrap();
                                 stdout.queue(style::SetUnderlineColor(uline)).unwrap();

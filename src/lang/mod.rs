@@ -109,16 +109,22 @@ impl Highlighter {
 
     pub fn markdown(self) -> Self {
         self
+            // Radio button
+            .with(TokenKind::Macro, r"\[[[[:space:]]xX\-]\]")
             // Links
-            .with(TokenKind::String, r"!?\[[^\]]*\](\([^\)]*\))?")
+            .with_child_syntax(
+                TokenKind::String,
+                r"!?\[[^\]]*\](\([^\)]*\))?",
+                Self::default().url(),
+            )
             // Header
-            .with(TokenKind::Doc, r"^#+[[:space:]][^$]*$")
+            .with(TokenKind::Title, r"^#+[[:space:]][^$]*$")
             // List item
             .with(TokenKind::Operator, r"^[[:space:]]?[\-([0-9]+[\)\.])]")
             // Bold
-            .with(TokenKind::Property, r"\*\*[^(\*\*)]*\*\*")
+            .with(TokenKind::Bold, r"\*\*[^(\*\*)]*\*\*")
             // Italics
-            .with(TokenKind::Attribute, r"\*[^\*]*\*")
+            .with(TokenKind::Italic, r"\*[^\*]*\*")
             // Code block
             .with(TokenKind::Operator, r"^```[^(^```)]*^```")
             // Inline code

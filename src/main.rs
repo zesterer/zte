@@ -9,7 +9,7 @@ mod ui;
 use crate::{
     action::{Action, Dir, Dist, Event, MouseAction},
     state::State,
-    terminal::{Area, Color, Terminal, TerminalEvent},
+    terminal::{Area, Attribute, Attributes, Color, Terminal, TerminalEvent},
     ui::{Element as _, Visual as _},
 };
 use clap::Parser;
