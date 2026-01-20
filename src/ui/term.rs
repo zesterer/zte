@@ -244,13 +244,35 @@ impl Visual for Term {
                 }
 
                 if frame.has_focus() {
-                    frame.set_cursor(
-                        [
-                            self.term.grid().cursor.point.column.0 as isize,
-                            self.term.grid().cursor.point.line.0 as isize + display_offset,
-                        ],
-                        CursorStyle::BlinkingBlock,
-                    );
+                    let style = match (
+                        self.term.cursor_style().shape,
+                        self.term.cursor_style().blinking,
+                    ) {
+                        (ansi::CursorShape::Beam, true) => Some(CursorStyle::BlinkingBar),
+                        (ansi::CursorShape::Beam, false) => Some(CursorStyle::SteadyBar),
+                        (ansi::CursorShape::Underline, true) => {
+                            Some(CursorStyle::BlinkingUnderScore)
+                        }
+                        (ansi::CursorShape::Underline, false) => {
+                            Some(CursorStyle::SteadyUnderScore)
+                        }
+                        (ansi::CursorShape::Block | ansi::CursorShape::HollowBlock, true) => {
+                            Some(CursorStyle::BlinkingBlock)
+                        }
+                        (ansi::CursorShape::Block | ansi::CursorShape::HollowBlock, false) => {
+                            Some(CursorStyle::SteadyBlock)
+                        }
+                        (ansi::CursorShape::Hidden, _) => None,
+                    };
+                    if let Some(style) = style {
+                        frame.set_cursor(
+                            [
+                                self.term.grid().cursor.point.column.0 as isize,
+                                self.term.grid().cursor.point.line.0 as isize + display_offset,
+                            ],
+                            style,
+                        );
+                    }
                 }
 
                 // Draw terminal cells
