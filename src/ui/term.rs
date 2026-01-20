@@ -3,7 +3,7 @@ use alacritty_terminal::{
     Term as Alacritty,
     event::{Event as TermEvent, EventListener},
     grid::{Dimensions as _, Scroll},
-    term::{ClipboardType, Config as AlacrittyConfig, TermMode, test::TermSize},
+    term::{ClipboardType, Config as AlacrittyConfig, TermMode, cell::Flags, test::TermSize},
     vte::ansi,
 };
 use tokio::{
@@ -291,9 +291,41 @@ impl Visual for Term {
                         },
                         ansi::Color::Indexed(i) => Color::AnsiValue(i),
                     };
+                    let mut attr = Attributes::none();
+                    if cell.flags.contains(Flags::INVERSE) {
+                        attr.set(Attribute::Reverse);
+                    }
+                    if cell.flags.contains(Flags::BOLD) {
+                        attr.set(Attribute::Bold);
+                    }
+                    if cell.flags.contains(Flags::ITALIC) {
+                        attr.set(Attribute::Italic);
+                    }
+                    if cell.flags.contains(Flags::UNDERLINE) {
+                        attr.set(Attribute::Underlined);
+                    }
+                    if cell.flags.contains(Flags::DIM) {
+                        attr.set(Attribute::Dim);
+                    }
+                    if cell.flags.contains(Flags::STRIKEOUT) {
+                        attr.set(Attribute::CrossedOut);
+                    }
+                    if cell.flags.contains(Flags::DOUBLE_UNDERLINE) {
+                        attr.set(Attribute::DoubleUnderlined);
+                    }
+                    if cell.flags.contains(Flags::UNDERCURL) {
+                        attr.set(Attribute::Undercurled);
+                    }
+                    if cell.flags.contains(Flags::DOTTED_UNDERLINE) {
+                        attr.set(Attribute::Underdotted);
+                    }
+                    if cell.flags.contains(Flags::DASHED_UNDERLINE) {
+                        attr.set(Attribute::Underdashed);
+                    }
                     frame
                         .with_bg(map_color(cell.bg))
                         .with_fg(map_color(cell.fg))
+                        .with_attr(attr)
                         .text(
                             [
                                 cell.point.column.0 as isize,
