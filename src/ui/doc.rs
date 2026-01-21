@@ -6,7 +6,7 @@ pub struct Doc {
     pub buffer: BufferId,
     // Remember the cursor we use for each buffer
     inputs: HashMap<BufferId, (CursorId, Input)>,
-    finder: Option<Finder>,
+    finder: Option<Box<Finder>>,
 }
 
 impl Doc {
@@ -86,13 +86,16 @@ impl Element for Doc {
             | action @ Some(Action::OpenSaver(_))
             | action @ Some(Action::OpenMover(_)) => Ok(Resp::handled(action.map(Into::into))),
             Some(Action::OpenFinder(ref query)) => {
-                self.finder = Some(Finder::new(
-                    buffer.cursors[*cursor_id],
-                    query.clone(),
-                    state,
-                    input,
-                    self.buffer,
-                ));
+                self.finder = Some(
+                    Finder::new(
+                        buffer.cursors[*cursor_id],
+                        query.clone(),
+                        state,
+                        input,
+                        self.buffer,
+                    )
+                    .into(),
+                );
                 Ok(Resp::handled(None))
             }
             Some(Action::BeginSearch(needle)) => {
@@ -268,7 +271,7 @@ impl Visual for Doc {
                     buffer.name().as_deref(),
                     buffer,
                     *cursor_id,
-                    self.finder.as_ref(),
+                    self.finder.as_deref(),
                     f,
                 )
             });

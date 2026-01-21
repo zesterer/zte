@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 pub enum PaneKind {
     Empty,
     Doc(Doc),
-    Term(Term),
+    Term(Box<Term>),
 }
 
 enum PaneTask {
@@ -12,10 +12,13 @@ enum PaneTask {
     Switcher(Switcher),
 }
 
+// Keep types small to save memory!
+const _: () = assert!(core::mem::size_of::<PaneKind>() < 128);
+
 pub struct Pane {
     kind: PaneKind,
     last_area: Area,
-    task: Option<PaneTask>,
+    task: Option<Box<PaneTask>>,
 }
 
 impl Pane {
@@ -34,7 +37,7 @@ impl Element for Pane {
                 // TODO: Close other kinds
                 match Term::new(path, state) {
                     Ok(term) => {
-                        self.kind = PaneKind::Term(term);
+                        self.kind = PaneKind::Term(term.into());
                         Ok(Resp::handled(None))
                     }
                     Err(err) => Ok(Resp::handled(Some(
@@ -44,24 +47,21 @@ impl Element for Pane {
                 }
             }
             Some(Action::OpenOpener(path)) => {
-                self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
-                    path,
-                    FileBrowserMode::Opener,
-                )));
+                self.task = Some(
+                    PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Opener)).into(),
+                );
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenSaver(path)) => {
-                self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
-                    path,
-                    FileBrowserMode::Save,
-                )));
+                self.task = Some(
+                    PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Save)).into(),
+                );
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenMover(path)) => {
-                self.task = Some(PaneTask::FileBrowser(FileBrowser::new(
-                    path,
-                    FileBrowserMode::Move,
-                )));
+                self.task = Some(
+                    PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Move)).into(),
+                );
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenSwitcher) => {
@@ -69,12 +69,12 @@ impl Element for Pane {
                 if most_recent.is_empty() {
                     Err(event)
                 } else {
-                    self.task = Some(PaneTask::Switcher(Switcher::new(most_recent)));
+                    self.task = Some(PaneTask::Switcher(Switcher::new(most_recent)).into());
                     Ok(Resp::handled(None))
                 }
             }
             _ => {
-                let event = if let Some(task) = &mut self.task {
+                let event = if let Some(task) = self.task.as_deref_mut() {
                     let resp = match task {
                         PaneTask::FileBrowser(browser) => browser.handle(state, event),
                         PaneTask::Switcher(switcher) => switcher.handle(state, event),
@@ -104,7 +104,7 @@ impl Element for Pane {
 
 impl Visual for Pane {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let remaining_space = match &mut self.task {
+        let remaining_space = match self.task.as_deref_mut() {
             Some(PaneTask::FileBrowser(browser)) => {
                 browser.render(state, frame);
                 None
@@ -481,7 +481,7 @@ impl Tabs {
                             panes: vec![Pane {
                                 kind: PaneKind::Doc(Doc::new(state, buffer_id)),
                                 last_area: Area::default(),
-                                task,
+                                task: task.map(Into::into),
                             }],
                             last_area: Area::default(),
                             size_weight: 1.0,
