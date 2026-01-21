@@ -5,6 +5,7 @@ mod state;
 mod terminal;
 mod theme;
 mod ui;
+mod util;
 
 use crate::{
     action::{Action, Dir, Dist, Event, MouseAction},

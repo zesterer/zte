@@ -3,7 +3,7 @@ use crate::state::{Buffer, BufferId, Cursor, CursorId};
 use std::collections::HashMap;
 
 pub struct Doc {
-    buffer: BufferId,
+    pub buffer: BufferId,
     // Remember the cursor we use for each buffer
     inputs: HashMap<BufferId, (CursorId, Input)>,
     finder: Option<Finder>,

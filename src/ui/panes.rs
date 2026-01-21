@@ -627,7 +627,7 @@ impl Visual for Tabs {
         }
 
         if self.tab_view_timeout.is_some() {
-            let mut frame = frame.mid([32, self.tabs.len() + 2]);
+            let mut frame = frame.mid([96, self.tabs.len() + 2]);
             let mut frame = frame.with_border(
                 if frame.has_focus() {
                     &state.theme.focus_border
@@ -636,7 +636,18 @@ impl Visual for Tabs {
                 },
                 Some("Tab switcher"),
             );
-            for (i, _) in self.tabs.iter().enumerate() {
+            for (i, tab) in self.tabs.iter().enumerate() {
+                let name = if let Some(vbox) = tab.vboxes.get(tab.selected)
+                    && let Some(pane) = vbox.panes.get(vbox.selected)
+                    && let PaneKind::Doc(doc) = &pane.kind
+                    && let Some(buffer) = state.buffers.get(doc.buffer)
+                    && let Some(path) = buffer.path()
+                {
+                    format!("{}", util::workspace_dir(path.clone()).display())
+                } else {
+                    format!("{i}")
+                };
+
                 frame
                     .rect([0, i], [!0, 1])
                     .with_theme(if i == self.selected {
@@ -645,7 +656,7 @@ impl Visual for Tabs {
                         None
                     })
                     .fill(' ')
-                    .text([0, 0], &format!("{i}"));
+                    .text([0, 0], &name);
             }
         }
     }

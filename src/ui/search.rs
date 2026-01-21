@@ -16,20 +16,7 @@ pub struct Searcher {
 
 impl Searcher {
     pub fn new(path: PathBuf, needle: Option<String>) -> Self {
-        let mut search_path = path.clone();
-        let search_path = loop {
-            if let Ok(mut entries) = fs::read_dir(&search_path)
-                && entries.any(|e| {
-                    e.map_or(false, |e| {
-                        e.file_name() == ".git" && e.file_type().map_or(false, |t| t.is_dir())
-                    })
-                })
-            {
-                break search_path;
-            } else if !search_path.pop() {
-                break std::env::current_dir().expect("No cwd");
-            }
-        };
+        let search_path = util::workspace_dir(path.clone());
 
         fn search_in(
             search_path: &Path,
