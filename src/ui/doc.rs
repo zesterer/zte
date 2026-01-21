@@ -66,8 +66,8 @@ impl Element for Doc {
         };
 
         let open_path = buffer
-            .path
-            .to_owned()
+            .path()
+            .cloned()
             .map(|mut p| {
                 p.pop();
                 p
@@ -97,8 +97,8 @@ impl Element for Doc {
             }
             Some(Action::BeginSearch(needle)) => {
                 let path = buffer
-                    .path
-                    .clone()
+                    .path()
+                    .cloned()
                     .unwrap_or_else(|| std::env::current_dir().expect("no cwd"));
                 Ok(Resp::handled(Some(
                     Action::OpenSearcher(path, needle).into(),
@@ -126,7 +126,7 @@ impl Element for Doc {
             },
 
             // Save
-            Some(Action::SaveFile) => Ok(Resp::handled(if buffer.has_diverged() {
+            Some(Action::SaveFile) => Ok(Resp::handled(if buffer.has_changes() {
                 Some(
                     Action::Confirm(
                         format!("File has diverged on disk. Are you sure you wish to save (y/n)?"),
@@ -134,7 +134,7 @@ impl Element for Doc {
                     )
                     .into(),
                 )
-            } else if buffer.path.is_none() {
+            } else if buffer.path().is_none() {
                 Some(Action::OpenSaver(std::env::current_dir().expect("no cwd")).into())
             } else {
                 buffer.save().err().map(|err| {
@@ -186,10 +186,10 @@ impl Element for Doc {
             }
 
             Some(Action::CloseFile) => {
-                if buffer.has_diverged() {
+                if buffer.has_changes() {
                     Ok(Resp::handled(Some(
                     Action::Confirm(
-                        format!("File has diverged on disk. Are you sure you wish to lose your changes (y/n)?"),
+                        format!("File has unsaved changes. Are you sure you wish to lose your changes (y/n)?"),
                         Box::new(Action::CloseFileForce),
                     )
                     .into(),
@@ -246,7 +246,7 @@ impl Visual for Doc {
         let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
 
         if frame.has_focus() {
-            frame.set_title(if let Some(path) = &buffer.path {
+            frame.set_title(if let Some(path) = buffer.path() {
                 format!("{}: {}", env!("CARGO_PKG_NAME"), path.display())
             } else {
                 format!("{}: Unsaved", env!("CARGO_PKG_NAME"))

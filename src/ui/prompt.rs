@@ -253,8 +253,7 @@ impl Element<()> for Switcher {
                             };
                             let name = buffer.name().as_deref().unwrap_or("").to_lowercase();
                             let parent = buffer
-                                .path
-                                .as_ref()
+                                .path()
                                 .and_then(|p| Some(p.parent()?.to_str()?.to_lowercase()));
                             if name.starts_with(&filter) {
                                 Some(1)
@@ -302,8 +301,7 @@ impl Visual for BufferId {
         frame.with_theme(state.theme.option_dir).text(
             [path_x, 0],
             &buffer
-                .path
-                .as_ref()
+                .path()
                 .and_then(|p| Some(format!("{}", p.parent()?.display())))
                 .unwrap_or_else(|| format!("<anonymous #{}>", self.data().as_ffi())),
         );

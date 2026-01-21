@@ -158,18 +158,22 @@ impl Text {
     }
 }
 
-#[derive(Default)]
-pub struct Buffer {
+struct OnDisk {
+    path: PathBuf,
+    last_observed_modification: SystemTime,
     pub unsaved: bool,
     diverged: bool,
+}
+
+#[derive(Default)]
+pub struct Buffer {
     pub text: Text,
     pub lang: LangPack,
     pub cursors: DenseSlotMap<CursorId, Cursor>,
-    pub path: Option<PathBuf>,
+    on_disk: Option<OnDisk>,
     pub undo: Vec<Change>,
     pub redo: Vec<Change>,
     undo_dont_merge: bool,
-    opened_at: Option<SystemTime>,
     action_counter: usize,
     most_recent_rank: usize,
 
@@ -211,21 +215,29 @@ impl Buffer {
         let lang = LangPack::from_file_name(&path);
         let text = Text { chars };
         Self {
-            unsaved,
-            diverged: false,
             highlights: lang.highlight(&text),
             highlights_stale: false,
             lang,
             text,
             cursors: DenseSlotMap::default(),
-            path: Some(path),
+            on_disk: Some(OnDisk {
+                last_observed_modification: std::fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .unwrap_or_else(|_| SystemTime::now()),
+                path,
+                unsaved,
+                diverged: false,
+            }),
             undo: Vec::new(),
             redo: Vec::new(),
             undo_dont_merge: false,
-            opened_at: Some(SystemTime::now()),
             action_counter: 0,
             most_recent_rank: 0,
         }
+    }
+
+    pub fn path(&self) -> Option<&PathBuf> {
+        self.on_disk.as_ref().map(|on_disk| &on_disk.path)
     }
 
     pub fn open(path: PathBuf) -> Result<Self, Error> {
@@ -246,16 +258,20 @@ impl Buffer {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, self.text.to_string())?;
-        self.path = Some(path);
-        self.diverged = false;
-        self.opened_at = Some(SystemTime::now());
-        self.unsaved = false;
+        self.on_disk = Some(OnDisk {
+            last_observed_modification: std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .unwrap_or_else(|_| SystemTime::now()),
+            path,
+            diverged: false,
+            unsaved: false,
+        });
         Ok(())
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
-        if let Some(path) = self.path.take() {
-            self.save_as(path)
+        if let Some(on_disk) = self.on_disk.take() {
+            self.save_as(on_disk.path)
         } else {
             // TODO: Not okay!
             Ok(())
@@ -263,15 +279,22 @@ impl Buffer {
     }
 
     pub fn move_to(&mut self, path: PathBuf) -> Result<(), Error> {
-        if let Some(old_path) = self.path.take() {
+        if let Some(old_on_disk) = self.on_disk.take() {
             // First, try renaming the old file
-            if std::fs::rename(&old_path, &path).is_ok() {
-                self.path = Some(path);
+            if std::fs::rename(&old_on_disk.path, &path).is_ok() {
+                self.on_disk = Some(OnDisk {
+                    last_observed_modification: std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .unwrap_or_else(|_| SystemTime::now()),
+                    path,
+                    diverged: false,
+                    unsaved: false,
+                });
                 Ok(())
             } else {
                 // If that didn't work, save it in the new location and remove the old one
                 self.save_as(path)?;
-                std::fs::remove_file(&old_path)?;
+                std::fs::remove_file(old_on_disk.path)?;
                 Ok(())
             }
         } else {
@@ -280,25 +303,26 @@ impl Buffer {
     }
 
     pub fn name(&self) -> Option<String> {
-        Some(
-            match self.path.as_ref()?.file_name().and_then(|n| n.to_str()) {
-                Some(name) => format!(
-                    "{}{name}",
-                    if self.diverged {
-                        "! "
-                    } else if self.unsaved {
-                        "* "
-                    } else {
-                        ""
-                    }
-                ),
-                None => "<error>".to_string(),
-            },
-        )
+        if let Some(on_disk) = &self.on_disk
+            && let Some(name) = on_disk.path.file_name().and_then(|n| n.to_str())
+        {
+            Some(format!(
+                "{}{name}",
+                if on_disk.diverged {
+                    "! "
+                } else if on_disk.unsaved {
+                    "* "
+                } else {
+                    ""
+                }
+            ))
+        } else {
+            None
+        }
     }
 
     pub fn reset(&mut self) {
-        self.unsaved = true;
+        assert!(self.on_disk.is_none());
 
         self.text.chars.clear();
         self.highlights_stale = true;
@@ -647,6 +671,10 @@ impl Buffer {
     }
 
     fn insert_inner(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) -> Change {
+        if let Some(on_disk) = &mut self.on_disk {
+            on_disk.unsaved = true;
+        }
+
         let chars = chars.into_iter().collect::<Vec<_>>();
         let mut n = 0;
         let base = pos.min(self.text.chars.len());
@@ -677,14 +705,15 @@ impl Buffer {
     }
 
     pub fn insert(&mut self, pos: usize, chars: impl IntoIterator<Item = char>) {
-        self.unsaved = true;
         let change = self.insert_inner(pos, chars);
         self.push_undo(change);
     }
 
     // Assumes range is well-formed
     fn remove_inner(&mut self, range: Range<usize>) -> Change {
-        self.unsaved = true;
+        if let Some(on_disk) = &mut self.on_disk {
+            on_disk.unsaved = true;
+        }
 
         // Force range to be valid
         let range = range.start.min(self.text.chars.len())..range.end.min(self.text.chars.len());
@@ -720,7 +749,6 @@ impl Buffer {
 
     // Assumes range is well-formed
     pub fn remove(&mut self, range: Range<usize>) {
-        self.unsaved = true;
         let change = self.remove_inner(range);
         self.push_undo(change);
     }
@@ -1048,46 +1076,45 @@ impl Buffer {
     }
 
     pub fn is_same_path(&self, path: &Path) -> bool {
-        self.path
+        self.on_disk
             .as_ref()
-            .and_then(|p| p.canonicalize().ok())
-            .as_ref()
+            .and_then(|on_disk| on_disk.path.canonicalize().ok())
             .map_or(false, |p| {
                 path.canonicalize().ok().map_or(false, |path| *p == path)
             })
     }
 
     pub fn reload(&mut self) {
-        if let Some(path) = &self.path {
-            if let Ok(text) = std::fs::read_to_string(path) {
+        if let Some(on_disk) = &mut self.on_disk {
+            if let Ok(text) = std::fs::read_to_string(&on_disk.path) {
                 self.text = Text {
                     chars: text.chars().collect(),
                 };
-                self.opened_at = Some(SystemTime::now());
-                self.diverged = false;
-                self.unsaved = false;
+                on_disk.last_observed_modification = std::fs::metadata(&on_disk.path)
+                    .and_then(|m| m.modified())
+                    .unwrap_or_else(|_| SystemTime::now());
+                on_disk.diverged = false;
+                on_disk.unsaved = false;
                 self.undo.clear();
                 self.redo.clear();
                 self.undo_dont_merge = false;
                 self.highlights_stale = true;
             } else {
-                self.diverged = true;
-                self.unsaved = true;
+                on_disk.diverged = true;
+                on_disk.unsaved = true;
             }
         }
     }
 
     fn check_diverged(&mut self, needs_render: &mut bool) {
-        if let Some(path) = &self.path {
-            let stale = std::fs::metadata(path)
+        if let Some(on_disk) = &mut self.on_disk {
+            let stale = std::fs::metadata(&on_disk.path)
                 .and_then(|m| m.modified())
-                .map_or(true, |lm| {
-                    lm > self.opened_at.expect("state buffer must have open time")
-                });
+                .map_or(true, |lm| lm > on_disk.last_observed_modification);
             if stale {
-                if self.unsaved {
-                    if !self.diverged {
-                        self.diverged = true;
+                if on_disk.unsaved {
+                    if !on_disk.diverged {
+                        on_disk.diverged = true;
                         *needs_render = true;
                     }
                 } else {
@@ -1095,14 +1122,15 @@ impl Buffer {
                     *needs_render = true;
                 }
             }
-        } else {
-            self.diverged = true;
         }
     }
 
-    pub fn has_diverged(&mut self) -> bool {
+    pub fn has_changes(&mut self) -> bool {
         self.check_diverged(&mut false);
-        self.diverged
+        self.on_disk
+            .as_ref()
+            .map(|on_disk| on_disk.diverged)
+            .unwrap_or_else(|| !self.text.chars().is_empty())
     }
 
     pub fn tick(&mut self, needs_render: &mut bool) {

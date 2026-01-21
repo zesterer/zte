@@ -106,16 +106,17 @@ impl Element<()> for Root {
                         break Ok(Resp::handled(None));
                     }
                     Action::Cancel => {
-                        let unsaved = state.buffers.values().filter(|b| b.unsaved).count();
-                        if state.buffers.is_empty() {
+                        let unsaved = state
+                            .buffers
+                            .values_mut()
+                            .map(|b| b.has_changes())
+                            .filter(|c| *c)
+                            .count();
+                        if unsaved == 0 {
                             break Ok(Resp::end(None));
                         } else {
                             self.tasks.push(Task::Confirm(Confirm {
-                                label: Label(if unsaved == 0 {
-                                    format!("Are you sure you wish to quit? (y/n). You have multiple documents open!")
-                                } else {
-                                    format!("Are you sure you wish to quit? (y/n). Note that {} files are unsaved!", unsaved)
-                                }),
+                                label: Label(format!("Are you sure you wish to quit? (y/n). Note that {} file(s) have unsaved changes!", unsaved)),
                                 action: Action::Quit,
                             }));
                             break Ok(Resp::handled(None));
