@@ -139,49 +139,50 @@ impl<'a> Rect<'a> {
         let edge = self.size().map(|e| e.saturating_sub(1));
         for col in 0..edge[0] {
             self.get_mut([col, 0]).map(|c| {
-                c.apply(theme.top, theme.cells);
+                c.apply(theme.top, theme.edge);
             });
-            if theme.edges {
+            if theme.has_edges {
                 self.get_mut([col, edge[1]]).map(|c| {
-                    c.apply(theme.bottom, theme.cells);
+                    c.apply(theme.bottom, theme.edge);
                 });
             }
         }
-        if theme.edges {
+        if theme.has_edges {
             for row in 0..edge[1] {
                 self.get_mut([0, row]).map(|c| {
-                    c.apply(theme.left, theme.cells);
+                    c.apply(theme.left, theme.edge);
                 });
                 self.get_mut([edge[0], row]).map(|c| {
-                    c.apply(theme.right, theme.cells);
+                    c.apply(theme.right, theme.edge);
                 });
             }
             self.get_mut([0, edge[1]]).map(|c| {
-                c.apply(theme.bottom_left, theme.cells);
+                c.apply(theme.bottom_left, theme.edge);
             });
             self.get_mut([edge[0], edge[1]]).map(|c| {
-                c.apply(theme.bottom_right, theme.cells);
+                c.apply(theme.bottom_right, theme.edge);
             });
         }
         self.get_mut([0, 0]).map(|c| {
-            c.apply(theme.top_left, theme.cells);
+            c.apply(theme.top_left, theme.edge);
         });
         self.get_mut([edge[0], 0]).map(|c| {
-            c.apply(theme.top_right, theme.cells);
+            c.apply(theme.top_right, theme.edge);
         });
         if let Some(title) = title {
-            for (i, c) in [theme.join_right, ' ']
+            for (i, (c, theme)) in [theme.join_right, ' ']
                 .into_iter()
-                .chain(title.chars())
-                .chain([' ', theme.join_left])
+                .map(|c| (c, &theme.edge))
+                .chain(title.chars().map(|c| (c, &theme.title)))
+                .chain([' ', theme.join_left].into_iter().map(|c| (c, &theme.edge)))
                 .enumerate()
             {
                 self.get_mut([2 + i, 0]).map(|cell| {
-                    cell.apply(c, theme.cells);
+                    cell.apply(c, *theme);
                 });
             }
         }
-        if theme.edges {
+        if theme.has_edges {
             self.rect([1, 1], self.size().map(|e| e.saturating_sub(2)))
         } else {
             self.rect([0, 1], self.size().map(|e| e.saturating_sub(1)))

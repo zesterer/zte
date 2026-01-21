@@ -11,8 +11,9 @@ pub struct BorderTheme {
     pub bottom_right: char,
     pub join_left: char,
     pub join_right: char,
-    pub edges: bool,
-    pub cells: CellTheme,
+    pub has_edges: bool,
+    pub title: CellTheme,
+    pub edge: CellTheme,
 }
 
 impl Default for BorderTheme {
@@ -28,8 +29,9 @@ impl Default for BorderTheme {
             bottom_right: '┘', //'╯',
             join_left: '├',
             join_right: '┤',
-            edges: true,
-            cells: CellTheme::default().fg(Color::AnsiValue(244)),
+            has_edges: true,
+            title: CellTheme::default().fg(Color::White).attr(Attribute::Bold),
+            edge: CellTheme::default().fg(Color::AnsiValue(244)),
         }
     }
 }
@@ -108,11 +110,11 @@ impl Default for Theme {
             search_result: bg(Color::AnsiValue(60)),
             margin: fg(Color::AnsiValue(245)),
             border: BorderTheme {
-                cells: fg(Color::DarkGrey),
+                edge: fg(Color::DarkGrey),
                 ..BorderTheme::default()
             },
             focus_border: BorderTheme {
-                cells: fg(Color::AnsiValue(122)),
+                edge: fg(Color::AnsiValue(122)),
                 ..BorderTheme::default()
             },
             whitespace: fg(Color::AnsiValue(245)),
