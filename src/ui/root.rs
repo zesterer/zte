@@ -1,7 +1,7 @@
 use super::*;
 
 pub struct Root {
-    panes: Panes,
+    tabs: Tabs,
     tasks: Vec<Task>,
     drag_id_counter: usize,
 }
@@ -27,7 +27,7 @@ impl Task {
 impl Root {
     pub fn new(state: &mut State, args: &Args) -> Self {
         Self {
-            panes: Panes::new(state, args),
+            tabs: Tabs::new(state, args),
             tasks: Vec::new(),
             drag_id_counter: 0,
         }
@@ -49,7 +49,7 @@ impl Element<()> for Root {
                 task_idx = match task_idx.checked_sub(1) {
                     Some(task_idx) => task_idx,
                     None => {
-                        break match self.panes.handle(state, event) {
+                        break match self.tabs.handle(state, event) {
                             Ok(resp) => match resp.event {
                                 Some(new_event) => new_event,
                                 None => return Ok(Resp::handled(None)),
@@ -138,7 +138,7 @@ impl Element<()> for Root {
                     }
                     Action::Quit => break Ok(Resp::end(None)),
                     action => match self
-                        .panes
+                        .tabs
                         .handle(state, Event::Action(action))
                         .map(|r| r.into_can_end::<()>())
                     {
@@ -186,7 +186,7 @@ impl Visual for Root {
                 });
         }
 
-        // Render panes
+        // Render tabs
         frame
             .rect(
                 [0, 0],
@@ -194,7 +194,7 @@ impl Visual for Root {
             )
             .with_focus(!task_has_focus)
             .with(|frame| {
-                self.panes.render(state, frame);
+                self.tabs.render(state, frame);
             });
     }
 }

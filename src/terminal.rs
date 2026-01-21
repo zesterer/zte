@@ -135,6 +135,17 @@ impl<'a> Rect<'a> {
         }
     }
 
+    pub fn mid(&mut self, size: [usize; 2]) -> Rect<'_> {
+        let sz = [self.size()[0].min(size[0]), self.size()[1].min(size[1])];
+        self.rect(
+            [
+                self.size()[0] / 2 - sz[0] / 2,
+                self.size()[1] / 2 - sz[1] / 2,
+            ],
+            sz,
+        )
+    }
+
     pub fn with_border(&mut self, theme: &theme::BorderTheme, title: Option<&str>) -> Rect<'_> {
         let edge = self.size().map(|e| e.saturating_sub(1));
         for col in 0..edge[0] {

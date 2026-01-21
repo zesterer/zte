@@ -22,8 +22,10 @@ pub enum Action {
     Move(Dir, Dist, bool, bool),
     // Move panes
     PaneMove(Dir),
+    TabMove(Dir),
     // Create a new pane
     PaneOpen(Dir),
+    TabOpen(Dir),
     // Close the current pane
     PaneClose,
     PaneCloseForce,
@@ -227,6 +229,38 @@ impl RawEvent {
             Some(Action::PaneClose)
         } else {
             None
+        }
+    }
+
+    pub fn to_tab_move(&self) -> Option<Dir> {
+        match &self.0 {
+            TerminalEvent::Key(KeyEvent {
+                code,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                ..
+            }) => match code {
+                KeyCode::PageUp => Some(Dir::Up),
+                KeyCode::PageDown => Some(Dir::Down),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn to_tab_open(&self) -> Option<Dir> {
+        match &self.0 {
+            TerminalEvent::Key(KeyEvent {
+                code,
+                modifiers: ALT_SHIFT,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                ..
+            }) => match code {
+                KeyCode::PageUp => Some(Dir::Up),
+                KeyCode::PageDown => Some(Dir::Down),
+                _ => None,
+            },
+            _ => None,
         }
     }
 

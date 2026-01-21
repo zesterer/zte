@@ -9,7 +9,7 @@ mod term;
 pub use self::{
     doc::{Doc, Finder},
     input::Input,
-    panes::Panes,
+    panes::Tabs,
     prompt::{Confirm, FileBrowser, FileBrowserMode, Prompt, Show, Switcher},
     root::Root,
     search::Searcher,

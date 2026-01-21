@@ -1,4 +1,5 @@
 use super::*;
+use std::time::{Duration, Instant};
 
 pub enum PaneKind {
     Empty,
@@ -150,11 +151,11 @@ impl Element<()> for VBox {
                 .or_else(|| e.to_pane_open().map(Action::PaneOpen))
                 .or_else(|| e.to_pane_close())
         }) {
-            Some(Action::PaneMove(Dir::Up)) => {
+            Some(Action::PaneMove(Dir::Up)) if self.panes.len() > 1 => {
                 self.selected = (self.selected + self.panes.len() - 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::PaneMove(Dir::Down)) => {
+            Some(Action::PaneMove(Dir::Down)) if self.panes.len() > 1 => {
                 self.selected = (self.selected + 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
@@ -283,50 +284,6 @@ pub struct Panes {
 }
 
 impl Panes {
-    pub fn new(state: &mut State, args: &Args) -> Self {
-        Self {
-            selected: 0,
-            vboxes: args
-                .paths
-                .iter()
-                .map(Some)
-                .chain(if args.paths.is_empty() {
-                    Some(None)
-                } else {
-                    None
-                })
-                .filter_map(|path| {
-                    let (buffer_id, task) = if let Some(path) = path {
-                        if path.is_dir() {
-                            (
-                                state.new_anonymous(),
-                                Some(PaneTask::FileBrowser(FileBrowser::new(
-                                    path.clone(),
-                                    FileBrowserMode::Opener,
-                                ))),
-                            )
-                        } else {
-                            (state.create(path.clone()).ok()?, None)
-                        }
-                    } else {
-                        (state.new_anonymous(), None)
-                    };
-                    Some(VBox {
-                        selected: 0,
-                        panes: vec![Pane {
-                            kind: PaneKind::Doc(Doc::new(state, buffer_id)),
-                            last_area: Area::default(),
-                            task,
-                        }],
-                        last_area: Area::default(),
-                        size_weight: 1.0,
-                    })
-                })
-                .collect(),
-            last_area: Default::default(),
-        }
-    }
-
     fn rescale(&mut self) {
         let total_weight = self.vboxes.iter().map(|h| h.size_weight).sum::<f32>();
         let sz = self.last_area.size()[1] as f32;
@@ -345,11 +302,11 @@ impl Element for Panes {
                 .or_else(|| e.to_pane_close())
                 .or_else(|| e.to_pane_resize())
         }) {
-            Some(Action::PaneMove(Dir::Left)) => {
+            Some(Action::PaneMove(Dir::Left)) if self.vboxes.len() > 1 => {
                 self.selected = (self.selected + self.vboxes.len() - 1) % self.vboxes.len();
                 Ok(Resp::handled(None))
             }
-            Some(Action::PaneMove(Dir::Right)) => {
+            Some(Action::PaneMove(Dir::Right)) if self.vboxes.len() > 1 => {
                 self.selected = (self.selected + 1) % self.vboxes.len();
                 Ok(Resp::handled(None))
             }
@@ -477,6 +434,219 @@ impl Visual for Panes {
                 .with(|frame| vbox.render(state, frame));
 
             x0 = x1;
+        }
+    }
+}
+
+pub struct Tabs {
+    selected: usize,
+    tabs: Vec<Panes>,
+    last_area: Area,
+    tab_view_timeout: Option<Instant>,
+}
+
+impl Tabs {
+    pub fn new(state: &mut State, args: &Args) -> Self {
+        Self {
+            selected: 0,
+            tabs: args
+                .paths
+                .iter()
+                .map(Some)
+                .chain(if args.paths.is_empty() {
+                    Some(None)
+                } else {
+                    None
+                })
+                .filter_map(|path| {
+                    let (buffer_id, task) = if let Some(path) = path {
+                        if path.is_dir() {
+                            (
+                                state.new_anonymous(),
+                                Some(PaneTask::FileBrowser(FileBrowser::new(
+                                    path.clone(),
+                                    FileBrowserMode::Opener,
+                                ))),
+                            )
+                        } else {
+                            (state.create(path.clone()).ok()?, None)
+                        }
+                    } else {
+                        (state.new_anonymous(), None)
+                    };
+                    Some(Panes {
+                        selected: 0,
+                        vboxes: vec![VBox {
+                            selected: 0,
+                            panes: vec![Pane {
+                                kind: PaneKind::Doc(Doc::new(state, buffer_id)),
+                                last_area: Area::default(),
+                                task,
+                            }],
+                            last_area: Area::default(),
+                            size_weight: 1.0,
+                        }],
+                        last_area: Area::default(),
+                    })
+                })
+                .collect(),
+            last_area: Default::default(),
+            tab_view_timeout: None,
+        }
+    }
+
+    fn reset_tab_timeout(&mut self) {
+        self.tab_view_timeout = Some(Instant::now() + Duration::from_millis(800));
+    }
+}
+
+impl Element for Tabs {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        if let Some(timeout) = &mut self.tab_view_timeout {
+            if &Instant::now() > timeout {
+                state.needs_render = true;
+                self.tab_view_timeout = None;
+            }
+        }
+
+        let res = match event.to_action(|e| {
+            e.to_tab_move()
+                .map(Action::TabMove)
+                .or_else(|| e.to_tab_open().map(Action::TabOpen))
+        }) {
+            Some(Action::TabMove(Dir::Up)) if self.tabs.len() > 1 => {
+                self.selected = (self.selected + self.tabs.len() - 1) % self.tabs.len();
+                self.reset_tab_timeout();
+                Ok(Resp::handled(None))
+            }
+            Some(Action::TabMove(Dir::Down)) if self.tabs.len() > 1 => {
+                self.selected = (self.selected + 1) % self.tabs.len();
+                self.reset_tab_timeout();
+                Ok(Resp::handled(None))
+            }
+            Some(Action::TabOpen(dir @ (Dir::Up | Dir::Down))) => {
+                let new_idx = match dir {
+                    Dir::Up => self.selected.clamp(0, self.tabs.len()),
+                    Dir::Down => (self.selected + 1).min(self.tabs.len()),
+                    _ => unreachable!(),
+                };
+                let kind = match state.buffers.keys().next() {
+                    Some(b) => PaneKind::Doc(Doc::new(state, b)),
+                    None => PaneKind::Empty,
+                };
+                let size_weight = 1.0 / self.tabs.len().max(1) as f32;
+                self.tabs.insert(
+                    new_idx,
+                    Panes {
+                        selected: 0,
+                        vboxes: vec![VBox {
+                            selected: 0,
+                            panes: vec![Pane {
+                                kind,
+                                last_area: Area::default(),
+                                task: None,
+                            }],
+                            last_area: Area::default(),
+                            size_weight,
+                        }],
+                        last_area: Area::default(),
+                    },
+                );
+                self.reset_tab_timeout();
+                self.selected = new_idx;
+                Ok(Resp::handled(None))
+            }
+            Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
+                for (i, tab) in self.tabs.iter_mut().enumerate() {
+                    if tab.last_area.contains(pos).is_some() {
+                        if matches!(m_action, MouseAction::Click) {
+                            self.selected = i;
+                        }
+                        let resp = tab.handle(state, action.clone().into())?;
+                        if resp.is_end() {
+                            self.tabs.remove(self.selected);
+                            self.selected = self.selected.min(self.tabs.len()).saturating_sub(1);
+                        }
+                        return Ok(Resp::handled(resp.event));
+                    }
+                }
+                Ok(Resp::handled(None))
+            }
+            // Pass anything else through to the active pane
+            action => {
+                let mut to_handle = self.selected;
+                // Set selected vbox on mouse click
+                if let Some(Action::Mouse(ref m_action, pos, _is_ctrl, _drag_id)) = action {
+                    for (i, tab) in self.tabs.iter_mut().enumerate() {
+                        if tab.last_area.contains(pos).is_some() {
+                            if matches!(m_action, MouseAction::Click) {
+                                self.selected = i;
+                            }
+                            to_handle = i;
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(tab) = self.tabs.get_mut(to_handle) {
+                    // Pass to vbox
+                    let resp = tab.handle(state, event)?;
+                    if resp.is_end() {
+                        self.tabs.remove(self.selected);
+                        self.selected = self.selected.min(self.tabs.len().saturating_sub(1));
+                    }
+                    Ok(Resp::handled(resp.event))
+                } else {
+                    // No active pane, don't handle
+                    Err(event)
+                }
+            }
+        };
+        res
+    }
+}
+
+impl Visual for Tabs {
+    fn render(&mut self, state: &mut State, frame: &mut Rect) {
+        self.last_area = frame.area();
+
+        // Remove any empty tabs
+        for (i, tab) in self.tabs.iter_mut().enumerate() {
+            if tab.vboxes.is_empty() {
+                self.tabs.remove(i);
+                self.selected = self.selected.min(self.tabs.len().saturating_sub(1));
+                state.wakeup.notify_one();
+                break;
+            }
+        }
+
+        if let Some(tab) = self.tabs.get_mut(self.selected) {
+            frame
+                .with_focus(self.tab_view_timeout.is_none())
+                .with(|frame| tab.render(state, frame));
+        }
+
+        if self.tab_view_timeout.is_some() {
+            let mut frame = frame.mid([32, self.tabs.len() + 2]);
+            let mut frame = frame.with_border(
+                if frame.has_focus() {
+                    &state.theme.focus_border
+                } else {
+                    &state.theme.border
+                },
+                Some("Tab switcher"),
+            );
+            for (i, _) in self.tabs.iter().enumerate() {
+                frame
+                    .rect([0, i], [!0, 1])
+                    .with_theme(if i == self.selected {
+                        Some(state.theme.select)
+                    } else {
+                        None
+                    })
+                    .fill(' ')
+                    .text([0, 0], &format!("{i}"));
+            }
         }
     }
 }

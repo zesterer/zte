@@ -21,11 +21,11 @@
 - [x] Undo/redo
 - [x] Ability to resize panes
 - [x] Terminal buffers
+- [x] Tabs
 
 ## Todo
 
 - [ ] Replace
-- [ ] Tabbed sessions
 
 ## Issues to fix
 
@@ -78,6 +78,12 @@ Alt + Shift + w = Create pane above
 Alt + Shift + a = Create pane left
 Alt + Shift + s = Create pane down
 Alt + Shift + d = Create pane right
+
+Alt + PageUp = Select tab above
+Alt + PageDown = Select tab below
+
+Alt + Shift + PageUp = Create tab above
+Alt + Shift + PageDown = Create tab below
 
 Alt + q = Close current pane
 
