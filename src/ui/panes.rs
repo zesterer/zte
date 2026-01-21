@@ -343,22 +343,6 @@ impl Element for Panes {
                 }
                 Ok(Resp::handled(None))
             }
-            Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
-                for (i, vbox) in self.vboxes.iter_mut().enumerate() {
-                    if vbox.last_area.contains(pos).is_some() {
-                        if matches!(m_action, MouseAction::Click) {
-                            self.selected = i;
-                        }
-                        let resp = vbox.handle(state, action.clone().into())?;
-                        if resp.is_end() {
-                            self.vboxes.remove(self.selected);
-                            self.selected = self.selected.min(self.vboxes.len()).saturating_sub(1);
-                        }
-                        return Ok(Resp::handled(resp.event));
-                    }
-                }
-                Ok(Resp::handled(None))
-            }
             // Pass anything else through to the active pane
             action => {
                 let mut to_handle = self.selected;
@@ -556,39 +540,9 @@ impl Element for Tabs {
                 self.selected = new_idx;
                 Ok(Resp::handled(None))
             }
-            Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
-                for (i, tab) in self.tabs.iter_mut().enumerate() {
-                    if tab.last_area.contains(pos).is_some() {
-                        if matches!(m_action, MouseAction::Click) {
-                            self.selected = i;
-                        }
-                        let resp = tab.handle(state, action.clone().into())?;
-                        if resp.is_end() {
-                            self.tabs.remove(self.selected);
-                            self.selected = self.selected.min(self.tabs.len()).saturating_sub(1);
-                        }
-                        return Ok(Resp::handled(resp.event));
-                    }
-                }
-                Ok(Resp::handled(None))
-            }
             // Pass anything else through to the active pane
             action => {
-                let mut to_handle = self.selected;
-                // Set selected vbox on mouse click
-                if let Some(Action::Mouse(ref m_action, pos, _is_ctrl, _drag_id)) = action {
-                    for (i, tab) in self.tabs.iter_mut().enumerate() {
-                        if tab.last_area.contains(pos).is_some() {
-                            if matches!(m_action, MouseAction::Click) {
-                                self.selected = i;
-                            }
-                            to_handle = i;
-                            break;
-                        }
-                    }
-                }
-
-                if let Some(tab) = self.tabs.get_mut(to_handle) {
+                if let Some(tab) = self.tabs.get_mut(self.selected) {
                     // Pass to vbox
                     let resp = tab.handle(state, event)?;
                     if resp.is_end() {
