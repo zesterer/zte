@@ -32,6 +32,10 @@ impl Root {
             drag_id_counter: 0,
         }
     }
+
+    pub fn should_close(&self) -> bool {
+        self.tabs.tabs.is_empty()
+    }
 }
 
 impl Element<()> for Root {

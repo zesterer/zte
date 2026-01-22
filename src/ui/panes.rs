@@ -30,10 +30,20 @@ impl Pane {
     }
 }
 
-impl Element for Pane {
-    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+impl Element<()> for Pane {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         match event.to_action(|e| e.to_new_term(None)) {
             Some(Action::NewTerm(path)) => {
+                let path = path.or_else(|| {
+                    if let PaneKind::Doc(doc) = &self.kind
+                        && let Some(buf) = state.buffers.get(doc.buffer)
+                        && let Some(path) = buf.path()
+                    {
+                        path.parent().map(ToOwned::to_owned)
+                    } else {
+                        None
+                    }
+                });
                 // TODO: Close other kinds
                 match Term::new(path, state) {
                     Ok(term) => {
@@ -95,7 +105,7 @@ impl Element for Pane {
                 match &mut self.kind {
                     PaneKind::Empty => Err(event),
                     PaneKind::Doc(doc) => doc.handle(state, event),
-                    PaneKind::Term(term) => term.handle(state, event),
+                    PaneKind::Term(term) => term.handle(state, event).map(Resp::into_can_end),
                 }
             }
         }
@@ -213,24 +223,30 @@ impl Element<()> for VBox {
                 self.selected = new_idx;
                 Ok(Resp::handled(None))
             }
-            Some(action @ Action::Mouse(m_action, pos, _is_ctrl, _drag_id)) => {
-                for (i, pane) in self.panes.iter_mut().enumerate() {
-                    if pane.last_area.contains(pos).is_some() {
-                        if matches!(m_action, MouseAction::Click) {
-                            self.selected = i;
+            // Pass anything else through to the active pane
+            action => {
+                let mut to_handle = self.selected;
+                // Set selected vbox on mouse click
+                if let Some(Action::Mouse(ref m_action, pos, _is_ctrl, _drag_id)) = action {
+                    for (i, pane) in self.panes.iter_mut().enumerate() {
+                        if pane.last_area.contains(pos).is_some() {
+                            if matches!(m_action, MouseAction::Click) {
+                                self.selected = i;
+                            }
+                            to_handle = i;
+                            break;
                         }
-                        return pane
-                            .handle(state, action.clone().into())
-                            .map(Resp::into_can_end);
                     }
                 }
-                Ok(Resp::handled(None))
-            }
-            // Pass anything else through to the active pane
-            _ => {
-                if let Some(pane) = self.panes.get_mut(self.selected) {
+
+                if let Some(pane) = self.panes.get_mut(to_handle) {
                     // Pass to pane
-                    pane.handle(state, event).map(Resp::into_can_end)
+                    let resp = pane.handle(state, event)?;
+                    if resp.is_end() {
+                        self.panes.remove(self.selected);
+                        self.selected = self.selected.min(self.panes.len().saturating_sub(1));
+                    }
+                    Ok(Resp::handled(resp.event))
                 } else {
                     // No active pane, don't handle
                     Err(event)
@@ -424,7 +440,7 @@ impl Visual for Panes {
 
 pub struct Tabs {
     selected: usize,
-    tabs: Vec<Panes>,
+    pub(super) tabs: Vec<Panes>,
     last_area: Area,
     tab_view_timeout: Option<Instant>,
 }
@@ -541,7 +557,7 @@ impl Element for Tabs {
                 Ok(Resp::handled(None))
             }
             // Pass anything else through to the active pane
-            action => {
+            _ => {
                 if let Some(tab) = self.tabs.get_mut(self.selected) {
                     // Pass to vbox
                     let resp = tab.handle(state, event)?;

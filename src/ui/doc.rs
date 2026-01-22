@@ -44,8 +44,8 @@ impl Doc {
     }
 }
 
-impl Element for Doc {
-    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp, Event> {
+impl Element<()> for Doc {
+    fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<()>, Event> {
         let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
 
         if let Some(finder) = &mut self.finder {
@@ -200,25 +200,23 @@ impl Element for Doc {
                 } else {
                     state.close(self.buffer);
                     // Switch to another buffer, or open a new one
-                    let new_buffer = state
-                        .most_recent()
-                        .first()
-                        .copied()
-                        .unwrap_or_else(|| state.new_anonymous());
-                    self.switch_buffer(state, new_buffer);
-                    Ok(Resp::handled(None))
+                    if let Some(new_buffer) = state.most_recent().first() {
+                        self.switch_buffer(state, *new_buffer);
+                        Ok(Resp::handled(None))
+                    } else {
+                        Ok(Resp::end(None))
+                    }
                 }
             }
             Some(Action::CloseFileForce) => {
                 state.close(self.buffer);
                 // Switch to another buffer, or open a new one
-                let new_buffer = state
-                    .most_recent()
-                    .first()
-                    .copied()
-                    .unwrap_or_else(|| state.new_anonymous());
-                self.switch_buffer(state, new_buffer);
-                Ok(Resp::handled(None))
+                if let Some(new_buffer) = state.most_recent().first() {
+                    self.switch_buffer(state, *new_buffer);
+                    Ok(Resp::handled(None))
+                } else {
+                    Ok(Resp::end(None))
+                }
             }
 
             Some(Action::NewFile) => {
@@ -235,7 +233,9 @@ impl Element for Doc {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);
                 };
-                input.handle(&mut state.clipboard, buffer, *cursor_id, event)
+                input
+                    .handle(&mut state.clipboard, buffer, *cursor_id, event)
+                    .map(Resp::into_can_end)
             }
         }
     }

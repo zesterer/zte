@@ -54,7 +54,7 @@ fn main() -> Result<(), Error> {
             let mut interval = tokio::time::interval(Duration::from_millis(250));
             let mut close_requested = false;
 
-            while !close_requested {
+            while !close_requested && !ui.should_close() {
                 let mut handle_event = |event| {
                     let event = match &event {
                         Event::Raw(ev) => {

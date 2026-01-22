@@ -31,6 +31,7 @@
 
 - Ctrl + Del should delete word
 - Ctrl + Backspace should backspace word
+- Ctrl + Up/Down should move current line
 - Add line deletion
 
 # Keybindings
