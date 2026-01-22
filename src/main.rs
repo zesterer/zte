@@ -60,6 +60,7 @@ fn main() -> Result<(), Error> {
                         Event::Raw(ev) => {
                             // Resize events are special and need handling by the terminal
                             if let TerminalEvent::Resize(cols, rows) = &ev.0 {
+                                state.needs_render = true;
                                 term.set_size([*cols, *rows]);
                                 Event::Tick // Actually a resize, but we don't consider resizing to be special
                             } else if let TerminalEvent::Paste(s) = &ev.0 {
