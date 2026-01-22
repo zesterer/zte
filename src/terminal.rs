@@ -1,5 +1,6 @@
 use crate::{Error, theme};
 
+use alacritty_terminal::term::cell::Flags;
 pub use crossterm::{
     clipboard as cb,
     cursor::SetCursorStyle as CursorStyle,
@@ -16,13 +17,169 @@ use std::{
     panic,
 };
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Cell {
     c: char,
     fg: Color,
     bg: Color,
     uline: Color,
-    attr: Attributes,
+    attr: u16,
+}
+
+#[derive(Copy, Clone)]
+struct CellEntry(u16);
+
+impl CellEntry {
+    fn to_cell(&self, fb: &Framebuffer) -> Cell {
+        if self.0 & 1 == 0 {
+            Cell {
+                c: char::from_u32((self.0 as u32 >> 1) & 0b11_1111_1111).unwrap(),
+                fg: fb.fg_cache[self.0 as usize >> 11],
+                bg: Color::Reset,
+                uline: Color::Reset,
+                attr: Flags::empty().bits(),
+            }
+        } else {
+            fb.cell_cache[self.0 as usize >> 1]
+        }
+    }
+}
+
+impl Cell {
+    fn attr(&self) -> Attributes {
+        flags_to_attr(Flags::from_bits(self.attr).unwrap())
+    }
+
+    fn insert_into(&self, fb: &mut Framebuffer) -> CellEntry {
+        let Self {
+            c,
+            fg,
+            bg,
+            uline,
+            attr,
+        } = self;
+        if (0..(1 << 10)).contains(&(*c as u32))
+            && *bg == Color::Reset
+            && *uline == Color::Reset
+            && *attr == Flags::empty().bits()
+        {
+            let fg = fb.fg_cache.iter().position(|e| e == fg).unwrap_or_else(|| {
+                fb.fg_cache.push(*fg);
+                fb.fg_cache.len() - 1
+            });
+            CellEntry(((*c as u16) << 1) | (fg as u16) << 11)
+        } else {
+            let idx = fb
+                .cell_cache
+                .iter()
+                .position(|e| e == self)
+                .unwrap_or_else(|| {
+                    fb.cell_cache.push(*self);
+                    fb.cell_cache.len() - 1
+                });
+            CellEntry(1 | (idx as u16) << 1)
+        }
+    }
+}
+
+fn to_ansi_color(col: Color) -> u8 {
+    match col {
+        Color::Reset => 0,
+        Color::Black => 16,
+        Color::DarkGrey => 8,
+        Color::Red => 9,
+        Color::DarkRed => 1,
+        Color::Green => 10,
+        Color::DarkGreen => 2,
+        Color::Yellow => 11,
+        Color::DarkYellow => 3,
+        Color::Blue => 12,
+        Color::DarkBlue => 4,
+        Color::Magenta => 13,
+        Color::DarkMagenta => 5,
+        Color::Cyan => 14,
+        Color::DarkCyan => 6,
+        Color::White => 15,
+        Color::Grey => 7,
+        Color::AnsiValue(x) => x,
+        Color::Rgb { .. } => 0,
+    }
+}
+fn from_ansi_color(col: u8) -> Color {
+    match col {
+        0 => Color::Reset,
+        col => Color::AnsiValue(col),
+    }
+}
+
+fn flags_to_attr(flags: Flags) -> Attributes {
+    let mut attr = Attributes::none();
+    if flags.contains(Flags::INVERSE) {
+        attr.set(Attribute::Reverse);
+    }
+    if flags.contains(Flags::BOLD) {
+        attr.set(Attribute::Bold);
+    }
+    if flags.contains(Flags::ITALIC) {
+        attr.set(Attribute::Italic);
+    }
+    if flags.contains(Flags::UNDERLINE) {
+        attr.set(Attribute::Underlined);
+    }
+    if flags.contains(Flags::DIM) {
+        attr.set(Attribute::Dim);
+    }
+    if flags.contains(Flags::STRIKEOUT) {
+        attr.set(Attribute::CrossedOut);
+    }
+    if flags.contains(Flags::DOUBLE_UNDERLINE) {
+        attr.set(Attribute::DoubleUnderlined);
+    }
+    if flags.contains(Flags::UNDERCURL) {
+        attr.set(Attribute::Undercurled);
+    }
+    if flags.contains(Flags::DOTTED_UNDERLINE) {
+        attr.set(Attribute::Underdotted);
+    }
+    if flags.contains(Flags::DASHED_UNDERLINE) {
+        attr.set(Attribute::Underdashed);
+    }
+    attr
+}
+
+fn attr_to_flags(attr: Attributes) -> Flags {
+    let mut flags = Flags::empty();
+    if attr.has(Attribute::Reverse) {
+        flags.set(Flags::INVERSE, true);
+    }
+    if attr.has(Attribute::Bold) {
+        flags.set(Flags::BOLD, true);
+    }
+    if attr.has(Attribute::Italic) {
+        flags.set(Flags::ITALIC, true);
+    }
+    if attr.has(Attribute::Underlined) {
+        flags.set(Flags::UNDERLINE, true);
+    }
+    if attr.has(Attribute::Dim) {
+        flags.set(Flags::DIM, true);
+    }
+    if attr.has(Attribute::CrossedOut) {
+        flags.set(Flags::STRIKEOUT, true);
+    }
+    if attr.has(Attribute::DoubleUnderlined) {
+        flags.set(Flags::DOUBLE_UNDERLINE, true);
+    }
+    if attr.has(Attribute::Undercurled) {
+        flags.set(Flags::UNDERCURL, true);
+    }
+    if attr.has(Attribute::Underdotted) {
+        flags.set(Flags::DOTTED_UNDERLINE, true);
+    }
+    if attr.has(Attribute::Underdashed) {
+        flags.set(Flags::DASHED_UNDERLINE, true);
+    }
+    flags
 }
 
 impl Cell {
@@ -31,7 +188,7 @@ impl Cell {
         self.fg = theme.fg.unwrap_or(Color::Reset);
         self.bg = theme.bg.unwrap_or(Color::Reset);
         self.uline = Color::Reset;
-        self.attr = theme.attr.unwrap_or(Attributes::none());
+        self.attr = attr_to_flags(theme.attr.unwrap_or(Attributes::none())).bits();
     }
 }
 
@@ -42,7 +199,7 @@ impl Default for Cell {
             fg: Color::Reset,
             bg: Color::Reset,
             uline: Color::Reset,
-            attr: Attributes::none().with(Attribute::Reset),
+            attr: attr_to_flags(Attributes::none().with(Attribute::Reset)).bits(),
         }
     }
 }
@@ -91,15 +248,16 @@ pub struct Rect<'a> {
 
 #[allow(dead_code)]
 impl<'a> Rect<'a> {
-    fn get_mut(&mut self, pos: [usize; 2]) -> Option<&mut Cell> {
+    fn set(&mut self, pos: [usize; 2], c: char, theme: theme::CellTheme) {
         if pos[0] < self.size()[0] && pos[1] < self.size()[1] {
             let offs = [
                 self.area.origin[0] as usize + pos[0],
                 self.area.origin[1] as usize + pos[1],
             ];
-            Some(&mut self.fb.cells[offs[1] * self.fb.size[0] as usize + offs[0]])
-        } else {
-            None
+            let mut cell = Cell::default();
+            cell.apply(c, theme);
+            let entry = cell.insert_into(&mut self.fb);
+            self.fb.cells[offs[1] * self.fb.size[0] as usize + offs[0]] = entry;
         }
     }
 
@@ -149,37 +307,21 @@ impl<'a> Rect<'a> {
     pub fn with_border(&mut self, theme: &theme::BorderTheme, title: Option<&str>) -> Rect<'_> {
         let edge = self.size().map(|e| e.saturating_sub(1));
         for col in 0..edge[0] {
-            self.get_mut([col, 0]).map(|c| {
-                c.apply(theme.top, theme.edge);
-            });
+            self.set([col, 0], theme.top, theme.edge);
             if theme.has_edges {
-                self.get_mut([col, edge[1]]).map(|c| {
-                    c.apply(theme.bottom, theme.edge);
-                });
+                self.set([col, edge[1]], theme.bottom, theme.edge);
             }
         }
         if theme.has_edges {
             for row in 0..edge[1] {
-                self.get_mut([0, row]).map(|c| {
-                    c.apply(theme.left, theme.edge);
-                });
-                self.get_mut([edge[0], row]).map(|c| {
-                    c.apply(theme.right, theme.edge);
-                });
+                self.set([0, row], theme.left, theme.edge);
+                self.set([edge[0], row], theme.right, theme.edge);
             }
-            self.get_mut([0, edge[1]]).map(|c| {
-                c.apply(theme.bottom_left, theme.edge);
-            });
-            self.get_mut([edge[0], edge[1]]).map(|c| {
-                c.apply(theme.bottom_right, theme.edge);
-            });
+            self.set([0, edge[1]], theme.bottom_left, theme.edge);
+            self.set([edge[0], edge[1]], theme.bottom_right, theme.edge);
         }
-        self.get_mut([0, 0]).map(|c| {
-            c.apply(theme.top_left, theme.edge);
-        });
-        self.get_mut([edge[0], 0]).map(|c| {
-            c.apply(theme.top_right, theme.edge);
-        });
+        self.set([0, 0], theme.top_left, theme.edge);
+        self.set([edge[0], 0], theme.top_right, theme.edge);
         if let Some(title) = title {
             for (i, (c, theme)) in [theme.join_right, ' ']
                 .into_iter()
@@ -188,9 +330,7 @@ impl<'a> Rect<'a> {
                 .chain([' ', theme.join_left].into_iter().map(|c| (c, &theme.edge)))
                 .enumerate()
             {
-                self.get_mut([2 + i, 0]).map(|cell| {
-                    cell.apply(c, *theme);
-                });
+                self.set([2 + i, 0], c, *theme);
             }
         }
         if theme.has_edges {
@@ -267,16 +407,16 @@ impl<'a> Rect<'a> {
     pub fn fill(&mut self, c: char) -> Rect<'_> {
         for row in 0..self.size()[1] {
             for col in 0..self.size()[0] {
-                let cell = Cell {
+                // TODO: uline
+                self.set(
+                    [col, row],
                     c,
-                    fg: self.fg,
-                    bg: self.bg,
-                    uline: self.uline,
-                    attr: self.attr,
-                };
-                if let Some(c) = self.get_mut([col, row]) {
-                    *c = cell;
-                }
+                    theme::CellTheme {
+                        fg: Some(self.fg),
+                        bg: Some(self.bg),
+                        attr: Some(self.attr),
+                    },
+                );
             }
         }
         self.reborrow()
@@ -286,24 +426,24 @@ impl<'a> Rect<'a> {
         for (idx, c) in text.chars().enumerate() {
             if (0..self.size()[0] as isize).contains(&(origin[0] + idx as isize)) && origin[1] >= 0
             {
-                let cell = Cell {
-                    c: *c.borrow(),
-                    fg: self.fg,
-                    bg: self.bg,
-                    uline: self.uline,
-                    // Apply dimming to all unfocused things
-                    attr: self.attr
-                        | if self.has_focus {
-                            Attributes::none()
-                        } else {
-                            Attributes::none().with(Attribute::Dim)
-                        },
-                };
-                if let Some(c) =
-                    self.get_mut([(origin[0] + idx as isize) as usize, origin[1] as usize])
-                {
-                    *c = cell;
-                }
+                // TODO: uline
+                self.set(
+                    [(origin[0] + idx as isize) as usize, origin[1] as usize],
+                    *c.borrow(),
+                    theme::CellTheme {
+                        fg: Some(self.fg),
+                        bg: Some(self.bg),
+                        // Apply dimming to all unfocused things
+                        attr: Some(
+                            self.attr
+                                | if self.has_focus {
+                                    Attributes::none()
+                                } else {
+                                    Attributes::none().with(Attribute::Dim)
+                                },
+                        ),
+                    },
+                );
             }
         }
         self.reborrow()
@@ -342,10 +482,12 @@ impl<'a> Rect<'a> {
 #[derive(Default)]
 pub struct Framebuffer {
     size: [u16; 2],
-    cells: Vec<Cell>,
+    cells: Vec<CellEntry>,
     cursor: Option<([u16; 2], CursorStyle)>,
     title: String,
     bell: bool,
+    fg_cache: Vec<Color>,
+    cell_cache: Vec<Cell>,
 }
 
 impl Framebuffer {
@@ -428,12 +570,16 @@ impl<'a> Terminal<'a> {
         // Reset framebuffer
         if self.fb[0].size != self.size {
             self.fb[0].size = self.size;
-            self.fb[0].cells.resize(
-                self.size[0] as usize * self.size[1] as usize,
-                Cell::default(),
-            );
+            self.fb[0]
+                .cells
+                .resize(self.size[0] as usize * self.size[1] as usize, CellEntry(1));
+            self.fb[0].fg_cache.resize(1, Color::Reset);
+            self.fb[0].cell_cache.clear();
         }
         self.fb[0].cursor = None;
+
+        self.fb[0].fg_cache.clear();
+        self.fb[0].cell_cache.clear();
 
         render(&mut self.fb[0].rect());
 
@@ -477,10 +623,10 @@ impl<'a> Terminal<'a> {
                 for row in 0..self.size[1] {
                     for col in 0..self.size[0] {
                         let pos = row as usize * self.size[0] as usize + col as usize;
-                        let cell = self.fb[0].cells[pos];
+                        let cell = self.fb[0].cells[pos].to_cell(&self.fb[0]);
 
-                        let changed =
-                            self.fb[0].size != self.fb[1].size || cell != self.fb[1].cells[pos];
+                        let changed = self.fb[0].size != self.fb[1].size
+                            || cell != self.fb[1].cells[pos].to_cell(&self.fb[1]);
 
                         if changed {
                             if cursor_pos != [col, row] {
@@ -506,8 +652,8 @@ impl<'a> Terminal<'a> {
                                 uline = cell.uline;
                                 stdout.queue(style::SetUnderlineColor(uline)).unwrap();
                             }
-                            if attr != cell.attr {
-                                attr = cell.attr;
+                            if attr != cell.attr() {
+                                attr = cell.attr();
                                 stdout
                                     .queue(style::SetAttributes(
                                         Attributes::none().with(Attribute::Reset),
@@ -520,7 +666,7 @@ impl<'a> Terminal<'a> {
                             }
 
                             // Convert non-printable chars
-                            let c = match self.fb[0].cells[pos].c {
+                            let c = match cell.c {
                                 c if c.is_whitespace() => ' ',
                                 c if c.is_control() => {
                                     char::from_u32(9216 + c as u32).unwrap_or('?')
