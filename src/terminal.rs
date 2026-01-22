@@ -82,36 +82,6 @@ impl Cell {
     }
 }
 
-fn to_ansi_color(col: Color) -> u8 {
-    match col {
-        Color::Reset => 0,
-        Color::Black => 16,
-        Color::DarkGrey => 8,
-        Color::Red => 9,
-        Color::DarkRed => 1,
-        Color::Green => 10,
-        Color::DarkGreen => 2,
-        Color::Yellow => 11,
-        Color::DarkYellow => 3,
-        Color::Blue => 12,
-        Color::DarkBlue => 4,
-        Color::Magenta => 13,
-        Color::DarkMagenta => 5,
-        Color::Cyan => 14,
-        Color::DarkCyan => 6,
-        Color::White => 15,
-        Color::Grey => 7,
-        Color::AnsiValue(x) => x,
-        Color::Rgb { .. } => 0,
-    }
-}
-fn from_ansi_color(col: u8) -> Color {
-    match col {
-        0 => Color::Reset,
-        col => Color::AnsiValue(col),
-    }
-}
-
 fn flags_to_attr(flags: Flags) -> Attributes {
     let mut attr = Attributes::none();
     if flags.contains(Flags::INVERSE) {
