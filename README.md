@@ -29,11 +29,8 @@
 
 ## Issues to fix
 
-- Ctrl + Del should delete word
-- Ctrl + Backspace should backspace word
 - Ctrl + Up/Down should move current line
 - Add line deletion
-- Better inference of tab names
 
 # Keybindings
 

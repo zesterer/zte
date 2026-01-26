@@ -87,6 +87,8 @@ impl Input {
             event
         };
 
+        // if let Event::Raw(ev) = &event { panic!("{ev:?}") }
+
         match event.to_action(|e| {
             e.to_char()
                 .map(Action::Char)
@@ -96,11 +98,19 @@ impl Input {
                 .or_else(|| e.to_indent())
                 .or_else(|| e.to_edit())
         }) {
+            Some(Action::BackspaceWord) => {
+                buffer.backspace(cursor_id, true);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::DeleteWord) => {
+                buffer.delete(cursor_id, true);
+                Ok(Resp::handled(None))
+            }
             Some(Action::Char(c)) => {
                 if c == '\x08' {
-                    buffer.backspace(cursor_id);
+                    buffer.backspace(cursor_id, false);
                 } else if c == '\x7F' {
-                    buffer.delete(cursor_id);
+                    buffer.delete(cursor_id, false);
                 } else if c == '\n' {
                     buffer.newline(cursor_id);
                 } else {

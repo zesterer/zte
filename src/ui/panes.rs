@@ -637,7 +637,7 @@ impl Visual for Tabs {
                 let name = if let Some(name) = &tab.name {
                     name
                 } else {
-                    &format!("{i}")
+                    &format!("Tab #{i}")
                 };
                 frame
                     .rect([0, i], [!0, 1])

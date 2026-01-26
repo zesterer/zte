@@ -832,7 +832,7 @@ impl Buffer {
         }
     }
 
-    pub fn backspace(&mut self, cursor_id: CursorId) {
+    pub fn backspace(&mut self, cursor_id: CursorId, word: bool) {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
@@ -850,27 +850,39 @@ impl Buffer {
             self.remove(line_start..cursor.pos);
             self.backspace(cursor_id); // Remove the newline too
         } else*/
-        if cursor.pos != line_start && line_text_start == Ok(cursor.pos) {
+        if word && cursor.pos != line_start && line_text_start == Ok(cursor.pos) {
             self.remove(line_start.saturating_sub(1)..cursor.pos);
-        } else if let Some(pos) = cursor.pos.checked_sub(1) {
+        } else if cursor.pos != line_start && cursor.pos == line_text_start.unwrap_or_else(|s| s) {
             // If a backspace is performed on a space, a deindent takes place instead
             // Ensure there's only whitespace to our left
-            if cursor.pos != line_start && cursor.pos == line_text_start.unwrap_or_else(|s| s) {
-                self.indent_at(cursor.pos, false);
-            } else {
-                self.remove(pos..pos + 1);
-            }
+            self.indent_at(cursor.pos, false);
+        } else {
+            self.move_cursor(cursor_id, Dir::Left, [1, 1], true, word);
+            let Some(cursor) = self.cursors.get(cursor_id) else {
+                return;
+            };
+            let Some(sel) = cursor.selection() else {
+                return;
+            };
+            self.remove(sel);
         }
     }
 
-    pub fn delete(&mut self, cursor_id: CursorId) {
+    pub fn delete(&mut self, cursor_id: CursorId, word: bool) {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return;
         };
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
         } else {
-            self.remove(cursor.pos..cursor.pos + 1);
+            self.move_cursor(cursor_id, Dir::Right, [1, 1], true, word);
+            let Some(cursor) = self.cursors.get(cursor_id) else {
+                return;
+            };
+            let Some(sel) = cursor.selection() else {
+                return;
+            };
+            self.remove(sel);
         }
     }
 
@@ -978,7 +990,7 @@ impl Buffer {
     pub fn cut(&mut self, clipboard: &mut Clipboard, cursor_id: CursorId) -> bool {
         if self.copy(clipboard, cursor_id) {
             self.undo_checkpoint();
-            self.backspace(cursor_id);
+            self.backspace(cursor_id, false);
             true
         } else {
             false

@@ -18,6 +18,8 @@ pub enum Action {
     Char(char),
     // Indent (indent vs deindent)
     Indent(bool),
+    BackspaceWord,
+    DeleteWord,
     // Move the cursor (dir, dist, retain_base, word)
     Move(Dir, Dist, bool, bool),
     // Move panes
@@ -642,6 +644,18 @@ impl RawEvent {
                 kind: KeyEventKind::Press,
                 ..
             }) => Some(Action::Comment),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('h'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::BackspaceWord),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Delete,
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::DeleteWord),
             _ => None,
         }
     }
