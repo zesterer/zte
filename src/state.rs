@@ -479,6 +479,18 @@ impl Buffer {
         word: bool,
     ) {
         self.undo_checkpoint();
+        self.move_cursor_inner(cursor_id, dir, dist, retain_base, word);
+    }
+
+    pub fn move_cursor_inner(
+        &mut self,
+        cursor_id: CursorId,
+        dir: Dir,
+        dist: [usize; 2],
+        retain_base: bool,
+        word: bool,
+    ) {
+        self.undo_checkpoint();
 
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
@@ -857,7 +869,7 @@ impl Buffer {
             // Ensure there's only whitespace to our left
             self.indent_at(cursor.pos, false);
         } else {
-            self.move_cursor(cursor_id, Dir::Left, [1, 1], true, word);
+            self.move_cursor_inner(cursor_id, Dir::Left, [1, 1], true, word);
             let Some(cursor) = self.cursors.get(cursor_id) else {
                 return;
             };
@@ -875,7 +887,7 @@ impl Buffer {
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
         } else {
-            self.move_cursor(cursor_id, Dir::Right, [1, 1], true, word);
+            self.move_cursor_inner(cursor_id, Dir::Right, [1, 1], true, word);
             let Some(cursor) = self.cursors.get(cursor_id) else {
                 return;
             };
