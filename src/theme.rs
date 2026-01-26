@@ -72,6 +72,7 @@ pub struct Theme {
     pub option_dir: CellTheme,
     pub option_file: CellTheme,
     pub option_new: CellTheme,
+    pub option_term: CellTheme,
 
     pub hl_token_whitespace: CellTheme,
     pub hl_token_ident: CellTheme,
@@ -121,6 +122,7 @@ impl Default for Theme {
             option_dir: fg(Color::AnsiValue(178)),
             option_file: none,
             option_new: fg(Color::AnsiValue(148)),
+            option_term: fg(Color::AnsiValue(140)),
 
             hl_token_whitespace: none,
             hl_token_ident: fg(Color::AnsiValue(15)),

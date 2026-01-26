@@ -308,6 +308,7 @@ impl Visual for BufferId {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
 pub enum FileBrowserMode {
     Opener,
     Save,
@@ -387,6 +388,15 @@ impl FileBrowser {
                         })
                     } else {
                         None
+                    })
+                    .chain(if self.mode == FileBrowserMode::Opener {
+                        Some(FileOption {
+                            path: [dir].into_iter().collect(),
+                            kind: FileKind::Term,
+                            is_link: false,
+                        })
+                    } else {
+                        None
                     });
                 // TODO
                 self.options.set_options(options, |e| {
@@ -397,7 +407,9 @@ impl FileBrowser {
                         .ok()
                         .and_then(|m| Some(m.modified().ok()?.elapsed().ok()?.as_secs()))
                         .unwrap_or(!0);
-                    if filter == "" {
+                    if e.kind == FileKind::Term {
+                        Some((100000, 0, 0, name))
+                    } else if filter == "" {
                         // When no filter is specified, simply order alphabetically
                         Some((0, 0, 0, name))
                     } else if matches!(e.kind, FileKind::New) {
@@ -464,6 +476,7 @@ impl Element<()> for FileBrowser {
                         FileBrowserMode::Save => Ok(Resp::end(Some(Action::SaveFileAs(file.path).into()))),
                         FileBrowserMode::Move => Ok(Resp::end(Some(Action::MoveFile(file.path).into()))),
                     },
+                    FileKind::Term => Ok(Resp::end(Some(Action::NewTerm(Some(file.path)).into()))),
                     FileKind::Unknown => Ok(Resp::handled(None)),
                 }
                 Ok(None) => Ok(Resp::handled(None)),
@@ -493,12 +506,13 @@ impl Element<()> for FileBrowser {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum FileKind {
     Unknown,
     Dir,
     File,
     New,
+    Term,
 }
 
 #[derive(Clone)]
@@ -511,6 +525,7 @@ pub struct FileOption {
 impl Visual for FileOption {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let name = match self.path.file_name().and_then(|n| n.to_str()) {
+            Some(_) if matches!(self.kind, FileKind::Term) => format!("$"),
             Some(name) if matches!(self.kind, FileKind::Dir) => format!("{name}/"),
             Some(name) => format!("{name}"),
             None => format!("Unknown"),
@@ -521,16 +536,17 @@ impl Visual for FileOption {
             FileKind::Unknown => format!("Unknown{is_link}"),
             FileKind::File => format!("File{is_link}"),
             FileKind::New => format!("New file{is_link}"),
+            FileKind::Term => format!("Open terminal"),
         };
-        frame
-            .with_theme(match self.kind {
-                FileKind::Dir => state.theme.option_dir,
-                FileKind::File | FileKind::Unknown => state.theme.option_file,
-                FileKind::New => state.theme.option_new,
-            })
-            .text([0, 0], &name);
-        frame.with_theme(state.theme.margin).with(|f| {
-            f.text([f.size()[0] as isize / 2, 0], &desc);
+        let theme = match self.kind {
+            FileKind::Dir => state.theme.option_dir,
+            FileKind::File | FileKind::Unknown => state.theme.option_file,
+            FileKind::New => state.theme.option_new,
+            FileKind::Term => state.theme.option_term,
+        };
+        frame.with_theme(theme).text([0, 0], &name);
+        frame.with_theme(theme).with(|f| {
+            f.text([f.size()[0] as isize * 2 / 4, 0], &desc);
         });
     }
 }
