@@ -297,6 +297,7 @@ pub struct Panes {
     selected: usize,
     vboxes: Vec<VBox>,
     last_area: Area,
+    name: Option<String>,
 }
 
 impl Panes {
@@ -311,6 +312,30 @@ impl Panes {
 
 impl Element for Panes {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        // Update tab name
+        if let Event::Tick = &event {
+            let name = if let Some(vbox) = self.vboxes.get(self.selected)
+                && let Some(pane) = vbox.panes.get(vbox.selected)
+            {
+                if let PaneKind::Doc(doc) = &pane.kind
+                    && let Some(buffer) = state.buffers.get(doc.buffer)
+                    && let Some(path) = buffer.path()
+                {
+                    Some(format!("{}", util::workspace_dir(path.clone()).display()))
+                } else if let PaneKind::Term(term) = &pane.kind {
+                    term.title.clone()
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if name != self.name {
+                self.name = name;
+                state.needs_render = true;
+            }
+        }
+
         let res = match event.to_action(|e| {
             e.to_pane_move()
                 .map(Action::PaneMove)
@@ -487,6 +512,7 @@ impl Tabs {
                             size_weight: 1.0,
                         }],
                         last_area: Area::default(),
+                        name: None,
                     })
                 })
                 .collect(),
@@ -550,6 +576,7 @@ impl Element for Tabs {
                             size_weight,
                         }],
                         last_area: Area::default(),
+                        name: None,
                     },
                 );
                 self.reset_tab_timeout();
@@ -607,17 +634,11 @@ impl Visual for Tabs {
                 Some("Tab switcher"),
             );
             for (i, tab) in self.tabs.iter().enumerate() {
-                let name = if let Some(vbox) = tab.vboxes.get(tab.selected)
-                    && let Some(pane) = vbox.panes.get(vbox.selected)
-                    && let PaneKind::Doc(doc) = &pane.kind
-                    && let Some(buffer) = state.buffers.get(doc.buffer)
-                    && let Some(path) = buffer.path()
-                {
-                    format!("{}", util::workspace_dir(path.clone()).display())
+                let name = if let Some(name) = &tab.name {
+                    name
                 } else {
-                    format!("{i}")
+                    &format!("{i}")
                 };
-
                 frame
                     .rect([0, i], [!0, 1])
                     .with_theme(if i == self.selected {
@@ -626,7 +647,7 @@ impl Visual for Tabs {
                         None
                     })
                     .fill(' ')
-                    .text([0, 0], &name);
+                    .text([0, 0], name);
             }
         }
     }

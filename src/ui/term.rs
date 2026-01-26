@@ -36,7 +36,7 @@ impl EventListener for Listener {
 pub struct Term {
     term: Alacritty<Listener>,
     old_term_size: Option<[usize; 2]>,
-    title: Option<String>,
+    pub title: Option<String>,
     ansi: ansi::Processor,
     in_tx: Sender<Input>,
     out_rx: Receiver<Output>,
