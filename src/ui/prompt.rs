@@ -364,7 +364,7 @@ impl FileBrowser {
         let filter = file_name.to_lowercase();
         match fs::read_dir(dir) {
             Ok(entries) => {
-                let options = entries
+                let mut options = entries
                     .filter_map(|e| e.ok())
                     .filter_map(|entry| {
                         let metadata = fs::metadata(entry.path()).ok()?;
@@ -380,24 +380,25 @@ impl FileBrowser {
                             is_link: entry.file_type().ok()?.is_symlink(),
                         })
                     })
-                    .chain(if filter != "" {
-                        Some(FileOption {
-                            path: [dir, &file_name].into_iter().collect(),
-                            kind: FileKind::New,
-                            is_link: false,
-                        })
-                    } else {
-                        None
-                    })
-                    .chain(if self.mode == FileBrowserMode::Opener {
-                        Some(FileOption {
-                            path: [dir].into_iter().collect(),
-                            kind: FileKind::Term,
-                            is_link: false,
-                        })
-                    } else {
-                        None
+                    .collect::<Vec<_>>();
+                if filter != ""
+                    && options
+                        .iter()
+                        .all(|e| e.path.file_name().and_then(|e| e.to_str()) != Some(file_name))
+                {
+                    options.push(FileOption {
+                        path: [dir, &file_name].into_iter().collect(),
+                        kind: FileKind::New,
+                        is_link: false,
                     });
+                }
+                if self.mode == FileBrowserMode::Opener {
+                    options.push(FileOption {
+                        path: [dir].into_iter().collect(),
+                        kind: FileKind::Term,
+                        is_link: false,
+                    });
+                }
                 // TODO
                 self.options.set_options(options, |e| {
                     let name = e.path.file_name()?.to_str()?.to_lowercase();
@@ -446,11 +447,14 @@ impl FileBrowser {
 impl Element<()> for FileBrowser {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         let path_str = self.buffer.text.to_string();
-        let res = match event.to_action(|e| e.to_cancel().or_else(|| e.to_char().map(Action::Char))) {
+        let res = match event.to_action(|e| e
+            .to_cancel()
+            .or_else(|| e.to_char().map(Action::Char))
+            .or_else(|| e.to_indent())) {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             // Backspace removes the entire path segment!
             // Only works if we're at the end of the string
-            Some(Action::Char('\x08')) if path_str.ends_with("/") && self.buffer.cursors.get(self.cursor_id).map_or(false, |c| c.selection().is_none() && c.pos == self.buffer.text.chars().len()) => {
+            Some(Action::Char('\x08')) if self.buffer.cursors.get(self.cursor_id).map_or(false, |c| c.selection().is_none() && c.pos == self.buffer.text.chars().len()) => {
                 if path_str != "/" {
                     self.set_string(
                         path_str
@@ -464,6 +468,14 @@ impl Element<()> for FileBrowser {
                 self.set_string(&format!("{}/", std::env::home_dir().unwrap().display()));
                 Ok(Resp::handled(None))
             }
+            // Tab can be used to auto-complete directories
+            Some(Action::Indent(true)) => if let Some(file) = self.options.selected() {
+                let tail = if let FileKind::Dir = file.kind { "/" } else { "" };
+                self.set_string(&format!("{}{tail}", file.path.display()));
+                Ok(Resp::handled(None))
+            } else {
+                Err(event)
+            },
             _ => match self.options.handle(state, event).map(Resp::into_ended) {
                 // Selecting a directory enters the directory
                 Ok(Some(file)) => match file.kind {
@@ -488,7 +500,6 @@ impl Element<()> for FileBrowser {
                     {
                         Ok(x) => Ok(x),
                         Err(event) => if let Some((buffer, cursor_id, input)) = &mut self.preview {
-                            // panic!("HERE: {event:?}");
                             input.handle(&mut state.clipboard, buffer, *cursor_id, event).map(Resp::into_can_end)
                         } else {
                             Err(event)
@@ -496,7 +507,7 @@ impl Element<()> for FileBrowser {
                     };
                     res
                 }
-            },
+            }
         };
 
         if self.buffer.text.to_string() != path_str {
