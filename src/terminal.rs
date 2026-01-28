@@ -491,6 +491,9 @@ impl<'a> Terminal<'a> {
         let _ = stdout.execute(terminal::DisableLineWrap);
         let _ = stdout.execute(event::EnableMouseCapture);
         let _ = stdout.execute(event::EnableBracketedPaste);
+        let _ = stdout.execute(event::PushKeyboardEnhancementFlags(
+            event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
+        ));
     }
 
     fn leave(mut stdout: impl io::Write) {
@@ -500,6 +503,7 @@ impl<'a> Terminal<'a> {
         let _ = stdout.execute(cursor::Show);
         let _ = stdout.execute(event::DisableMouseCapture);
         let _ = stdout.execute(event::DisableBracketedPaste);
+        let _ = stdout.execute(event::PopKeyboardEnhancementFlags);
     }
 
     pub fn with<T>(

@@ -205,13 +205,13 @@ impl RawEvent {
             TerminalEvent::Key(KeyEvent {
                 code,
                 modifiers: ALT_SHIFT,
-                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                kind: KeyEventKind::Press,
                 ..
             }) => match code {
-                KeyCode::Char('A') => Some(Dir::Left),
-                KeyCode::Char('D') => Some(Dir::Right),
-                KeyCode::Char('W') => Some(Dir::Up),
-                KeyCode::Char('S') => Some(Dir::Down),
+                KeyCode::Char('a' | 'A') => Some(Dir::Left),
+                KeyCode::Char('d' | 'D') => Some(Dir::Right),
+                KeyCode::Char('w' | 'W') => Some(Dir::Up),
+                KeyCode::Char('s' | 'S') => Some(Dir::Down),
                 _ => None,
             },
             _ => None,

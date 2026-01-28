@@ -5,7 +5,9 @@ use alacritty_terminal::{
     grid::{Dimensions as _, Scroll},
     index::{Column, Line, Point, Side},
     selection::{Selection, SelectionType},
-    term::{ClipboardType, Config as AlacrittyConfig, TermMode, cell::Flags, test::TermSize},
+    term::{
+        ClipboardType, Config as AlacrittyConfig, Osc52, TermMode, cell::Flags, test::TermSize,
+    },
     vte::ansi,
 };
 use tokio::{
@@ -89,7 +91,11 @@ impl Term {
 
         Ok(Self {
             term: Alacritty::new(
-                AlacrittyConfig::default(),
+                AlacrittyConfig {
+                    kitty_keyboard: true,
+                    osc52: Osc52::CopyPaste,
+                    ..AlacrittyConfig::default()
+                },
                 &TermSize::new(40, 15),
                 Listener(out_tx.clone()),
             ),
@@ -207,7 +213,7 @@ impl Element for Term {
             }
             _ => {
                 if let Event::Raw(ref ev) = event
-                    && let Some(s) = ev.to_esc_seq()
+                    && let Some(s) = ev.to_esc_seq(self.term.mode())
                 {
                     // Ensure the cursor is on-screen. TODO: Better way of differentiating this than `ALT_SCREEN`
                     if !self.term.mode().contains(TermMode::ALT_SCREEN) {
@@ -401,7 +407,7 @@ impl Visual for Term {
 
 use crate::action::RawEvent;
 impl RawEvent {
-    fn to_esc_seq(&self) -> Option<String> {
+    fn to_esc_seq(&self, mode: &TermMode) -> Option<String> {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
         match &self.0 {
@@ -413,10 +419,19 @@ impl RawEvent {
             }) => {
                 // Base on `https://www.leonerd.org.uk/hacks/fixterms/`
 
-                match kind {
-                    KeyEventKind::Press => {}
-                    _ => return None,
-                }
+                let kind = if mode.contains(TermMode::REPORT_EVENT_TYPES) {
+                    match kind {
+                        KeyEventKind::Press => None,
+                        KeyEventKind::Repeat => Some(2),
+                        KeyEventKind::Release => Some(3),
+                    }
+                } else {
+                    match kind {
+                        KeyEventKind::Press => None,
+                        KeyEventKind::Repeat => None,
+                        KeyEventKind::Release => return None,
+                    }
+                };
 
                 if state.contains(KeyEventState::KEYPAD) {
                     return None;
@@ -492,24 +507,32 @@ impl RawEvent {
                         | (modifiers.contains(KeyModifiers::ALT) as u32) << 1
                         | (modifiers.contains(KeyModifiers::CONTROL) as u32) << 2);
 
+                let mod_seq = if let Some(kind) = kind {
+                    format!("{modifiers}:{kind}")
+                } else {
+                    format!("{modifiers}")
+                };
+
                 Some(match class {
-                    Class::Unicode(c) if modifiers == 1 => format!("{c}"),
+                    Class::Unicode(c) if modifiers == 1 && kind.is_none() => format!("{c}"),
                     // Special cases
                     Class::Unicode(c @ ('i' | 'm' | '[' | '@')) if modifiers == 5 => {
-                        format!("\x1B[{};{modifiers}{c}~", c as u8)
+                        format!("\x1B[{};{mod_seq}{c}~", c as u8)
                     }
-                    Class::Unicode(c @ 'a'..='z') if modifiers == 5 => {
+                    Class::Unicode(c @ 'a'..='z') if modifiers == 5 && kind.is_none() => {
                         format!("{}", (c as u8 & 0x1F) as char)
                     }
-                    Class::Unicode(c) => format!("\x1B[{};{modifiers}{c}", c as u8),
+                    Class::Unicode(c) => format!("\x1B[{};{mod_seq};{}u", c as u8, c as u8),
 
                     Class::ModifiedC0(s) => format!("{s}"),
 
-                    Class::Special(c) if modifiers == 1 => format!("\x1B[{c}~"),
-                    Class::Special(c) => format!("\x1B[;{modifiers}{c}~"),
+                    Class::Special(c) if modifiers == 1 && kind.is_none() => format!("\x1B[{c}~"),
+                    Class::Special(c) => format!("\x1B[;{mod_seq}{c}~"),
 
-                    Class::ReallySpecial(c) if modifiers == 1 => format!("\x1B[{c}"),
-                    Class::ReallySpecial(c) => format!("\x1B[1;{modifiers}{c}"),
+                    Class::ReallySpecial(c) if modifiers == 1 && kind.is_none() => {
+                        format!("\x1B[{c}")
+                    }
+                    Class::ReallySpecial(c) => format!("\x1B[1;{mod_seq}{c}"),
                 })
             }
             _ => None,

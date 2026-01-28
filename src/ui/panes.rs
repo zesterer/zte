@@ -28,6 +28,10 @@ impl Pane {
             PaneKind::Term(term) => term.should_close(),
         }
     }
+
+    pub fn should_warn_close(&self) -> bool {
+        matches!(&self.kind, PaneKind::Term(_))
+    }
 }
 
 impl Element<()> for Pane {
@@ -151,6 +155,12 @@ pub struct VBox {
     panes: Vec<Pane>,
     last_area: Area,
     size_weight: f32,
+}
+
+impl VBox {
+    pub fn should_warn_close(&self) -> bool {
+        self.panes.iter().any(|e| e.should_warn_close())
+    }
 }
 
 impl Element<()> for VBox {
@@ -307,6 +317,10 @@ impl Panes {
         self.vboxes
             .iter_mut()
             .for_each(|h| h.size_weight = (h.size_weight / total_weight).max(3.0 / sz).min(10.0));
+    }
+
+    pub fn should_warn_close(&self) -> bool {
+        self.vboxes.iter().any(|e| e.should_warn_close())
     }
 }
 
@@ -523,6 +537,10 @@ impl Tabs {
 
     fn reset_tab_timeout(&mut self) {
         self.tab_view_timeout = Some(Instant::now() + Duration::from_millis(800));
+    }
+
+    pub fn should_warn_close(&self) -> bool {
+        self.tabs.iter().any(|t| t.should_warn_close())
     }
 }
 

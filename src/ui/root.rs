@@ -116,14 +116,20 @@ impl Element<()> for Root {
                             .map(|b| b.has_changes())
                             .filter(|c| *c)
                             .count();
-                        if unsaved == 0 {
-                            break Ok(Resp::end(None));
-                        } else {
+                        if unsaved > 0 {
                             self.tasks.push(Task::Confirm(Confirm {
                                 label: Label(format!("Are you sure you wish to quit? (y/n). Note that {} file(s) have unsaved changes!", unsaved)),
                                 action: Action::Quit,
                             }));
                             break Ok(Resp::handled(None));
+                        } else if self.tabs.should_warn_close() {
+                            self.tasks.push(Task::Confirm(Confirm {
+                                label: Label(format!("Are you sure you wish to quit? (y/n). Some tasks are still active!")),
+                                action: Action::Quit,
+                            }));
+                            break Ok(Resp::handled(None));
+                        } else {
+                            break Ok(Resp::end(None));
                         }
                     }
                     Action::Confirm(q, action) => {
