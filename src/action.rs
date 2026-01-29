@@ -639,13 +639,13 @@ impl RawEvent {
                 ..
             }) => Some(Action::Duplicate),
             TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('7'), // ?????
+                code: KeyCode::Char('/' | '7'), // ?????
                 modifiers: KeyModifiers::CONTROL,
                 kind: KeyEventKind::Press,
                 ..
             }) => Some(Action::Comment),
             TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('h'),
+                code: KeyCode::Backspace | KeyCode::Char('h'),
                 modifiers: KeyModifiers::CONTROL,
                 kind: KeyEventKind::Press,
                 ..

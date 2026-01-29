@@ -433,6 +433,7 @@ impl RawEvent {
                     }
                 };
 
+                /*
                 if state.contains(KeyEventState::KEYPAD) {
                     return None;
                 }
@@ -442,6 +443,7 @@ impl RawEvent {
                 if state.contains(KeyEventState::NUM_LOCK) {
                     return None;
                 }
+                */
 
                 enum Class {
                     Unicode(char),
