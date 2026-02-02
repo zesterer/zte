@@ -107,7 +107,7 @@ fn main() -> Result<(), Error> {
                 // Now that we're awake, speculatively process any extra events that happen to be immediately
                 // available (or very soon after - we can't control the latency of terminal processes!) to
                 // avoid wasting renders
-                let soon = tokio::time::Instant::now() + Duration::from_millis(1000 / 60);
+                let soon = tokio::time::Instant::now(); // + Duration::from_millis(5);
                 while let Ok(Some(Ok(ev))) = tokio::time::timeout_at(soon, events.next()).await {
                     let _ = notify.notified().now_or_never(); // Clear any pending notifications - we're about to handle them!
                     handle_event(Event::from_raw(ev));

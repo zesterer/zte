@@ -108,61 +108,43 @@ impl Highlighter {
 }
 
 impl LangPack {
-    fn parse_tree(&self, text: &Text, i: &mut usize) -> Option<DelimTree> {
-        let start_pos = *i;
-        let (_, end) = match text.chars().get(*i) {
-            Some(c) => self.delims.iter().find(|(s, _)| s == c)?,
-            None => return None,
-        };
-        *i += 1;
-        let mut children = Vec::new();
+    fn delims(&self, text: &Text) -> Vec<DelimTree> {
+        let mut i = 0;
+        let mut top_level = Vec::new();
+        let mut open = Vec::new();
         loop {
-            if let Some(c) = text.chars().get(*i) {
-                let mut j = *i;
-                if c == end {
-                    *i += 1;
-                    break Some(DelimTree {
-                        span: start_pos..*i,
-                        children,
-                    });
-                } else if self.delims.iter().any(|(_, e)| e == c) {
-                    // Use the indentation as a guide when parsing unclosed delimiters
-                    let start_indent = text.indent_of_line(text.to_coord(start_pos)[1]);
-                    let end_indent = text.indent_of_line(text.to_coord(*i)[1]);
-                    if end_indent
+            let c = text.chars().get(i);
+            if let Some(c) = c
+                && let Some((_, e)) = self.delims.iter().find(|(s, _)| s == c)
+            {
+                open.push((i, e, Vec::new()));
+            } else if (self.delims.iter().any(|(_, e)| Some(e) == c) || c.is_none())
+                && let Some(&(broken_start, e, ref prev)) = open.last()
+                && ((c == Some(e) && prev.is_empty()) || {
+                    let end_indent = text.indent_of_line(text.to_coord(i)[1]);
+                    let start_indent = text.indent_of_line(text.to_coord(broken_start)[1]);
+                    end_indent
                         .strip_prefix(start_indent)
                         .map_or(true, |s| s.is_empty())
-                    {
-                        return None;
-                    } else {
-                        *i += 1;
-                    }
-                } else if let Some(tree) = self.parse_tree(text, &mut j) {
-                    *i = j;
-                    children.push(tree);
-                } else {
-                    *i += 1;
-                }
-            } else {
-                break Some(DelimTree {
-                    span: start_pos..*i,
+                })
+                && let Some((start, e, children)) = open.pop()
+            {
+                let tree = DelimTree {
+                    span: start..i + 1,
                     children,
-                });
+                };
+                if let Some((_, _, prev)) = open.last_mut() {
+                    prev.push(tree);
+                    if c != Some(e) {
+                        continue;
+                    }
+                } else {
+                    top_level.push(tree);
+                }
+            } else if c.is_none() {
+                break top_level;
             }
-        }
-    }
-
-    fn delims(&self, text: &Text) -> Vec<DelimTree> {
-        let mut delims = Vec::new();
-        let mut i = 0;
-        loop {
-            if let Some(tree) = self.parse_tree(text, &mut i) {
-                delims.push(tree);
-            } else if text.chars().get(i).is_none() {
-                break delims;
-            } else {
-                i += 1;
-            }
+            i += 1;
         }
     }
 

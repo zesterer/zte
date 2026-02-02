@@ -408,14 +408,14 @@ impl Visual for Term {
 use crate::action::RawEvent;
 impl RawEvent {
     fn to_esc_seq(&self, mode: &TermMode) -> Option<String> {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
         match &self.0 {
             TerminalEvent::Key(KeyEvent {
                 code,
                 modifiers,
                 kind,
-                state,
+                state: _,
             }) => {
                 // Base on `https://www.leonerd.org.uk/hacks/fixterms/`
 
