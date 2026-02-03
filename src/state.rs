@@ -925,18 +925,27 @@ impl Buffer {
             && let Some(last_char) = self.text.chars().get(last_pos)
             && let Some((_, r)) = self.lang.delims.iter().find(|(l, _)| l == last_char)
         {
-            let (end_of_block, end_needs_indent) = (cursor.pos..)
-                .map(|pos| (pos, self.text.chars().get(pos).copied().unwrap_or('\n')))
-                .take_while(|(_, c)| *c != '\n')
-                .find(|(_, c)| c == r)
-                .map(|(pos, _)| (pos, true))
-                .or_else(|| {
-                    let end_of_block = self.text.start_of_line_text(coord[1] + 1).ok()?;
-                    (self.text.chars().get(next_line_start + next_indent.len()) == Some(&r)
-                        && prev_indent == next_indent)
-                        .then_some((end_of_block, false))
-                })
+            let (end_of_block, end_needs_indent) = self
+                .highlights
+                .get_delim_at(|r| (r.start + 1..=r.end).contains(&cursor.pos))
+                .filter(|(_, r)| r.start + 1 == cursor.pos)
+                .map(|(_, r)| r.end.saturating_sub(1))
+                .filter(|end| self.text.to_coord(*end)[1] == coord[1])
+                .map(|end| (end, true))
                 .unwrap_or((cursor.pos, true));
+            // Old logic:
+            // let (end_of_block, end_needs_indent) = (cursor.pos..)
+            //     .map(|pos| (pos, self.text.chars().get(pos).copied().unwrap_or('\n')))
+            //     .take_while(|(_, c)| *c != '\n')
+            //     .find(|(_, c)| c == r)
+            //     .map(|(pos, _)| (pos, true))
+            //     .or_else(|| {
+            //         let end_of_block = self.text.start_of_line_text(coord[1] + 1).ok()?;
+            //         (self.text.chars().get(next_line_start + next_indent.len()) == Some(&r)
+            //             && prev_indent == next_indent)
+            //             .then_some((end_of_block, false))
+            //     })
+            //     .unwrap_or((cursor.pos, true));
             let needs_closing = self.text.chars().get(end_of_block) != Some(&r);
             let creating_block = false
                 // Case 1: A block is being created from an existing inline one

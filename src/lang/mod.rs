@@ -65,6 +65,12 @@ impl LangPack {
                 comment_syntax: Some(vec!['#', ' ']),
                 ..Default::default()
             }
+        } else if matches!(fextension, "cherb") {
+            Self {
+                highlighter: Highlighter::code().cherb(),
+                comment_syntax: Some(vec!['#', ' ']),
+                ..Default::default()
+            }
         } else {
             Self {
                 highlighter: Highlighter::code(),
@@ -410,5 +416,17 @@ impl Highlighter {
         self
             // Automatically detect URLs
             .with(TokenKind::Url, r"\b(https?):\/\/[A-Za-z0-9_\-:\.\/]+")
+    }
+
+    pub fn cherb(self) -> Self {
+        self.generic_delimited()
+            // Keywords
+            .with(
+                TokenKind::Keyword,
+                r"\b[(BUILD)(IMPORT)(EXPORT)(RUN)(SOURCE)(OPTION)(ENV)]\b",
+            )
+            // Metavars
+            .with(TokenKind::Macro, r"\$[A-Za-z_][A-Za-z0-9_]*")
+            .shell()
     }
 }
