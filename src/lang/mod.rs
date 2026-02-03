@@ -240,7 +240,7 @@ impl Highlighter {
     pub fn generic_clike(self) -> Self {
         self
             // Keywords
-            .with(TokenKind::Keyword, r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(typedef)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)(goto)(case)(default)(switch)]\b")
+            .with(TokenKind::Keyword, r"\b[(var)(enum)(let)(this)(fn)(struct)(class)(import)(if)(while)(for)(in)(loop)(else)(break)(continue)(const)(static)(typedef)(type)(extern)(return)(async)(throw)(catch)(union)(auto)(namespace)(public)(private)(function)(func)(goto)(case)(default)(switch)(inline)(volatile)]\b")
             // Primitives
             .with(TokenKind::Type, r"\b[(([(unsigned)(signed)][[:space:]])*u?int[0-9]*(_t)?)(float)(double)(bool)(char)(size_t)(void)]\b")
             .clike_comments()
@@ -251,6 +251,8 @@ impl Highlighter {
         self
             // Dereferenced fields and methods: a->foo
             .with(TokenKind::Property, r"\->[A-Za-z_][A-Za-z0-9_]*")
+            // Labels
+            .with(TokenKind::Special, r"\b[a-z_][A-Za-z0-9_]*\b:")
             .generic_clike()
             .clike_preprocessor()
     }
