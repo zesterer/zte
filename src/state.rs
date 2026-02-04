@@ -932,7 +932,7 @@ impl Buffer {
                 .map(|(_, r)| r.end.saturating_sub(1))
                 .filter(|end| self.text.to_coord(*end)[1] == coord[1])
                 .map(|end| (end, true))
-                .unwrap_or((cursor.pos, true));
+                .unwrap_or((next_line_start.saturating_sub(1), true));
             // Old logic:
             // let (end_of_block, end_needs_indent) = (cursor.pos..)
             //     .map(|pos| (pos, self.text.chars().get(pos).copied().unwrap_or('\n')))
