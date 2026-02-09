@@ -17,6 +17,7 @@ pub struct Searcher {
 impl Searcher {
     pub fn new(path: PathBuf, needle: Option<String>) -> Self {
         let search_path = util::workspace_dir(path.clone());
+        let search_path = search_path.canonicalize().unwrap_or_else(|_| search_path);
 
         fn search_in(
             search_path: &Path,
@@ -25,7 +26,7 @@ impl Searcher {
             results: &mut Vec<SearchResult>,
         ) {
             // Cap reached!
-            if results.len() < 500 {
+            if results.len() < 2000 {
                 // Skip hidden files
                 if path
                     .file_name()
@@ -36,7 +37,13 @@ impl Searcher {
                     return;
                 }
 
-                if let Ok(file) = fs::File::open(path)
+                if let Ok(meta) = fs::symlink_metadata(path)
+                    && meta.is_symlink()
+                    && let Ok(link) = path.canonicalize()
+                    && link.starts_with(search_path)
+                {
+                    // Skip links that point back into the search path: we'll be visiting them anyway!
+                } else if let Ok(file) = fs::File::open(path)
                     && let Ok(md) = file.metadata()
                     // Maximum 1 MB
                     && md.len() < 1 << 20
@@ -49,6 +56,7 @@ impl Searcher {
                             .unwrap_or("unknown")
                     );
                     if let Some(needle) = needle {
+                        let mut file_matches = 0;
                         for (line_idx, line_text) in
                             s.lines().enumerate().filter(|(_, l)| l.contains(needle))
                         {
@@ -69,6 +77,10 @@ impl Searcher {
                                     line_buffer,
                                 )),
                             });
+                            file_matches += 1;
+                            if file_matches >= 150 {
+                                break;
+                            }
                         }
                     } else {
                         results.push(SearchResult {
