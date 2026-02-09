@@ -49,7 +49,7 @@ impl LangPack {
             Self::pythonic(Highlighter::code().python())
         } else if matches!(fextension, "tao") {
             Self::pythonic(Highlighter::code().tao())
-        } else if matches!(fname, "makefile" | "Makefile") {
+        } else if matches!(fname, "makefile" | "Makefile") || matches!(fextension, "mk") {
             Self::pythonic(Highlighter::code().makefile())
         } else if matches!(fextension, "proto" | "json") {
             Self::clike(Highlighter::code().clike_comments().generic_delimited())
@@ -63,6 +63,18 @@ impl LangPack {
             Self {
                 highlighter: Highlighter::code().dockerfile(),
                 comment_syntax: Some(vec!['#', ' ']),
+                ..Default::default()
+            }
+        } else if matches!(fname, "CMakeLists.txt") || matches!(fextension, "cmake") {
+            Self {
+                highlighter: Highlighter::code().cmake(),
+                comment_syntax: Some(vec!['#', ' ']),
+                ..Default::default()
+            }
+        } else if matches!(fextension, "camkes") {
+            Self {
+                highlighter: Highlighter::code().camkes(),
+                comment_syntax: Some(vec!['/', '/', ' ']),
                 ..Default::default()
             }
         } else if matches!(fextension, "cherb") {
@@ -204,7 +216,7 @@ impl Highlighter {
     }
 
     fn clike_preprocessor(self) -> Self {
-        self.with(TokenKind::Macro, r"^#[^$]*$")
+        self.with(TokenKind::Macro, r"^[[:space:]]*#[^$]*$")
     }
 
     pub fn generic_delimited(self) -> Self {
@@ -357,6 +369,10 @@ impl Highlighter {
     }
 
     pub fn shell(self) -> Self {
+        fn shell_string() -> Highlighter {
+            Highlighter::default().with(TokenKind::FmtString, r#"\$\{[A-Za-z_][A-Za-z0-9_]*\}"#)
+        }
+
         self.url()
             // Argument tag (like `--foo`)
             .with(TokenKind::Property, r"\-\-?[A-Za-z0-9_\-:\.\/]+\b")
@@ -365,19 +381,22 @@ impl Highlighter {
             // Operators
             .with(TokenKind::Operator, r"[=,:\@\+(\+\+)\+\\(&&)\|(\-\-)\-]")
             // Double-quoted strings
-            .with(
+            .with_child_syntax(
                 TokenKind::String,
                 r#"b?"[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^"]]*""#,
+                shell_string(),
             )
             // Single-quoted strings
-            .with(
+            .with_child_syntax(
                 TokenKind::String,
                 r#"b?'[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^']]*'"#,
+                shell_string(),
             )
             // Backtick-quoted strings
-            .with(
+            .with_child_syntax(
                 TokenKind::String,
                 r#"b?`[(\\[nrt\\0(x[0-7A-Za-z][0-7A-Za-z])])[^`]]*`"#,
+                shell_string(),
             )
             // Variables
             .with(TokenKind::Constant, r"\$\([A-Za-z_][A-Za-z0-9_\-]*\)")
@@ -425,10 +444,30 @@ impl Highlighter {
             // Keywords
             .with(
                 TokenKind::Keyword,
-                r"\b[(BUILD)(IMPORT)(EXPORT)(RUN)(SOURCE)(OPTION)(ENV)]\b",
+                r"\b[(BUILD)(IMPORT)(EXPORT)(RUN)(SOURCE)(OPTIONS?)(ENV)(USES?)]\b",
             )
             // Metavars
             .with(TokenKind::Macro, r"\$[A-Za-z_][A-Za-z0-9_]*")
             .shell()
+    }
+
+    pub fn cmake(self) -> Self {
+        self
+            // Keywords
+            .with(TokenKind::Keyword, r"\b[(if)(else)(endif)]\b")
+            .with(TokenKind::Function, r"\b[A-Za-z0-9_\-:\.\/]+\b\(%")
+            // Variables
+            .with(TokenKind::Constant, r"\$\([A-Za-z_][A-Za-z0-9_\-]*\)")
+            .shell()
+            .generic_delimited()
+    }
+
+    pub fn camkes(self) -> Self {
+        self
+            // Keywords
+            .with(TokenKind::Keyword, r"\b[(import)(component)(include)(hardware)(dataport)(maybe)(emits)(configuration)(connection)]\b")
+            .clike_comments()
+            .clike_preprocessor()
+            .clike()
     }
 }

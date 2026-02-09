@@ -30,6 +30,8 @@ pub enum TokenKind {
     Macro,
     /// A string literal
     String,
+    /// A format element in a string
+    FmtString,
     /// Misc special syntax (defined per-language)
     Special,
     /// A program constant or other statically-known name
