@@ -465,7 +465,9 @@ impl Highlighter {
     pub fn camkes(self) -> Self {
         self
             // Keywords
-            .with(TokenKind::Keyword, r"\b[(import)(component)(include)(hardware)(dataport)(maybe)(emits)(configuration)(connection)]\b")
+            .with(TokenKind::Keyword, r"\b[(import)(component)(include)(hardware)(dataport)(maybe)(emits)(configuration)(connection)(uses)(provides)(consumes)(has)(control)]\b")
+            // Special types
+            .with(TokenKind::Type, r"\b[(mutex)(semaphore)]\b")
             .clike_comments()
             .clike_preprocessor()
             .clike()
