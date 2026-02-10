@@ -569,6 +569,11 @@ impl Visual for FileBrowser {
                 .take()
                 .filter(|(b, _, _)| b.is_same_path(&f.path))
                 .or_else(|| {
+                    let metadata = f.path.metadata().ok()?;
+                    // Don't preview files more than 256K
+                    if metadata.len() > 256 * 1024 {
+                        return None;
+                    }
                     let mut buffer = Buffer::open(f.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     Some((buffer, cursor_id, Input::default()))
