@@ -26,86 +26,88 @@ impl Searcher {
             results: &mut Vec<SearchResult>,
         ) {
             // Cap reached!
-            if results.len() < 2000 {
-                // Skip hidden files
-                if path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .starts_with(".")
-                {
-                    return;
-                }
+            if results.len() > 10_000 {
+                return;
+            }
 
-                if let Ok(meta) = fs::symlink_metadata(path)
-                    && meta.is_symlink()
-                    && let Ok(link) = path.canonicalize()
-                    && link.starts_with(search_path)
-                {
-                    // Skip links that point back into the search path: we'll be visiting them anyway!
-                } else if let Ok(file) = fs::File::open(path)
-                    && let Ok(md) = file.metadata()
-                    // Maximum 1 MB
-                    && md.len() < 1 << 20
-                    && let Ok(s) = fs::read_to_string(path)
-                {
-                    let rdir = format!(
-                        "./{}",
-                        path.parent()
-                            .and_then(|p| p.strip_prefix(search_path).ok()?.to_str())
-                            .unwrap_or("unknown")
-                    );
-                    if let Some(needle) = needle {
-                        let mut file_matches = 0;
-                        for (line_idx, line_text) in
-                            s.lines().enumerate().filter(|(_, l)| l.contains(needle))
-                        {
-                            let mut line_buffer = Buffer::file(
-                                false,
-                                line_text.trim().chars().collect(),
-                                path.to_path_buf(),
-                            );
-                            results.push(SearchResult {
-                                loc: SearchLoc {
-                                    path: path.to_path_buf(),
-                                    line_idx: Some(line_idx),
-                                },
-                                rdir: rdir.clone(),
-                                line: Some((
-                                    Input::search_result(line_idx),
-                                    line_buffer.start_session(),
-                                    line_buffer,
-                                )),
-                            });
-                            file_matches += 1;
-                            if file_matches >= 150 {
-                                break;
-                            }
-                        }
-                    } else {
+            // Skip hidden files
+            if path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .starts_with(".")
+            {
+                return;
+            }
+
+            if let Ok(meta) = fs::symlink_metadata(path)
+                && meta.is_symlink()
+                && let Ok(link) = path.canonicalize()
+                && link.starts_with(search_path)
+            {
+                // Skip links that point back into the search path: we'll be visiting them anyway!
+            } else if let Ok(file) = fs::File::open(path)
+                && let Ok(md) = file.metadata()
+                // Maximum 1 MB
+                && md.len() < 1 << 20
+                && let Ok(s) = fs::read_to_string(path)
+            {
+                let rdir = format!(
+                    "./{}",
+                    path.parent()
+                        .and_then(|p| p.strip_prefix(search_path).ok()?.to_str())
+                        .unwrap_or("unknown")
+                );
+                if let Some(needle) = needle {
+                    let mut file_matches = 0;
+                    for (line_idx, line_text) in
+                        s.lines().enumerate().filter(|(_, l)| l.contains(needle))
+                    {
+                        let mut line_buffer = Buffer::file(
+                            false,
+                            line_text.trim().chars().collect(),
+                            path.to_path_buf(),
+                        );
                         results.push(SearchResult {
                             loc: SearchLoc {
                                 path: path.to_path_buf(),
-                                line_idx: None,
+                                line_idx: Some(line_idx),
                             },
-                            rdir,
-                            line: None,
+                            rdir: rdir.clone(),
+                            line: Some((
+                                Input::search_result(line_idx),
+                                line_buffer.start_session(),
+                                line_buffer,
+                            )),
                         });
-                    }
-                } else if let Ok(entries) = fs::read_dir(path) {
-                    // Special case, ignore Rust target dir to prevent searching too many places
-                    {
-                        let mut path = path.to_path_buf();
-                        path.push("CACHEDIR.TAG");
-                        if path.exists() {
-                            return;
+                        file_matches += 1;
+                        if file_matches >= 150 {
+                            break;
                         }
                     }
-
-                    for entry in entries {
-                        let Ok(entry) = entry else { continue };
-                        search_in(search_path, &entry.path(), needle, results);
+                } else {
+                    results.push(SearchResult {
+                        loc: SearchLoc {
+                            path: path.to_path_buf(),
+                            line_idx: None,
+                        },
+                        rdir,
+                        line: None,
+                    });
+                }
+            } else if let Ok(entries) = fs::read_dir(path) {
+                // Special case, ignore Rust target dir to prevent searching too many places
+                {
+                    let mut path = path.to_path_buf();
+                    path.push("CACHEDIR.TAG");
+                    if path.exists() {
+                        return;
                     }
+                }
+
+                for entry in entries {
+                    let Ok(entry) = entry else { continue };
+                    search_in(search_path, &entry.path(), needle, results);
                 }
             }
         }

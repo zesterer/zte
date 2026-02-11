@@ -356,12 +356,12 @@ impl FileBrowser {
 
     fn update_completions(&mut self) {
         let path_str = self.buffer.text.to_string();
-        let (dir, file_name) = match path_str.rsplit_once('/') {
+        let (dir, filter_name) = match path_str.rsplit_once('/') {
             Some(("", filter)) => ("/", filter),
             Some((dir, filter)) => (dir, filter),
             None => ("/", path_str.as_str()),
         };
-        let filter = file_name.to_lowercase();
+        let filter = filter_name.to_lowercase();
         match fs::read_dir(dir) {
             Ok(entries) => {
                 let mut options = entries
@@ -381,27 +381,29 @@ impl FileBrowser {
                         })
                     })
                     .collect::<Vec<_>>();
+                // If the filter does not exactly match a file, leave the option to create a new one on the table
                 if filter != ""
                     && options
                         .iter()
-                        .all(|e| e.path.file_name().and_then(|e| e.to_str()) != Some(file_name))
+                        .all(|e| e.path.file_name().and_then(|e| e.to_str()) != Some(filter_name))
                 {
                     options.push(FileOption {
-                        path: [dir, &file_name].into_iter().collect(),
+                        path: [dir, &filter_name].into_iter().collect(),
                         kind: FileKind::New,
                         is_link: false,
                     });
                 }
-                if self.mode == FileBrowserMode::Opener {
+                // For the opener specifically, add the option of opening a terminal in this directory
+                if filter == "" && self.mode == FileBrowserMode::Opener {
                     options.push(FileOption {
                         path: [dir].into_iter().collect(),
                         kind: FileKind::Term,
                         is_link: false,
                     });
                 }
-                // TODO
                 self.options.set_options(options, |e| {
-                    let name = e.path.file_name()?.to_str()?.to_lowercase();
+                    let exact_name = e.path.file_name()?.to_str()?;
+                    let name = exact_name.to_lowercase();
                     let modify_time = e
                         .path
                         .metadata()
@@ -418,10 +420,12 @@ impl FileBrowser {
                         Some((1000, 0, 0, String::new()))
                     } else if name == filter {
                         Some((0, modify_time, name.chars().count(), String::new()))
-                    } else if name.starts_with(&filter) {
+                    } else if exact_name.starts_with(&filter_name) {
                         Some((1, modify_time, name.chars().count(), String::new()))
-                    } else if name.contains(&filter) {
+                    } else if name.starts_with(&filter) {
                         Some((2, modify_time, name.chars().count(), String::new()))
+                    } else if name.contains(&filter) {
+                        Some((3, modify_time, name.chars().count(), String::new()))
                     } else {
                         None
                     }
@@ -431,7 +435,7 @@ impl FileBrowser {
             Err(_) => self.options.set_options(
                 if filter != "" {
                     vec![FileOption {
-                        path: [dir, &file_name].into_iter().collect(),
+                        path: [dir, &filter_name].into_iter().collect(),
                         kind: FileKind::New,
                         is_link: false,
                     }]
