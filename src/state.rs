@@ -496,8 +496,6 @@ impl Buffer {
         retain_base: bool,
         word: bool,
     ) {
-        self.undo_checkpoint();
-
         let Some(cursor) = self.cursors.get_mut(cursor_id) else {
             return;
         };
