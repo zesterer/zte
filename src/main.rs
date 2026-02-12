@@ -87,6 +87,7 @@ fn main() -> Result<(), Error> {
                         Ok(r) if r.is_end() => close_requested = true,
                         Ok(_) => state.needs_render = true,
                         Err(Event::Action(Action::Bell)) => term.frame().ring_bell(),
+                        Err(Event::Tick) => {}
                         // Unhandled event!
                         Err(_) => {}
                     }

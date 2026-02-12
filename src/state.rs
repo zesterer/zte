@@ -156,6 +156,12 @@ impl Text {
             Ok(start)
         }
     }
+
+    fn line_range(&self, line: isize) -> Range<usize> {
+        let start = self.to_pos([0, line]);
+        let end = self.to_pos([100000000, line]);
+        start..end + 1
+    }
 }
 
 struct OnDisk {
@@ -1096,6 +1102,45 @@ impl Buffer {
                 self.remove(pos..pos + comment_syntax.len());
             } else {
                 self.insert(pos, comment_syntax.iter().copied());
+            }
+        }
+    }
+
+    pub fn delete_line(&mut self, cursor_id: CursorId) {
+        self.undo_checkpoint();
+
+        let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+            return;
+        };
+
+        if cursor.selection().is_none() {
+            let pos = self.text.to_coord(cursor.pos);
+            self.remove(self.text.line_range(pos[1]));
+        }
+    }
+
+    pub fn line_move(&mut self, cursor_id: CursorId, dir: Dir) {
+        self.undo_checkpoint();
+
+        let Some(cursor) = self.cursors.get(cursor_id) else {
+            return;
+        };
+
+        if cursor.selection().is_none() {
+            let coord = self.text.to_coord(cursor.pos);
+            let line_range = self.text.line_range(coord[1]);
+            if let Some(chars) = self.text.chars.get(line_range.clone()).map(<[_]>::to_vec) {
+                self.remove(line_range);
+                let insert_pos = match dir {
+                    Dir::Up => self.text.to_pos([0, coord[1].saturating_sub(1)]),
+                    Dir::Down => self.text.to_pos([0, coord[1] + 1]),
+                    dir => unreachable!("{dir:?}"),
+                };
+                self.insert_inner(insert_pos, chars);
+                let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+                    return;
+                };
+                cursor.place_at(insert_pos + coord[0].max(0) as usize);
             }
         }
     }

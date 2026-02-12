@@ -79,6 +79,9 @@ pub enum Action {
     CommandStart(&'static str),
     // Go to the specified file line
     GotoLine(isize),
+    DeleteLine,
+    // Move a single line up or down
+    LineMove(Dir),
     // Request to begin a search with the given needle. `None` implies file path search.
     BeginSearch(Option<String>),
     // Start a project-wide search with the given location and needle. `None` implies file path search.
@@ -289,6 +292,8 @@ impl RawEvent {
                     KeyCode::PageDown => (Dir::Down, Dist::Page, retain_base, word),
                     KeyCode::Left => (Dir::Left, Dist::Char, retain_base, word),
                     KeyCode::Right => (Dir::Right, Dist::Char, retain_base, word),
+                    // Special-case: this is for moving lines up and down
+                    KeyCode::Up | KeyCode::Down if !retain_base && word => return None,
                     KeyCode::Up => (Dir::Up, Dist::Char, retain_base, word),
                     KeyCode::Down => (Dir::Down, Dist::Char, retain_base, word),
                     _ => return None,
@@ -656,6 +661,24 @@ impl RawEvent {
                 kind: KeyEventKind::Press,
                 ..
             }) => Some(Action::DeleteWord),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Delete,
+                modifiers: KeyModifiers::SHIFT,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::DeleteLine),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Up,
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::LineMove(Dir::Up)),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Down,
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::LineMove(Dir::Down)),
             _ => None,
         }
     }

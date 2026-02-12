@@ -29,9 +29,6 @@
 
 ## Issues to fix
 
-- Ctrl + Up/Down should move current line
-- Add line deletion
-
 # Keybindings
 
 ## File & buffer manipulation

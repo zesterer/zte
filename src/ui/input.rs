@@ -247,6 +247,14 @@ impl Input {
                 buffer.comment(cursor_id);
                 Ok(Resp::handled(None))
             }
+            Some(Action::DeleteLine) => {
+                buffer.delete_line(cursor_id);
+                Ok(Resp::handled(None))
+            }
+            Some(Action::LineMove(dir)) => {
+                buffer.line_move(cursor_id, dir);
+                Ok(Resp::handled(None))
+            }
             _ => Err(event),
         }
     }
