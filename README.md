@@ -31,7 +31,6 @@
 
 - Ctrl + Up/Down should move current line
 - Add line deletion
-- Selecting in terminal that is not scrolled to bottom
 
 # Keybindings
 

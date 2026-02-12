@@ -126,12 +126,11 @@ impl Term {
 
 impl Element for Term {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+        let display_offset = self.term.grid().display_offset() as isize;
         // First, handle scroller events
         let old_focus = [
             0,
-            self.term.total_lines() as isize
-                - self.term.screen_lines() as isize
-                - self.term.grid().display_offset() as isize,
+            self.term.total_lines() as isize - self.term.screen_lines() as isize - display_offset,
         ];
         let mut focus = old_focus;
         let event = match self
@@ -144,6 +143,15 @@ impl Element for Term {
                 return Ok(resp);
             }
             Err(event) => event,
+        };
+
+        let pos_to_point = |pos| {
+            self.term_area.contains(pos).map(|pos| {
+                Point::new(
+                    Line(pos[1] as i32 - display_offset as i32),
+                    Column(pos[0].max(0) as usize),
+                )
+            })
         };
 
         match event.to_action(|e| e.to_move().or_else(|| e.to_edit())) {
@@ -187,25 +195,19 @@ impl Element for Term {
                 Ok(Resp::handled(None))
             }
             Some(Action::Mouse(MouseAction::Click, pos, false, _drag_id)) => {
-                if let Some(pos) = self.term_area.contains(pos) {
-                    self.term.selection = Some(Selection::new(
-                        SelectionType::Simple,
-                        Point::new(Line(pos[1] as i32), Column(pos[0].max(0) as usize)),
-                        Side::Left,
-                    ));
+                if let Some(point) = pos_to_point(pos) {
+                    self.term.selection =
+                        Some(Selection::new(SelectionType::Simple, point, Side::Left));
                     Ok(Resp::handled(None))
                 } else {
                     Err(event)
                 }
             }
             Some(Action::Mouse(MouseAction::Drag, pos, false, _drag_id)) => {
-                if let Some(pos) = self.term_area.contains(pos)
+                if let Some(point) = pos_to_point(pos)
                     && let Some(sel) = &mut self.term.selection
                 {
-                    sel.update(
-                        Point::new(Line(pos[1] as i32), Column(pos[0].max(0) as usize)),
-                        Side::Left,
-                    );
+                    sel.update(point, Side::Left);
                     Ok(Resp::handled(None))
                 } else {
                     Err(event)
