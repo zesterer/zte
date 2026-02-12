@@ -28,6 +28,8 @@ pub enum TokenKind {
     Attribute,
     /// A macro, that transforms the code in some manner
     Macro,
+    /// A macro-specific keyword, usually nested within a macro
+    MacroKeyword,
     /// A string literal
     String,
     /// A format element in a string

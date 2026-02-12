@@ -176,6 +176,12 @@ impl Highlighter {
                 TokenKind::Type,
                 r"\b[(u8)(u16)(u32)(u64)(u128)(i8)(i16)(i32)(i64)(i128)(usize)(isize)(bool)(str)(char)(f16)(f32)(f64)(f128)]\b",
             )
+            // "foo {fmt}"
+            .with_child_syntax(
+                TokenKind::String,
+                r#""[(\\")[^"]]*""#,
+                Highlighter::default().with(TokenKind::FmtString, r#"\{[^\{]%[(\{\{)(\}\})[^\}]]*\}[^\}]%"#)
+            )
             // "foo" or b"foo" or r#"foo"#
             .with(TokenKind::String, r#"b?r?(#*)@("[(\\")[^("~)]]*("~))"#)
             // Characters
@@ -215,8 +221,19 @@ impl Highlighter {
             .with_comment(r"\/\*[^(\*\/)]*\*\/")
     }
 
+    fn preprocessor(self) -> Self {
+        self
+            .with(TokenKind::MacroKeyword, r#"#[[:space:]]*\b[(ifdef)(ifndef)(if)(elif)(else)(endif)(include)(defined)(define)(undef)]\b"#)
+            .with(TokenKind::String, r#"<[0-9A-Za-z\.\\\/]*>"#)
+            .with(TokenKind::String, r#""[(\\")[^"]]*""#)
+    }
+
     fn clike_preprocessor(self) -> Self {
-        self.with(TokenKind::Macro, r"^[[:space:]]*#[^$]*$")
+        self.with_child_syntax(
+            TokenKind::Macro,
+            r"^[[:space:]]*#[(\\\n)[^$]]*$",
+            Self::default().preprocessor(),
+        )
     }
 
     pub fn generic_delimited(self) -> Self {
@@ -265,6 +282,15 @@ impl Highlighter {
             .with(TokenKind::Property, r"\->[A-Za-z_][A-Za-z0-9_]*")
             // Labels
             .with(TokenKind::Special, r"\b[a-z_][A-Za-z0-9_]*\b:")
+            // Format string
+            .with_child_syntax(
+                TokenKind::String,
+                r#""[(\\")[^"]]*""#,
+                // Holy hell, C format specifiers are complicated
+                Highlighter::default().with(TokenKind::FmtString, r#"\%[\-\+#0]*[[0-9]+\*]?(\.[[0-9]+\*])?[(hh)h(ll)lJztL]?[0-9]*[csdioxXufFeEaAgGnp]"#)
+            )
+            // types_like_this_t
+            .with(TokenKind::Type, r"\b[a-z0-9(_[^t\b])]+_t\b")
             .generic_clike()
             .clike_preprocessor()
     }
