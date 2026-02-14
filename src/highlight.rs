@@ -228,6 +228,10 @@ impl Highlights {
     pub fn damage_remove(&mut self, r: Range<usize>) {
         self.tokens.damage_from(r.start);
     }
+
+    pub fn damage_all(&mut self) {
+        self.tokens = TokenCache::default();
+    }
 }
 
 #[derive(Default)]

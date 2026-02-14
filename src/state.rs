@@ -330,6 +330,7 @@ impl Buffer {
 
         self.text.chars.clear();
         self.highlights_stale = true;
+        self.highlights.damage_all();
         // Reset cursors
         self.cursors.values_mut().for_each(|cursor| {
             *cursor = Cursor::default();
@@ -943,19 +944,6 @@ impl Buffer {
                 .filter(|end| self.text.to_coord(*end)[1] == coord[1])
                 .map(|end| (end, true))
                 .unwrap_or((next_line_start.saturating_sub(1), true));
-            // Old logic:
-            // let (end_of_block, end_needs_indent) = (cursor.pos..)
-            //     .map(|pos| (pos, self.text.chars().get(pos).copied().unwrap_or('\n')))
-            //     .take_while(|(_, c)| *c != '\n')
-            //     .find(|(_, c)| c == r)
-            //     .map(|(pos, _)| (pos, true))
-            //     .or_else(|| {
-            //         let end_of_block = self.text.start_of_line_text(coord[1] + 1).ok()?;
-            //         (self.text.chars().get(next_line_start + next_indent.len()) == Some(&r)
-            //             && prev_indent == next_indent)
-            //             .then_some((end_of_block, false))
-            //     })
-            //     .unwrap_or((cursor.pos, true));
             let needs_closing = self.text.chars().get(end_of_block) != Some(&r);
             let creating_block = false
                 // Case 1: A block is being created from an existing inline one
@@ -1181,6 +1169,7 @@ impl Buffer {
                 self.redo.clear();
                 self.undo_dont_merge = false;
                 self.highlights_stale = true;
+                self.highlights.damage_all();
             } else {
                 on_disk.diverged = true;
                 on_disk.unsaved = true;
