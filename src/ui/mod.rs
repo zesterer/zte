@@ -301,7 +301,7 @@ impl Scroller {
                 focus[1] = (focus[1] + dfocus[1] * dist[1] as isize).max(0);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false, drag_id))
+            Some(Action::Mouse(MouseAction::Click, pos, Modifiers::NONE, drag_id))
                 if self.last_area.contains(pos).is_some() =>
             {
                 if let Some((scroll_pos, h, _)) = self.last_scroll_pos
@@ -315,7 +315,7 @@ impl Scroller {
                     Err(event)
                 }
             }
-            Some(Action::Mouse(MouseAction::Drag, pos, false, drag_id))
+            Some(Action::Mouse(MouseAction::Drag, pos, Modifiers::NONE, drag_id))
                 if self.last_area.contains(pos).is_some()
                     && self.scroll_grab.map_or(false, |(di, _)| di == drag_id) =>
             {

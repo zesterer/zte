@@ -156,7 +156,7 @@ impl Input {
                 buffer.select_all_cursor(cursor_id);
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false, _drag_id))
+            Some(Action::Mouse(MouseAction::Click, pos, Modifiers::NONE, _drag_id))
                 if self.last_area.contains(pos).is_some() =>
             {
                 if let Some(pos) = self.text_area.contains(pos) {
@@ -188,8 +188,8 @@ impl Input {
                 Ok(Resp::handled(None))
             }
             Some(
-                Action::Mouse(MouseAction::Drag, pos, false, _)
-                | Action::Mouse(MouseAction::Click, pos, true, _),
+                Action::Mouse(MouseAction::Drag, pos, _, _)
+                | Action::Mouse(MouseAction::Click, pos, Modifiers::SHIFT | Modifiers::CTRL, _),
             ) if self.last_area.contains(pos).is_some() => {
                 let pos = self.text_area.translate(pos);
                 buffer.goto_cursor(

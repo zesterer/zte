@@ -123,18 +123,13 @@ impl LangPack {
             {
                 open.push((i, e, Vec::new()));
             } else if (self.delims.iter().any(|(_, e)| Some(e) == c) || c.is_none())
-                && let Some(&(broken_start, e, ref prev)) = open.last()
-                && ((c == Some(e) && prev.is_empty()) || {
-                    // This 'smart' check is slow, only do it for small files
-                    if text.chars().len() > 8192 {
-                        true
-                    } else {
-                        let end_indent = text.indent_of_line(text.to_coord(i)[1]);
-                        let start_indent = text.indent_of_line(text.to_coord(broken_start)[1]);
-                        end_indent
-                            .strip_prefix(start_indent)
-                            .map_or(true, |s| s.is_empty())
-                    }
+                && let Some(&(broken_start, e, _)) = open.last()
+                && (c == Some(e) || {
+                    let end_indent = text.indent_of_line(text.to_coord(i)[1]);
+                    let start_indent = text.indent_of_line(text.to_coord(broken_start)[1]);
+                    end_indent
+                        .strip_prefix(start_indent)
+                        .map_or(true, |s| s.is_empty())
                 })
                 && let Some((start, e, children)) = open.pop()
             {

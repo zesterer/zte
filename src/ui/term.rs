@@ -194,7 +194,7 @@ impl Element for Term {
                 }
                 Ok(Resp::handled(None))
             }
-            Some(Action::Mouse(MouseAction::Click, pos, false, _drag_id)) => {
+            Some(Action::Mouse(MouseAction::Click, pos, Modifiers::NONE, _drag_id)) => {
                 if let Some(point) = pos_to_point(pos) {
                     self.term.selection =
                         Some(Selection::new(SelectionType::Simple, point, Side::Left));
@@ -203,7 +203,7 @@ impl Element for Term {
                     Err(event)
                 }
             }
-            Some(Action::Mouse(MouseAction::Drag, pos, false, _drag_id)) => {
+            Some(Action::Mouse(MouseAction::Drag, pos, Modifiers::NONE, _drag_id)) => {
                 if let Some(point) = pos_to_point(pos)
                     && let Some(sel) = &mut self.term.selection
                 {

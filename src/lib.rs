@@ -8,7 +8,7 @@ pub mod ui;
 pub mod util;
 
 pub use crate::{
-    action::{Action, Dir, Dist, Event, MouseAction},
+    action::{Action, Dir, Dist, Event, Modifiers, MouseAction},
     state::State,
     terminal::{Area, Attribute, Attributes, Color, Terminal, TerminalEvent},
     ui::{Element as _, Visual as _},

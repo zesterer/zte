@@ -90,8 +90,8 @@ pub enum Action {
     SelectBlock,
     // Fully select the entire input
     SelectAll,
-    // (action, pos, is_ctrl, drag_id)
-    Mouse(MouseAction, [isize; 2], bool, usize),
+    // (action, pos, modifiers, drag_id)
+    Mouse(MouseAction, [isize; 2], Modifiers, usize),
     Confirm(String, Box<Self>),
     Undo,
     Redo,
@@ -119,6 +119,15 @@ pub enum MouseAction {
     Click,
     Drag,
     Scroll(Dir),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Modifiers(KeyModifiers);
+
+impl Modifiers {
+    pub const NONE: Self = Self(KeyModifiers::NONE);
+    pub const SHIFT: Self = Self(KeyModifiers::SHIFT);
+    pub const CTRL: Self = Self(KeyModifiers::CONTROL);
 }
 
 #[derive(Debug)]
@@ -699,7 +708,11 @@ impl RawEvent {
             MouseEventKind::Drag(MouseButton::Left) => MouseAction::Drag,
             _ => return None,
         };
-        let is_ctrl = ev.modifiers == KeyModifiers::CONTROL;
-        Some(Action::Mouse(action, pos, is_ctrl, *drag_id_counter))
+        Some(Action::Mouse(
+            action,
+            pos,
+            Modifiers(ev.modifiers),
+            *drag_id_counter,
+        ))
     }
 }
