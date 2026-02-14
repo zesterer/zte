@@ -240,6 +240,9 @@ pub struct TokenCache {
 const HIGHLIGHT_BLOCK: usize = 1024;
 
 impl TokenCache {
+    // TODO: A smarter approach would be to damage blocks that intersect the damage area, then offset everything
+    // accordingly, then keep replacing blocks until we find one that finished at the same place an existing
+    // one started.
     pub fn damage_from(&mut self, pos: usize) {
         // TODO: This isn't valid if a highlight depends on tokens outside of the damage area!
         let idx = self

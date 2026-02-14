@@ -630,14 +630,15 @@ impl Buffer {
                 for (i, c) in s.iter().enumerate() {
                     self.text.chars.insert(at + i, *c);
                 }
+                self.highlights.damage_insert(*at..*at + s.len());
             }
             ChangeKind::Remove(at, s) => {
                 self.text.chars.drain(*at..*at + s.len());
+                self.highlights.damage_remove(*at..*at + s.len());
             }
         }
         for (id, (_, to)) in change.cursors.iter() {
             if let Some(c) = self.cursors.get_mut(*id) {
-                // panic!("Changing {c:?} to {to:?}");
                 *c = *to;
             }
         }
@@ -1226,8 +1227,7 @@ impl Buffer {
 // CLassify the character by property
 fn classify(c: char) -> Option<u8> {
     match c {
-        ' ' | '\t' => None,
-        '\n' => Some(0),
+        ' ' | '\t' | '\n' => None,
         c if c.is_alphanumeric() || c == '_' => Some(1),
         _ => Some(2),
     }
