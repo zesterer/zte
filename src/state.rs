@@ -218,13 +218,11 @@ impl Buffer {
     }
 
     pub fn file(unsaved: bool, chars: Vec<char>, path: PathBuf) -> Self {
-        let lang = LangPack::from_file_name(&path);
-        let text = Text { chars };
         Self {
-            highlights: lang.highlight(&text),
-            highlights_stale: false,
-            lang,
-            text,
+            highlights: Highlights::default(),
+            highlights_stale: true,
+            lang: LangPack::from_file_name(&path),
+            text: Text { chars },
             cursors: DenseSlotMap::default(),
             on_disk: Some(OnDisk {
                 last_observed_modification: std::fs::metadata(&path)
@@ -353,14 +351,19 @@ impl Buffer {
     pub fn sync_highlights(&mut self) {
         // Update highlights, if necessary
         if self.highlights_stale {
-            self.highlights = self.lang.highlight(&self.text);
+            self.highlights.sync(&self.lang, &self.text);
             self.highlights_stale = false;
         }
     }
 
-    pub fn token_at_coord(&mut self, coord: [isize; 2]) -> Option<&Token> {
+    pub fn token_at_pos(&mut self, pos: usize) -> Option<&Token> {
         self.sync_highlights();
-        self.highlights.get_at(self.text.to_pos(coord))
+        self.highlights
+            .get_at(&self.lang.highlighter, self.text.chars(), pos)
+    }
+
+    pub fn token_at_coord(&mut self, coord: [isize; 2]) -> Option<&Token> {
+        self.token_at_pos(self.text.to_pos(coord))
     }
 
     pub fn select_cursor(&mut self, cursor_id: CursorId, range: Range<usize>) {
@@ -699,6 +702,7 @@ impl Buffer {
             n += 1;
         }
         self.highlights_stale = true;
+        self.highlights.damage_insert(base..base + chars.len());
         Change {
             kind: ChangeKind::Insert(base, chars),
             action_id: self.action_counter,
@@ -736,6 +740,7 @@ impl Buffer {
 
         let removed = self.text.chars.drain(range.clone()).collect();
         self.highlights_stale = true;
+        self.highlights.damage_remove(range.clone());
         Change {
             kind: ChangeKind::Remove(range.start, removed),
             action_id: self.action_counter,
@@ -1239,7 +1244,7 @@ pub enum Clipboard {
 
 impl Clipboard {
     /// Used at the end of an update to determine whether the clipboard contents need communicating to the host terminal.
-    pub(super) fn get_local_clear_dirty(&mut self) -> Option<&str> {
+    pub fn get_local_clear_dirty(&mut self) -> Option<&str> {
         if let Self::Local { dirty, content } = self
             && *dirty
         {
@@ -1258,7 +1263,7 @@ impl Clipboard {
         }
     }
 
-    pub(super) fn set_no_dirty(&mut self, text: String) -> Result<(), ()> {
+    pub fn set_no_dirty(&mut self, text: String) -> Result<(), ()> {
         match self {
             #[cfg(feature = "clipboard")]
             Self::Global(ctx) => ctx.set_contents(text).map_err(|_| ()),

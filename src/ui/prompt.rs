@@ -104,8 +104,14 @@ impl Element<()> for Prompt {
 impl Visual for Prompt {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
         frame.with(|f| {
-            self.input
-                .render(state, None, &self.buffer, self.cursor_id, None, f)
+            self.input.render(
+                &state.theme,
+                None,
+                &mut self.buffer,
+                self.cursor_id,
+                None,
+                f,
+            )
         });
     }
 }
@@ -283,8 +289,14 @@ impl Visual for Switcher {
         frame
             .rect([0, frame.size()[1].saturating_sub(3)], [frame.size()[0], 3])
             .with(|f| {
-                self.input
-                    .render(state, None, &self.buffer, self.cursor_id, None, f)
+                self.input.render(
+                    &state.theme,
+                    None,
+                    &mut self.buffer,
+                    self.cursor_id,
+                    None,
+                    f,
+                )
             });
     }
 }
@@ -574,8 +586,8 @@ impl Visual for FileBrowser {
                 .filter(|(b, _, _)| b.is_same_path(&f.path))
                 .or_else(|| {
                     let metadata = f.path.metadata().ok()?;
-                    // Don't preview files more than 256K
-                    if metadata.len() > 256 * 1024 {
+                    // Don't preview files more than 1 MB
+                    if metadata.len() > 1024 * 1024 {
                         return None;
                     }
                     let mut buffer = Buffer::open(f.path.clone()).ok()?;
@@ -594,7 +606,14 @@ impl Visual for FileBrowser {
 
         if let Some((buffer, cursor_id, input)) = &mut self.preview {
             frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
-                input.render(state, buffer.name().as_deref(), buffer, *cursor_id, None, f)
+                input.render(
+                    &state.theme,
+                    buffer.name().as_deref(),
+                    buffer,
+                    *cursor_id,
+                    None,
+                    f,
+                )
             });
         }
 
@@ -612,8 +631,14 @@ impl Visual for FileBrowser {
                     FileBrowserMode::Save => "Save file",
                     FileBrowserMode::Move => "Move file",
                 };
-                self.input
-                    .render(state, Some(title), &self.buffer, self.cursor_id, None, f)
+                self.input.render(
+                    &state.theme,
+                    Some(title),
+                    &mut self.buffer,
+                    self.cursor_id,
+                    None,
+                    f,
+                )
             });
     }
 }

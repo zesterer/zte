@@ -243,7 +243,7 @@ impl Element<()> for Doc {
 
 impl Visual for Doc {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let Some(buffer) = state.buffers.get(self.buffer) else {
+        let Some(buffer) = state.buffers.get_mut(self.buffer) else {
             return;
         };
         let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
@@ -267,7 +267,7 @@ impl Visual for Doc {
             .with_focus(true /*self.finder.is_none()*/)
             .with(|f| {
                 input.render(
-                    state,
+                    &state.theme,
                     buffer.name().as_deref(),
                     buffer,
                     *cursor_id,
@@ -432,9 +432,9 @@ impl Visual for Finder {
             format!("{} of {} results", self.selected + 1, self.results.len())
         };
         self.input.render(
-            state,
+            &state.theme,
             Some(&title),
-            &self.buffer,
+            &mut self.buffer,
             self.cursor_id,
             None,
             frame,

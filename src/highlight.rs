@@ -64,7 +64,7 @@ impl Highlighter {
     pub fn with(mut self, token: TokenKind, p: impl AsRef<str>) -> Self {
         self.entries.push((token, None));
         self.matchers
-            .push(Regex::parser().parse(p.as_ref()).unwrap());
+            .push(Regex::parser().parse(p.as_ref()).unwrap().optimise());
         self
     }
 
@@ -80,11 +80,13 @@ impl Highlighter {
         self
     }
 
-    fn highlight_str(&self, s: &[char], range: Range<usize>) -> Vec<Token> {
+    fn highlight_str(&self, s: &[char], range: Range<usize>) -> (Vec<Token>, usize) {
         let mut tokens = Vec::new();
         let mut i = range.start;
         loop {
-            i = if let Some((idx, n)) = self
+            i = if i >= range.end.min(s.len()) {
+                break;
+            } else if let Some((idx, n)) = self
                 .matchers
                 .iter()
                 .enumerate()
@@ -95,19 +97,17 @@ impl Highlighter {
                     kind: *kind,
                     range: i..n,
                     children: if let Some(child_highlighter) = child_highlighter {
-                        child_highlighter.highlight_str(s, i..n)
+                        child_highlighter.highlight_str(s, i..n).0
                     } else {
                         Vec::new()
                     },
                 });
-                n
-            } else if i < range.end.min(s.len()) {
-                i + 1
+                n.max(1)
             } else {
-                break;
+                i + 1
             };
         }
-        tokens
+        (tokens, i)
     }
 }
 
@@ -125,11 +125,16 @@ impl LangPack {
             } else if (self.delims.iter().any(|(_, e)| Some(e) == c) || c.is_none())
                 && let Some(&(broken_start, e, ref prev)) = open.last()
                 && ((c == Some(e) && prev.is_empty()) || {
-                    let end_indent = text.indent_of_line(text.to_coord(i)[1]);
-                    let start_indent = text.indent_of_line(text.to_coord(broken_start)[1]);
-                    end_indent
-                        .strip_prefix(start_indent)
-                        .map_or(true, |s| s.is_empty())
+                    // This 'smart' check is slow, only do it for small files
+                    if text.chars().len() > 8192 {
+                        true
+                    } else {
+                        let end_indent = text.indent_of_line(text.to_coord(i)[1]);
+                        let start_indent = text.indent_of_line(text.to_coord(broken_start)[1]);
+                        end_indent
+                            .strip_prefix(start_indent)
+                            .map_or(true, |s| s.is_empty())
+                    }
                 })
                 && let Some((start, e, children)) = open.pop()
             {
@@ -153,11 +158,8 @@ impl LangPack {
     }
 
     pub fn highlight(&self, text: &Text) -> Highlights {
-        let tokens = self
-            .highlighter
-            .highlight_str(text.chars(), 0..text.chars().len());
         Highlights {
-            tokens,
+            tokens: TokenCache::default(),
             delims: self.delims(text),
         }
     }
@@ -170,40 +172,20 @@ pub struct DelimTree {
 
 #[derive(Default)]
 pub struct Highlights {
-    tokens: Vec<Token>,
-    delims: Vec<DelimTree>,
+    pub tokens: TokenCache,
+    pub delims: Vec<DelimTree>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub range: Range<usize>,
-    pub children: Vec<Token>,
+    children: Vec<Token>,
 }
 
 impl Highlights {
-    fn get_at_inner(tokens: &[Token], pos: usize) -> Option<&Token> {
-        let idx = tokens
-            .binary_search_by_key(&pos, |tok| tok.range.start)
-            .unwrap_or_else(|p| p.saturating_sub(1));
-        let tok = tokens.get(idx)?;
-        if tok.range.contains(&pos) {
-            // Check child tokens too
-            let tok = if !tok.children.is_empty()
-                && let Some(tok) = Self::get_at_inner(&tok.children, pos)
-            {
-                tok
-            } else {
-                tok
-            };
-            Some(tok)
-        } else {
-            None
-        }
-    }
-
-    pub fn get_at(&self, pos: usize) -> Option<&Token> {
-        Self::get_at_inner(&self.tokens, pos)
+    pub fn get_at(&mut self, highlighter: &Highlighter, s: &[char], pos: usize) -> Option<&Token> {
+        self.tokens.get_at(highlighter, s, pos)
     }
 
     fn get_delim_at_inner(
@@ -234,9 +216,104 @@ impl Highlights {
         }
         None
     }
+
+    pub fn sync(&mut self, lang: &LangPack, text: &Text) {
+        self.delims = lang.delims(text);
+    }
+
+    pub fn damage_insert(&mut self, r: Range<usize>) {
+        self.tokens.damage_from(r.start);
+    }
+
+    pub fn damage_remove(&mut self, r: Range<usize>) {
+        self.tokens.damage_from(r.start);
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Default)]
+pub struct TokenCache {
+    blocks: Vec<TokenBlock>,
+    total_len: usize,
+}
+
+// How many characters should be highlighted in one go before we decide that incremental updates are better?
+const HIGHLIGHT_BLOCK: usize = 1024;
+
+impl TokenCache {
+    pub fn damage_from(&mut self, pos: usize) {
+        // TODO: This isn't valid if a highlight depends on tokens outside of the damage area!
+        let idx = self
+            .blocks
+            .binary_search_by_key(&pos, |b| b.start)
+            .unwrap_or_else(|p| p.saturating_sub(1));
+        if let Some(b) = self.blocks.get(idx) {
+            self.total_len = b.start;
+            self.blocks.truncate(idx);
+        }
+    }
+
+    pub fn get_at(&mut self, highlighter: &Highlighter, s: &[char], pos: usize) -> Option<&Token> {
+        // OOB
+        if pos >= s.len() {
+            return None;
+        }
+
+        // Grow the highlight cache until it covers `pos`
+        while pos >= self.total_len {
+            let (tokens, end) =
+                highlighter.highlight_str(s, self.total_len..self.total_len + HIGHLIGHT_BLOCK);
+            self.blocks.push(TokenBlock {
+                start: self.total_len,
+                tokens,
+            });
+            assert!(
+                end > self.total_len,
+                "{}, {}, {}",
+                s.len(),
+                self.total_len,
+                end
+            );
+            self.total_len = end;
+        }
+
+        let idx = self
+            .blocks
+            .binary_search_by_key(&pos, |b| b.start)
+            .unwrap_or_else(|p| p.saturating_sub(1));
+        let block = self.blocks.get(idx).expect("no block?");
+
+        TokenBlock::get_at_inner(&block.tokens, pos)
+    }
+}
+
+struct TokenBlock {
+    start: usize,
+    tokens: Vec<Token>,
+}
+
+impl TokenBlock {
+    fn get_at_inner(tokens: &[Token], pos: usize) -> Option<&Token> {
+        let idx = tokens
+            .binary_search_by_key(&pos, |tok| tok.range.start)
+            .unwrap_or_else(|p| p.saturating_sub(1));
+        let tok = tokens.get(idx)?;
+        if tok.range.contains(&pos) {
+            // Check child tokens too
+            let tok = if !tok.children.is_empty()
+                && let Some(tok) = Self::get_at_inner(&tok.children, pos)
+            {
+                tok
+            } else {
+                tok
+            };
+            Some(tok)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum Regex {
     Whitespace,
     WordBoundary,
@@ -245,6 +322,7 @@ pub enum Regex {
     LastDelim,
     Range(char, char),
     Char(char),
+    Chars(Vec<char>),
     Set(Vec<Self>),
     NegSet(Vec<Self>),
     Group(Vec<Self>),
@@ -253,6 +331,49 @@ pub enum Regex {
     // (delimiter, x) - parse a pattern, then refer to the substring later in x with `~`
     Delim(Box<Self>, Box<Self>),
     Rewind(Box<Self>),
+}
+
+impl Regex {
+    fn optimise(mut self) -> Self {
+        match self {
+            Self::Group(ref mut xs) => {
+                if xs.len() == 1 {
+                    xs.remove(0)
+                } else if let Some(xs) = xs
+                    .iter()
+                    .map(|r| {
+                        if let Regex::Char(c) = r {
+                            Some(*c)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Option<_>>()
+                {
+                    Self::Chars(xs)
+                } else {
+                    self
+                }
+            }
+
+            // Rec
+            Self::Set(xs) => Self::Set(xs.into_iter().map(Self::optimise).collect()),
+            Self::NegSet(xs) => Self::NegSet(xs.into_iter().map(Self::optimise).collect()),
+            Self::Many(at_least, at_most, x) => {
+                Self::Many(at_least, at_most, Box::new(x.optimise()))
+            }
+            Self::Delim(x, y) => Self::Delim(Box::new(x.optimise()), Box::new(y.optimise())),
+            Self::Rewind(x) => Self::Rewind(Box::new(x.optimise())),
+            Self::Whitespace
+            | Self::WordBoundary
+            | Self::LineStart
+            | Self::LineEnd
+            | Self::LastDelim
+            | Self::Range(_, _)
+            | Self::Char(_)
+            | Self::Chars(_) => self,
+        }
+    }
 }
 
 struct State<'a> {
@@ -304,6 +425,12 @@ impl State<'_> {
                 }
             }
             Regex::Char(x) => self.skip_if(|c| c == *x),
+            Regex::Chars(xs) => {
+                for x in xs {
+                    self.skip_if(|c| c == *x)?;
+                }
+                Some(())
+            }
             Regex::Whitespace => {
                 let mut once = false;
                 while self.skip_if(|c| c.is_ascii_whitespace()).is_some() {
@@ -334,7 +461,7 @@ impl State<'_> {
                     if times >= *at_most || self.attempt(x).is_none() {
                         break (times >= *at_least).then_some(());
                     }
-                    assert_ne!(pos, self.pos, "{x:?}");
+                    debug_assert_ne!(pos, self.pos, "non-progressing many");
                     times += 1;
                 }
             }
@@ -373,14 +500,6 @@ use chumsky::{
     pratt::{infix, left, postfix},
     prelude::*,
 };
-
-#[test]
-fn regex() {
-    let reg = Regex::parser().parse(r"\b[0-9][A-Za-z0-9_\.]*\b").unwrap();
-    dbg!(&reg);
-    assert!(reg.matches(&"5".chars().collect::<Vec<_>>()).is_some());
-    panic!("done");
-}
 
 impl Regex {
     fn parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {

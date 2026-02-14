@@ -1,40 +1,4 @@
-mod action;
-mod highlight;
-mod lang;
-mod state;
-mod terminal;
-mod theme;
-mod ui;
-mod util;
-
-use crate::{
-    action::{Action, Dir, Dist, Event, MouseAction},
-    state::State,
-    terminal::{Area, Attribute, Attributes, Color, Terminal, TerminalEvent},
-    ui::{Element as _, Visual as _},
-};
-use clap::Parser;
-use futures::{FutureExt, StreamExt};
-use std::{io, path::PathBuf, sync::Arc, time::Duration};
-
-#[derive(Parser, Debug)]
-struct Args {
-    paths: Vec<PathBuf>,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("{0}")]
-    Io(#[from] io::Error),
-    #[error("No such buffer")]
-    NoSuchBuffer,
-    #[error("File is not yet on disk")]
-    FileNotOnDisk,
-    #[error("Environment variable `SHELL` does not exist")]
-    NoShellEnvVar,
-    #[error("Shell process failed to spawn: {0}")]
-    ShellProcessFailed(pty_process::Error),
-}
+use zte::*;
 
 fn main() -> Result<(), Error> {
     let args = Args::parse();
@@ -43,12 +7,12 @@ fn main() -> Result<(), Error> {
         .enable_time()
         .enable_io()
         .build()?;
-    let notify = Arc::new(tokio::sync::Notify::new());
-
-    let mut state = State::new(&args, notify.clone());
-    let mut ui = ui::Root::new(&mut state, &args);
 
     Terminal::with(move |term| {
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let mut state = State::new(&args, notify.clone());
+        let mut ui = ui::Root::new(&mut state, &args);
+
         rt.block_on(async {
             let mut events = term.event_stream();
             let mut interval = tokio::time::interval(Duration::from_millis(250));

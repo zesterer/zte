@@ -20,6 +20,13 @@ tokio = { version = "1.49.0", default-features = false, features = ["io-util", "
 futures = "0.3.31"
 pty-process = { version = "0.5.3", features = ["async"] }
 
+[dev-dependencies]
+criterion = "0.8.0"
+
+[[bench]]
+name = "highlight"
+harness = false
+
 [profile.dev]
 opt-level = 2
 panic = "abort"

@@ -3,6 +3,7 @@ use crate::{
     highlight::TokenKind,
     state::{Buffer, Clipboard, CursorId},
     terminal::CursorStyle,
+    theme::Theme,
 };
 
 #[derive(Copy, Clone, Default)]
@@ -261,9 +262,9 @@ impl Input {
 
     pub fn render(
         &mut self,
-        state: &State,
+        theme: &Theme,
         title: Option<&str>,
-        buffer: &Buffer,
+        buffer: &mut Buffer,
         cursor_id: CursorId,
         finder: Option<&Finder>,
         outer_frame: &mut Rect,
@@ -276,9 +277,9 @@ impl Input {
         } else {
             outer_frame.with_border(
                 if outer_frame.has_focus() {
-                    &state.theme.focus_border
+                    &theme.focus_border
                 } else {
-                    &state.theme.border
+                    &theme.border
                 },
                 title.as_deref(),
             )
@@ -299,7 +300,7 @@ impl Input {
 
         self.text_area = frame.rect([margin_w, 0], [!0, !0]).area();
 
-        let Some(cursor) = buffer.cursors.get(cursor_id) else {
+        let Some(cursor) = buffer.cursors.get(cursor_id).copied() else {
             return;
         };
         let cursor_coord = buffer.text.to_coord(cursor.pos);
@@ -332,12 +333,12 @@ impl Input {
                 Mode::Filter => frame.rect([0, 0], frame.size()),
                 Mode::Prompt => frame
                     .rect([0, i], [1, 1])
-                    .with_theme(state.theme.margin)
+                    .with_theme(theme.margin)
                     .fill(' ')
                     .text([0, 0], ">"),
                 Mode::Doc | Mode::SearchResult => frame
                     .rect([0, i], [margin_w, 1])
-                    .with_theme(state.theme.margin)
+                    .with_theme(theme.margin)
                     .fill(' ')
                     .text(
                         [1, 0],
@@ -368,11 +369,17 @@ impl Input {
                         .map_or(false, |(s, pos)| s.contains(&pos));
 
                     let (mut frame, c) = match line.get(coord as usize).copied() {
-                        Some('\n') if selected => (frame.with_theme(state.theme.whitespace), '⮠'),
+                        Some('\n') if selected => (frame.with_theme(theme.whitespace), '⮠'),
                         Some(c) => {
                             if let Some(theme) = pos
-                                .and_then(|pos| buffer.highlights.get_at(pos))
-                                .map(|tok| state.theme.token_theme(tok.kind))
+                                .and_then(|pos| {
+                                    buffer.highlights.get_at(
+                                        &buffer.lang.highlighter,
+                                        buffer.text.chars(),
+                                        pos,
+                                    )
+                                })
+                                .map(|tok| theme.token_theme(tok.kind))
                             {
                                 (frame.with_theme(theme), c)
                             } else {
@@ -382,20 +389,20 @@ impl Input {
                         None => (frame.with_theme(None), ' '),
                     };
                     let mut frame = match finder.map(|s| s.contains(pos?)) {
-                        Some(Some(true)) => frame.with_theme(state.theme.select),
-                        Some(Some(false)) => frame.with_theme(state.theme.search_result),
+                        Some(Some(true)) => frame.with_theme(theme.select),
+                        Some(Some(false)) => frame.with_theme(theme.search_result),
                         _ => {
                             if selected {
                                 if frame.has_focus() {
-                                    frame.with_theme(state.theme.select)
+                                    frame.with_theme(theme.select)
                                 } else {
-                                    frame.with_theme(state.theme.unfocus_select)
+                                    frame.with_theme(theme.unfocus_select)
                                 }
                             } else if frame.bg == Color::Reset
                                 && line_highlight_selected
                                 && frame.has_focus()
                             {
-                                frame.with_theme(state.theme.line_select)
+                                frame.with_theme(theme.line_select)
                             } else {
                                 frame.with_theme(None)
                             }
@@ -407,7 +414,7 @@ impl Input {
                         && let Some((_, span)) = &cursor_block
                         && span.contains(&(line_pos + coord as usize))
                     {
-                        (frame.with_theme(state.theme.margin), '┆')
+                        (frame.with_theme(theme.margin), '┆')
                     } else {
                         (frame.with_theme(None), c)
                     };

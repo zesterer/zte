@@ -255,7 +255,7 @@ impl Visual for SearchResult {
         // Code snippet
         if let Some((input, cursor, buffer)) = &mut self.line {
             input.render(
-                state,
+                &state.theme,
                 None,
                 buffer,
                 *cursor,
@@ -295,7 +295,14 @@ impl Visual for Searcher {
 
         if let Some((buffer, cursor_id, input, _)) = &mut self.preview {
             frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
-                input.render(state, buffer.name().as_deref(), buffer, *cursor_id, None, f)
+                input.render(
+                    &state.theme,
+                    buffer.name().as_deref(),
+                    buffer,
+                    *cursor_id,
+                    None,
+                    f,
+                )
             });
         }
 
@@ -327,8 +334,14 @@ impl Visual for Searcher {
                 } else {
                     format!("{} results in {}/", num_results, self.search_path.display())
                 };
-                self.input
-                    .render(state, Some(&title), &self.buffer, self.cursor_id, None, f)
+                self.input.render(
+                    &state.theme,
+                    Some(&title),
+                    &mut self.buffer,
+                    self.cursor_id,
+                    None,
+                    f,
+                )
             });
     }
 }
