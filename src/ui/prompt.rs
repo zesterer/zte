@@ -1,5 +1,6 @@
 use super::*;
 use crate::state::{Buffer, BufferId, CursorId};
+use chrono::{DateTime, Local};
 use slotmap::Key;
 use std::{fs, path::PathBuf};
 
@@ -389,7 +390,9 @@ impl FileBrowser {
                             } else {
                                 FileKind::Unknown
                             },
-                            is_link: entry.file_type().ok()?.is_symlink(),
+                            metadata: Some(
+                                fs::symlink_metadata(entry.path()).ok().unwrap_or(metadata),
+                            ),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -402,7 +405,7 @@ impl FileBrowser {
                     options.push(FileOption {
                         path: [dir, &filter_name].into_iter().collect(),
                         kind: FileKind::New,
-                        is_link: false,
+                        metadata: None,
                     });
                 }
                 // For the opener specifically, add the option of opening a terminal in this directory
@@ -410,26 +413,31 @@ impl FileBrowser {
                     options.push(FileOption {
                         path: [dir].into_iter().collect(),
                         kind: FileKind::Term,
-                        is_link: false,
+                        metadata: None,
                     });
                 }
                 self.options.set_options(options, |e| {
                     let exact_name = e.path.file_name()?.to_str()?;
                     let name = exact_name.to_lowercase();
                     let modify_time = e
-                        .path
-                        .metadata()
-                        .ok()
+                        .metadata
+                        .as_ref()
                         .and_then(|m| Some(m.modified().ok()?.elapsed().ok()?.as_secs()))
                         .unwrap_or(!0);
                     if e.kind == FileKind::Term {
-                        Some((100000, 0, 0, name))
-                    } else if filter == "" {
-                        // When no filter is specified, simply order alphabetically
-                        Some((0, 0, 0, name))
+                        Some((1000000, 0, 0, name))
                     } else if matches!(e.kind, FileKind::New) {
                         // Special-case: the 'new file' entry always matches last
-                        Some((1000, 0, 0, String::new()))
+                        Some((100000, 0, 0, String::new()))
+                    } else if filter == "" {
+                        // When no filter is specified, simply order alphabetically
+                        if matches!(e.kind, FileKind::File) {
+                            Some((2, 0, 0, name))
+                        } else if name.starts_with(".") {
+                            Some((1, 0, 0, name))
+                        } else {
+                            Some((0, 0, 0, name))
+                        }
                     } else if name == filter {
                         Some((0, modify_time, name.chars().count(), String::new()))
                     } else if exact_name.starts_with(&filter_name) {
@@ -449,7 +457,7 @@ impl FileBrowser {
                     vec![FileOption {
                         path: [dir, &filter_name].into_iter().collect(),
                         kind: FileKind::New,
-                        is_link: false,
+                        metadata: None,
                     }]
                 } else {
                     Vec::new()
@@ -533,7 +541,7 @@ impl Element<()> for FileBrowser {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 enum FileKind {
     Unknown,
     Dir,
@@ -546,24 +554,30 @@ enum FileKind {
 pub struct FileOption {
     pub path: PathBuf,
     kind: FileKind,
-    pub is_link: bool,
+    metadata: Option<fs::Metadata>,
 }
 
 impl Visual for FileOption {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let name = match self.path.file_name().and_then(|n| n.to_str()) {
-            Some(_) if matches!(self.kind, FileKind::Term) => format!("$"),
+            Some(_) if matches!(self.kind, FileKind::Term) => format!("$ Open terminal here"),
             Some(name) if matches!(self.kind, FileKind::Dir) => format!("{name}/"),
             Some(name) => format!("{name}"),
             None => format!("Unknown"),
         };
-        let is_link = if self.is_link { " (symlink)" } else { "" };
+        let is_link = if let Some(m) = &self.metadata
+            && m.is_symlink()
+        {
+            " (symlink)"
+        } else {
+            ""
+        };
         let desc = match self.kind {
-            FileKind::Dir => format!("Directory{is_link}"),
-            FileKind::Unknown => format!("Unknown{is_link}"),
-            FileKind::File => format!("File{is_link}"),
-            FileKind::New => format!("New file{is_link}"),
-            FileKind::Term => format!("Open terminal"),
+            FileKind::Dir => Some(format!("Directory{is_link}")),
+            FileKind::Unknown => Some(format!("Unknown{is_link}")),
+            FileKind::File => Some(format!("File{is_link}")),
+            FileKind::New => Some(format!("New file")),
+            FileKind::Term => None,
         };
         let theme = match self.kind {
             FileKind::Dir => state.theme.option_dir,
@@ -572,9 +586,31 @@ impl Visual for FileOption {
             FileKind::Term => state.theme.option_term,
         };
         frame.with_theme(theme).text([0, 0], &name);
-        frame.with_theme(theme).with(|f| {
-            f.text([f.size()[0] as isize * 2 / 4, 0], &desc);
-        });
+        if let Some(desc) = desc {
+            frame.with_theme(theme).with(|f| {
+                f.text([f.size()[0] as isize * 3 / 6, 0], &desc);
+            });
+        }
+        if let Some(metadata) = &self.metadata
+            && let Ok(modified) = metadata.modified()
+        {
+            use human_repr::HumanCount;
+            frame.with_theme(state.theme.margin).with(|f| {
+                f.text(
+                    [f.size()[0] as isize * 4 / 6, 0],
+                    &format!(
+                        "{}",
+                        DateTime::<Local>::from(modified).format("%Y-%m-%d %H:%M")
+                    ),
+                );
+            });
+            frame.with_theme(state.theme.margin).with(|f| {
+                f.text(
+                    [f.size()[0] as isize * 5 / 6, 0],
+                    &format!("{}", metadata.len().human_count_bytes()),
+                );
+            });
+        }
     }
 }
 
