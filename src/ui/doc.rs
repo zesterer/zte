@@ -297,7 +297,7 @@ pub struct Finder {
     input: Input,
 
     selected: usize,
-    needle: Vec<char>,
+    needle: String,
     results: Vec<usize>,
 }
 
@@ -323,7 +323,7 @@ impl Finder {
             input: Input::filter(),
 
             selected: 0,
-            needle: Vec::new(),
+            needle: String::new(),
             results: Vec::new(),
         };
 
@@ -348,20 +348,21 @@ impl Finder {
     fn update(&mut self, state: &mut State, buffer_id: BufferId) {
         let buffer = &mut state.buffers[buffer_id];
 
-        let needle = self.buffer.text.chars();
+        let needle = self.buffer.text.to_string();
+        // The needle has changed!
         if self.needle != needle {
-            // The needle has changed!
-            let haystack = buffer.text.chars();
+            let haystack = buffer.text.to_string();
 
-            self.needle = needle.to_vec();
             self.results = (0..haystack.len().saturating_sub(needle.len()))
-                .filter(|i| haystack[*i..].starts_with(needle))
+                .filter(|i| haystack[*i..].starts_with(&needle))
                 .collect();
 
             // Select the first entry that comes after the current cursor position
             self.selected = (0..self.results.len())
                 .find(|i| self.results[*i] >= self.old_cursor.pos)
                 .unwrap_or(0);
+
+            self.needle = needle;
         }
     }
 

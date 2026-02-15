@@ -320,7 +320,7 @@ impl Input {
             .lines()
             .map(move |line| {
                 let line_pos = pos;
-                pos += line.len();
+                pos += line.byte_len();
                 (line_pos, line)
             })
             .enumerate()
@@ -356,26 +356,25 @@ impl Input {
             // Line
             {
                 let mut frame = frame.rect([margin_w, i], [!0, 1]);
+                let mut chars = line.chars();
+                let mut pos = Some(line_pos);
                 for i in 0..frame.size()[0] {
                     let coord = self.focus[0] + i as isize;
-                    let pos = if i < line.len() {
-                        Some(line_pos + coord as usize)
-                    } else {
-                        None
-                    };
+                    let line_c = chars.next();
+
                     let selected = cursor
                         .selection()
                         .zip(pos)
                         .map_or(false, |(s, pos)| s.contains(&pos));
 
-                    let (mut frame, c) = match line.get(coord as usize).copied() {
+                    let (mut frame, c) = match line_c {
                         Some('\n') if selected => (frame.with_theme(theme.whitespace), '⮠'),
                         Some(c) => {
                             if let Some(theme) = pos
                                 .and_then(|pos| {
                                     buffer.highlights.get_at(
                                         &buffer.lang.highlighter,
-                                        buffer.text.chars(),
+                                        &buffer.text,
                                         pos,
                                     )
                                 })
@@ -429,6 +428,8 @@ impl Input {
                         frame.with_theme(None)
                     };
                     frame.text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
+
+                    pos = pos.zip(line_c).map(|(p, c)| p + c.len_utf8());
                 }
 
                 // Set cursor position

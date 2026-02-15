@@ -80,31 +80,31 @@ impl Highlighter {
         self
     }
 
-    fn highlight_str(&self, s: &[char], range: Range<usize>) -> (Vec<Token>, usize) {
+    fn highlight_str(&self, text: &Text, range: Range<usize>) -> (Vec<Token>, usize) {
         let mut tokens = Vec::new();
         let mut i = range.start;
         loop {
-            i = if i >= range.end.min(s.len()) {
+            i = if i >= range.end.min(text.len()) {
                 break;
             } else if let Some((idx, n)) = self
                 .matchers
                 .iter()
                 .enumerate()
-                .find_map(|(idx, r)| Some((idx, r.matches(s, i)?)))
+                .find_map(|(idx, r)| Some((idx, r.matches(text, i)?)))
             {
                 let (kind, child_highlighter) = &self.entries[idx];
                 tokens.push(Token {
                     kind: *kind,
                     range: i..n,
                     children: if let Some(child_highlighter) = child_highlighter {
-                        child_highlighter.highlight_str(s, i..n).0
+                        child_highlighter.highlight_str(text, i..n).0
                     } else {
                         Vec::new()
                     },
                 });
                 n.max(1)
             } else {
-                i + 1
+                i + text.slice(i..).chars().next().unwrap().len_utf8()
             };
         }
         (tokens, i)
@@ -113,23 +113,21 @@ impl Highlighter {
 
 impl LangPack {
     fn delims(&self, text: &Text) -> Vec<DelimTree> {
-        let mut i = 0;
+        let mut chars = text.char_indices();
         let mut top_level = Vec::new();
         let mut open = Vec::new();
         loop {
-            let c = text.chars().get(i);
-            if let Some(c) = c
-                && let Some((_, e)) = self.delims.iter().find(|(s, _)| s == c)
-            {
+            let Some((c, i)) = chars.next() else {
+                break top_level;
+            };
+            if let Some((_, e)) = self.delims.iter().find(|(s, _)| *s == c) {
                 open.push((i, e, Vec::new()));
-            } else if (self.delims.iter().any(|(_, e)| Some(e) == c) || c.is_none())
+            } else if self.delims.iter().any(|(_, e)| *e == c)
                 && let Some(&(broken_start, e, _)) = open.last()
-                && (c == Some(e) || {
+                && (c == *e || {
                     let end_indent = text.indent_of_line(text.to_coord(i)[1]);
                     let start_indent = text.indent_of_line(text.to_coord(broken_start)[1]);
-                    end_indent
-                        .strip_prefix(start_indent)
-                        .map_or(true, |s| s.is_empty())
+                    start_indent == end_indent
                 })
                 && let Some((start, e, children)) = open.pop()
             {
@@ -139,16 +137,13 @@ impl LangPack {
                 };
                 if let Some((_, _, prev)) = open.last_mut() {
                     prev.push(tree);
-                    if c != Some(e) {
+                    if c != *e {
                         continue;
                     }
                 } else {
                     top_level.push(tree);
                 }
-            } else if c.is_none() {
-                break top_level;
             }
-            i += 1;
         }
     }
 
@@ -179,8 +174,8 @@ pub struct Token {
 }
 
 impl Highlights {
-    pub fn get_at(&mut self, highlighter: &Highlighter, s: &[char], pos: usize) -> Option<&Token> {
-        self.tokens.get_at(highlighter, s, pos)
+    pub fn get_at(&mut self, highlighter: &Highlighter, text: &Text, pos: usize) -> Option<&Token> {
+        self.tokens.get_at(highlighter, text, pos)
     }
 
     fn get_delim_at_inner(
@@ -254,16 +249,16 @@ impl TokenCache {
         }
     }
 
-    pub fn get_at(&mut self, highlighter: &Highlighter, s: &[char], pos: usize) -> Option<&Token> {
+    pub fn get_at(&mut self, highlighter: &Highlighter, text: &Text, pos: usize) -> Option<&Token> {
         // OOB
-        if pos >= s.len() {
+        if pos >= text.len() {
             return None;
         }
 
         // Grow the highlight cache until it covers `pos`
         while pos >= self.total_len {
             let (tokens, end) =
-                highlighter.highlight_str(s, self.total_len..self.total_len + HIGHLIGHT_BLOCK);
+                highlighter.highlight_str(text, self.total_len..self.total_len + HIGHLIGHT_BLOCK);
             self.blocks.push(TokenBlock {
                 start: self.total_len,
                 tokens,
@@ -271,7 +266,7 @@ impl TokenCache {
             assert!(
                 end > self.total_len,
                 "{}, {}, {}",
-                s.len(),
+                text.len(),
                 self.total_len,
                 end
             );
@@ -379,23 +374,23 @@ impl Regex {
 }
 
 struct State<'a> {
-    s: &'a [char],
+    text: &'a Text,
     pos: usize,
-    delim: Option<&'a [char]>,
+    delim: Option<crop::RopeSlice<'a>>,
 }
 
 impl State<'_> {
     fn peek(&self) -> Option<char> {
-        self.s.get(self.pos).copied()
+        self.text.slice(self.pos..).chars().next()
     }
 
     fn prev(&self) -> Option<char> {
-        self.s[..self.pos].last().copied()
+        self.text.slice(..self.pos).chars().nth_back(0)
     }
 
     fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
-        self.peek().filter(|c| f(*c))?;
-        self.pos += 1;
+        let c = self.peek().filter(|c| f(*c))?;
+        self.pos += c.len_utf8();
         Some(())
     }
 
@@ -419,8 +414,15 @@ impl State<'_> {
             Regex::LineStart => self.prev().map_or(true, |c| c == '\n').then_some(()),
             Regex::LineEnd => self.peek().map_or(true, |c| c == '\n').then_some(()),
             Regex::LastDelim => {
-                if self.s[self.pos..].starts_with(self.delim?) {
-                    self.pos += self.delim.unwrap().len();
+                let delim = self.delim.expect("no delimiter captured");
+                if self
+                    .text
+                    .slice(self.pos..)
+                    .chars()
+                    .zip(delim.chars())
+                    .all(|(x, y)| x == y)
+                {
+                    self.pos += delim.byte_len();
                     Some(())
                 } else {
                     None
@@ -470,7 +472,7 @@ impl State<'_> {
             Regex::Delim(d, r) => {
                 let old_pos = self.pos;
                 self.go(d)?;
-                let old_delim = self.delim.replace(&self.s[old_pos..self.pos]);
+                let old_delim = self.delim.replace(self.text.slice(old_pos..self.pos));
                 let res = self.go(r);
                 self.delim = old_delim;
                 res
@@ -488,9 +490,9 @@ impl State<'_> {
 }
 
 impl Regex {
-    fn matches(&self, s: &[char], at: usize) -> Option<usize> {
+    fn matches(&self, text: &Text, at: usize) -> Option<usize> {
         let mut s = State {
-            s,
+            text,
             pos: at,
             delim: None,
         };

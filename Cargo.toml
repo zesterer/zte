@@ -21,6 +21,7 @@ futures = "0.3.31"
 pty-process = { version = "0.5.3", features = ["async"] }
 chrono = "0.4.43"
 human-repr = "1.1.0"
+crop = "0.4.3"
 
 [dev-dependencies]
 criterion = "0.8.0"

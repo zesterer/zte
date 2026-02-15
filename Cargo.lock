@@ -375,6 +375,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crop"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fa28d21af9044d49bcfb1eceddeeb9fadc6a17207c6a1bf0d841ef0bd9ad36e"
+dependencies = [
+ "str_indices",
+]
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1212,6 +1221,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "str_indices"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1776,6 +1791,7 @@ dependencies = [
  "clap",
  "clipboard",
  "criterion",
+ "crop",
  "crossterm",
  "futures",
  "human-repr",

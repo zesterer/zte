@@ -6,11 +6,12 @@ use crate::{
 };
 #[cfg(feature = "clipboard")]
 use clipboard::{ClipboardContext, ClipboardProvider};
+use crop::{Rope, RopeSlice};
 use slotmap::{DenseSlotMap, new_key_type};
 use std::{
     collections::HashMap,
     io,
-    ops::Range,
+    ops::{Range, RangeBounds},
     path::{Path, PathBuf},
     sync::Arc,
     time::SystemTime,
@@ -57,100 +58,115 @@ impl Cursor {
 
 #[derive(Default)]
 pub struct Text {
-    chars: Vec<char>,
+    // chars: Vec<char>,
+    inner: Rope,
 }
 
 impl ToString for Text {
     fn to_string(&self) -> String {
-        self.chars.iter().copied().collect()
+        self.inner.chunks().collect()
     }
 }
 
 impl Text {
-    // TODO: Remove this
-    pub fn chars(&self) -> &[char] {
-        &self.chars
+    pub fn new(s: &str) -> Self {
+        Self {
+            // chars: s.chars().collect(),
+            inner: Rope::from(s),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.inner = Rope::new();
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.byte_len()
+    }
+
+    fn slice_char_indices(slice: RopeSlice<'_>) -> impl Iterator<Item = (char, usize)> {
+        slice.chars().scan(0, |s, c| {
+            let i = *s;
+            *s += c.len_utf8();
+            Some((c, i))
+        })
+    }
+
+    pub fn char_indices(&self) -> impl Iterator<Item = (char, usize)> {
+        Self::slice_char_indices(self.slice(..))
+    }
+
+    #[track_caller]
+    pub fn slice(&self, byte_range: impl RangeBounds<usize>) -> RopeSlice<'_> {
+        self.inner.byte_slice(byte_range)
     }
 
     pub fn to_coord(&self, pos: usize) -> [isize; 2] {
-        let mut n = 0;
-        let mut last_n = 0;
-        let mut i: usize = 0;
-        for line in self.lines() {
-            last_n = n;
-            i += 1;
-            if (n..n + line.len()).contains(&pos) {
-                break;
-            }
-            n += line.len();
+        if self.inner.line_len() == 0 {
+            [0, 0]
+        } else {
+            let y = self
+                .inner
+                .line_of_byte(pos.min(self.len().saturating_sub(1)));
+            let line_byte = pos - self.inner.byte_of_line(y);
+            [
+                Self::slice_char_indices(self.inner.line(y))
+                    .take_while(|(_, i)| *i < line_byte)
+                    .count() as isize,
+                y as isize,
+            ]
         }
-        [(pos - last_n) as isize, i.saturating_sub(1) as isize]
     }
 
     pub fn to_pos(&self, coord: [isize; 2]) -> usize {
-        if coord[1] < 0 {
-            return 0;
+        if coord[1] <= 0 {
+            0
+        } else if coord[1] as usize >= self.inner.line_len() {
+            self.inner.byte_len()
+        } else {
+            let line = self.inner.line(coord[1] as usize);
+            self.inner.byte_of_line(coord[1] as usize)
+                + line
+                    .chars()
+                    .map(|c| c.len_utf8())
+                    .enumerate()
+                    .take_while(|(i, _)| *i < coord[0].max(0) as usize)
+                    .map(|(_, n)| n)
+                    .sum::<usize>()
         }
-        let mut pos = 0;
-        for (i, line) in self.lines().enumerate() {
-            if i as isize == coord[1] {
-                return pos
-                    + coord[0].clamp(
-                        0,
-                        line.len().saturating_sub(line.ends_with(&['\n']) as usize) as isize,
-                    ) as usize;
-            } else {
-                pos += line.len();
-            }
-        }
-        pos.min(self.chars.len())
     }
 
     /// Return an iterator over the lines of the text.
     ///
     /// Guarantees:
     /// - If you sum the lengths of each line, it will be the same as the length (in characters) of the text
-    pub fn lines(&self) -> impl Iterator<Item = &[char]> {
-        let mut start = 0;
-        let mut i = 0;
-        let mut finished = false;
-        core::iter::from_fn(move || {
-            loop {
-                let Some(c) = self.chars.get(i) else {
-                    return if finished {
-                        None
-                    } else {
-                        let line = &self.chars[start..];
-                        finished = true;
-                        Some(line)
-                    };
-                };
-                i += 1;
-                if *c == '\n' {
-                    let line = &self.chars[start..i];
-                    start = i;
-                    return Some(line);
-                }
-            }
-        })
+    pub fn lines(&self) -> impl ExactSizeIterator<Item = RopeSlice<'_>> {
+        self.inner.raw_lines()
+    }
+    pub fn line(&self, line: usize) -> Option<RopeSlice<'_>> {
+        if line >= self.inner.line_len() {
+            None
+        } else {
+            Some(self.inner.line(line))
+        }
     }
 
-    pub fn indent_of_line(&self, line: isize) -> &[char] {
-        let line_start = self.to_pos([0, line]);
-        let mut i = 0;
-        while self
-            .chars()
-            .get(line_start + i)
-            .map_or(false, |c| [' ', '\t'].contains(c))
+    pub fn indent_of_line(&self, line: isize) -> RopeSlice<'_> {
+        let Some(line) = self.line(line.max(0) as usize) else {
+            return self.slice(0..0);
+        };
+        if let Some((_, i)) = Text::slice_char_indices(line).find(|(c, _)| ![' ', '\t'].contains(c))
         {
-            i += 1;
+            line.byte_slice(..i)
+        } else {
+            line
         }
-        self.chars().get(line_start..line_start + i).unwrap_or(&[])
     }
 
     fn start_of_line_text(&self, line: isize) -> Result<usize, usize> {
-        let start = self.to_pos([0, line]) + self.indent_of_line(line).len();
-        if self.chars().get(start) == Some(&'\n') {
+        let start = self.to_pos([0, line]) + self.indent_of_line(line).byte_len();
+        // TODO: Detect \r\n too
+        if self.slice(start..).chars().next() == Some('\n') {
             Err(start)
         } else {
             Ok(start)
@@ -195,8 +211,8 @@ pub struct Change {
 }
 
 pub enum ChangeKind {
-    Insert(usize, Vec<char>),
-    Remove(usize, Vec<char>),
+    Insert(usize, String),
+    Remove(usize, String),
 }
 
 impl Change {
@@ -217,12 +233,12 @@ impl Buffer {
         Self::default()
     }
 
-    pub fn file(unsaved: bool, chars: Vec<char>, path: PathBuf) -> Self {
+    pub fn file(unsaved: bool, content: &str, path: PathBuf) -> Self {
         Self {
             highlights: Highlights::default(),
             highlights_stale: true,
             lang: LangPack::from_file_name(&path),
-            text: Text { chars },
+            text: Text::new(content),
             cursors: DenseSlotMap::default(),
             on_disk: Some(OnDisk {
                 last_observed_modification: std::fs::metadata(&path)
@@ -246,17 +262,23 @@ impl Buffer {
 
     pub fn open(path: PathBuf) -> Result<Self, Error> {
         let path = path.canonicalize()?;
-        let (unsaved, chars) = match std::fs::read_to_string(&path) {
-            Ok(s) => (false, s.chars().collect()),
+        let (unsaved, s) = match std::fs::read_to_string(&path) {
+            Ok(s) => (false, s),
             Err(err) => return Err(err.into()),
         };
-        Ok(Self::file(unsaved, chars, path))
+        Ok(Self::file(unsaved, &s, path))
     }
 
     pub fn save_as(&mut self, path: PathBuf) -> Result<(), Error> {
         // Ensure trailing newline exists
-        if self.text.chars.last().map_or(false, |c| *c != '\n') {
-            self.insert(self.text.chars.len(), ['\n']);
+        if self
+            .text
+            .slice(..)
+            .chars()
+            .nth_back(0)
+            .map_or(false, |c| c != '\n')
+        {
+            self.insert(self.text.len(), ['\n']);
         }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -328,7 +350,7 @@ impl Buffer {
     pub fn reset(&mut self) {
         assert!(self.on_disk.is_none());
 
-        self.text.chars.clear();
+        self.text.clear();
         self.highlights_stale = true;
         self.highlights.damage_all();
         // Reset cursors
@@ -360,7 +382,7 @@ impl Buffer {
     pub fn token_at_pos(&mut self, pos: usize) -> Option<&Token> {
         self.sync_highlights();
         self.highlights
-            .get_at(&self.lang.highlighter, self.text.chars(), pos)
+            .get_at(&self.lang.highlighter, &self.text, pos)
     }
 
     pub fn token_at_coord(&mut self, coord: [isize; 2]) -> Option<&Token> {
@@ -381,25 +403,25 @@ impl Buffer {
 
         if let Some(class) = self
             .text
+            .slice(cursor.pos..)
             .chars()
-            .get(cursor.pos)
-            .copied()
+            .next()
             .and_then(classify)
             // If there's no token under the cursor, try looking left
             .or_else(|| {
                 self.text
+                    .slice(cursor.pos.checked_sub(1)?..)
                     .chars()
-                    .get(cursor.pos.checked_sub(1)?)
-                    .copied()
+                    .next()
                     .and_then(classify)
             })
             && let start = (0..cursor.pos)
                 .rev()
-                .find(|i| self.text.chars.get(*i).copied().and_then(classify) != Some(class))
+                .find(|i| self.text.slice(*i..).chars().next().and_then(classify) != Some(class))
                 .map(|i| i + 1)
                 .unwrap_or(0)
             && let Some(end) = (cursor.pos..)
-                .find(|i| self.text.chars.get(*i).copied().and_then(classify) != Some(class))
+                .find(|i| self.text.slice(*i..).chars().next().and_then(classify) != Some(class))
         {
             cursor.select(start..end);
             true
@@ -431,7 +453,7 @@ impl Buffer {
             return;
         };
         cursor.base = 0;
-        cursor.pos = self.text.chars().len();
+        cursor.pos = self.text.len();
     }
 
     fn indent_at(&mut self, mut pos: usize, forward: bool) {
@@ -451,7 +473,7 @@ impl Buffer {
             // Keep removing whitespace until we hit the desired column
             for _ in 0..n {
                 pos = match pos.checked_sub(1) {
-                    Some(pos) if self.text.chars().get(pos) == Some(&' ') => {
+                    Some(pos) if self.text.slice(pos..).chars().next() == Some(' ') => {
                         self.remove(pos..pos + 1);
                         pos
                     }
@@ -470,7 +492,7 @@ impl Buffer {
             for line in line_range {
                 // For maximum flexibility, indent/deindent from the end of the indentation
                 self.indent_at(
-                    self.text.to_pos([0, line]) + self.text.indent_of_line(line).len(),
+                    self.text.to_pos([0, line]) + self.text.indent_of_line(line).byte_len(),
                     forward,
                 );
             }
@@ -506,16 +528,23 @@ impl Buffer {
 
         match dir {
             Dir::Left => {
+                let checked_prev = |pos: usize| {
+                    self.text
+                        .slice(..pos)
+                        .chars()
+                        .nth_back(0)
+                        .map(|c| pos.saturating_sub(c.len_utf8()))
+                };
                 cursor.pos = if !retain_base && cursor.base < cursor.pos {
                     cursor.base
                 } else if !retain_base && cursor.base > cursor.pos {
                     cursor.pos
-                } else if let (true, Some(mut pos)) = (word, cursor.pos.checked_sub(1)) {
-                    let mut class = self.text.chars().get(pos).copied().and_then(classify);
+                } else if let (true, Some(mut pos)) = (word, checked_prev(cursor.pos)) {
+                    let mut class = self.text.slice(pos..).chars().next().and_then(classify);
                     loop {
-                        (class, pos) = if let Some(new_pos) = pos.checked_sub(1) {
+                        (class, pos) = if let Some(new_pos) = checked_prev(pos) {
                             let Some(new_class) =
-                                self.text.chars().get(new_pos).copied().map(classify)
+                                self.text.slice(new_pos..).chars().next().map(classify)
                             else {
                                 break pos;
                             };
@@ -531,7 +560,7 @@ impl Buffer {
                         };
                     }
                 } else {
-                    cursor.pos.saturating_sub(dist[0])
+                    checked_prev(cursor.pos).unwrap_or(0)
                 };
                 cursor.reset_desired_col(&self.text);
             }
@@ -542,22 +571,28 @@ impl Buffer {
                     cursor.pos
                 } else if word {
                     let mut pos = cursor.pos;
-                    let mut class = self.text.chars().get(pos).copied().and_then(classify);
+                    let mut class = self.text.slice(pos..).chars().next().and_then(classify);
                     loop {
-                        let Some(new_class) = self.text.chars().get(pos).copied().map(classify)
-                        else {
+                        let Some(c) = self.text.slice(pos..).chars().next() else {
                             break pos;
                         };
+                        let new_class = classify(c);
                         (class, pos) = if (class.is_some() && new_class.is_none())
                             || matches!((class, new_class), (Some(c), Some(n)) if c != n)
                         {
                             break pos;
                         } else {
-                            (new_class, pos + 1)
+                            (new_class, pos + c.len_utf8())
                         };
                     }
                 } else {
-                    (cursor.pos + dist[0]).min(self.text.chars.len())
+                    let bytes = self
+                        .text
+                        .slice(cursor.pos..)
+                        .chars()
+                        .next()
+                        .map_or(0, |c| c.len_utf8());
+                    (cursor.pos + bytes).min(self.text.len())
                 };
                 cursor.reset_desired_col(&self.text);
             }
@@ -605,10 +640,10 @@ impl Buffer {
         // Attempt to merge changes together
         match (&mut last.kind, &mut change.kind) {
             (ChangeKind::Insert(at, s), ChangeKind::Insert(at2, s2)) if *at + s.len() == *at2 => {
-                s.append(s2);
+                *s += s2;
             }
             (ChangeKind::Remove(at, s), ChangeKind::Remove(at2, s2)) if *at == *at2 + s2.len() => {
-                s2.append(s);
+                *s2 += s;
                 *s = core::mem::take(s2);
                 *at = *at2;
             }
@@ -628,13 +663,13 @@ impl Buffer {
     fn apply_change(&mut self, change: &Change) {
         match &change.kind {
             ChangeKind::Insert(at, s) => {
-                for (i, c) in s.iter().enumerate() {
-                    self.text.chars.insert(at + i, *c);
+                for (i, c) in s.char_indices() {
+                    self.text.inner.insert(at + i, c.encode_utf8(&mut [0; 4]));
                 }
                 self.highlights.damage_insert(*at..*at + s.len());
             }
             ChangeKind::Remove(at, s) => {
-                self.text.chars.drain(*at..*at + s.len());
+                self.text.inner.delete(*at..*at + s.len());
                 self.highlights.damage_remove(*at..*at + s.len());
             }
         }
@@ -696,17 +731,14 @@ impl Buffer {
             on_disk.unsaved = true;
         }
 
-        let chars = chars.into_iter().collect::<Vec<_>>();
-        let mut n = 0;
-        let base = pos.min(self.text.chars.len());
-        for c in &chars {
-            self.text.chars.insert(base + n, *c);
-            n += 1;
+        let chars = chars.into_iter().collect::<String>();
+        let base = pos.min(self.text.len());
+        for (i, c) in chars.char_indices() {
+            self.text.inner.insert(base + i, c.encode_utf8(&mut [0; 4]));
         }
         self.highlights_stale = true;
         self.highlights.damage_insert(base..base + chars.len());
         Change {
-            kind: ChangeKind::Insert(base, chars),
             action_id: self.action_counter,
             cursors: self
                 .cursors
@@ -714,15 +746,16 @@ impl Buffer {
                 .map(|(id, cursor)| {
                     let old = *cursor;
                     if cursor.base >= pos {
-                        cursor.base += n;
+                        cursor.base += chars.len();
                     }
                     if cursor.pos >= pos {
-                        cursor.pos += n;
+                        cursor.pos += chars.len();
                         cursor.reset_desired_col(&self.text);
                     }
                     (id, (old, *cursor))
                 })
                 .collect(),
+            kind: ChangeKind::Insert(base, chars),
         }
     }
 
@@ -738,9 +771,10 @@ impl Buffer {
         }
 
         // Force range to be valid
-        let range = range.start.min(self.text.chars.len())..range.end.min(self.text.chars.len());
+        let range = range.start.min(self.text.len())..range.end.min(self.text.len());
 
-        let removed = self.text.chars.drain(range.clone()).collect();
+        let removed = self.text.slice(range.clone()).to_string();
+        self.text.inner.delete(range.clone());
         self.highlights_stale = true;
         self.highlights.damage_remove(range.clone());
         Change {
@@ -818,13 +852,19 @@ impl Buffer {
             let mut line_idx = self.text.to_coord(cursor.pos)[1].max(0) as usize;
 
             loop {
-                let Some(line) = self.text.lines().nth(line_idx) else {
+                let Some(line) = self.text.line(line_idx) else {
                     break;
                 };
                 // Find an appropriate place to split the line
                 if let Some((reflow_col, _)) = line
-                    .get(..reflow_col)
-                    .and_then(|line| line.iter().enumerate().rev().find(|(_, c)| **c == ' '))
+                    .chars()
+                    .take(reflow_col)
+                    .enumerate()
+                    // TODO: No
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .find(|(_, c)| *c == ' ')
                     && reflow_col > 0
                 {
                     let line_start = self.text.to_pos([0, line_idx as isize]);
@@ -832,13 +872,14 @@ impl Buffer {
                         .text
                         .lines()
                         .nth(line_idx + 1)
-                        .and_then(|l| l.first().copied());
-                    if line.last() == Some(&'\n')
+                        .and_then(|l| l.chars().nth(0));
+                    if line.chars().nth_back(0) == Some('\n')
                         && let Some(next_line_char) = next_line_char
                         && !next_line_char.is_whitespace()
                     {
                         self.replace(
-                            line_start + line.len().saturating_sub(1)..line_start + line.len(),
+                            line_start + line.byte_len().saturating_sub(1)
+                                ..line_start + line.byte_len(),
                             [' '],
                         );
                     }
@@ -874,7 +915,13 @@ impl Buffer {
             self.backspace(cursor_id); // Remove the newline too
         } else*/
         if word && cursor.pos != line_start && line_text_start == Ok(cursor.pos) {
-            self.remove(line_start.saturating_sub(1)..cursor.pos);
+            let prev_bytes = self
+                .text
+                .slice(..line_start)
+                .chars()
+                .nth_back(0)
+                .map_or(0, |c| c.len_utf8());
+            self.remove(line_start.saturating_sub(prev_bytes)..cursor.pos);
         } else if cursor.pos != line_start && cursor.pos == line_text_start.unwrap_or_else(|s| s) {
             // If a backspace is performed on a space, a deindent takes place instead
             // Ensure there's only whitespace to our left
@@ -922,19 +969,22 @@ impl Buffer {
         let prev_indent = self
             .text
             .indent_of_line(coord[1])
-            .iter()
-            .copied()
+            .chars()
             .take(coord[0] as usize)
             .collect::<Vec<_>>();
-        let next_indent = self.text.indent_of_line(coord[1] + 1).to_vec();
+        let next_indent = self
+            .text
+            .indent_of_line(coord[1] + 1)
+            .chars()
+            .collect::<Vec<_>>();
 
         // Determine whether we're creating/forming a new code block
         let (close_block, end_of_block, base_indent) = if let Some(last_pos) = cursor
             .selection()
             .map_or(cursor.pos, |s| s.start)
             .checked_sub(1)
-            && let Some(last_char) = self.text.chars().get(last_pos)
-            && let Some((_, r)) = self.lang.delims.iter().find(|(l, _)| l == last_char)
+            && let Some(last_char) = self.text.slice(last_pos..).chars().next()
+            && let Some((_, r)) = self.lang.delims.iter().find(|(l, _)| *l == last_char)
         {
             let (end_of_block, end_needs_indent) = self
                 .highlights
@@ -944,7 +994,7 @@ impl Buffer {
                 .filter(|end| self.text.to_coord(*end)[1] == coord[1])
                 .map(|end| (end, true))
                 .unwrap_or((next_line_start.saturating_sub(1), true));
-            let needs_closing = self.text.chars().get(end_of_block) != Some(&r);
+            let needs_closing = self.text.slice(end_of_block..).chars().next() != Some(*r);
             let creating_block = false
                 // Case 1: A block is being created from an existing inline one
                 || (!needs_closing && self.text.to_coord(end_of_block)[1] == coord[1])
@@ -996,8 +1046,13 @@ impl Buffer {
         let Some(cursor) = self.cursors.get(cursor_id) else {
             return false;
         };
-        if let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
-            && clipboard.set(text.iter().copied().collect()).is_ok()
+        if let Some(text) = cursor.selection().and_then(|s| {
+            if s.end <= self.text.len() {
+                Some(self.text.slice(s))
+            } else {
+                None
+            }
+        }) && clipboard.set(text.chars().collect()).is_ok()
         {
             self.undo_checkpoint();
             true
@@ -1034,17 +1089,23 @@ impl Buffer {
         };
 
         if cursor.selection().is_some()
-            && let Some(text) = cursor.selection().and_then(|s| self.text.chars().get(s))
+            && let Some(text) = cursor.selection().and_then(|s| {
+                if s.end <= self.text.len() {
+                    Some(self.text.slice(s))
+                } else {
+                    None
+                }
+            })
         {
             // cursor.place_at(s.end);
-            self.insert_after(cursor_id, None, text.to_vec())
+            self.insert_after(cursor_id, None, text.chars().collect::<Vec<_>>())
         } else {
             let coord = self.text.to_coord(cursor.pos);
             let line = self
                 .text
-                .lines()
-                .nth(coord[1].max(0) as usize)
-                .map(|l| l.to_vec());
+                .line(coord[1].max(0) as usize)
+                // TODO: Bad
+                .map(|l| l.chars().collect::<Vec<_>>());
             if let Some(line) = line {
                 let end_of_line = self.text.to_pos([0, coord[1] + 1]);
                 self.insert(end_of_line, line);
@@ -1069,27 +1130,34 @@ impl Buffer {
                 let coord = self.text.to_coord(cursor.pos);
                 coord[1]..=coord[1]
             });
-        let mut indent: Option<&[char]> = None;
+        let mut indent: Option<RopeSlice<'_>> = None;
         for line_idx in lines.clone() {
             indent = Some(match (indent, self.text.indent_of_line(line_idx)) {
-                (Some(indent), new_indent) => {
-                    &new_indent[..indent
-                        .iter()
-                        .zip(new_indent)
+                (Some(indent), new_indent) => new_indent.byte_slice(
+                    ..indent
+                        .chars()
+                        .zip(new_indent.chars())
                         .take_while(|(x, y)| x == y)
-                        .count()]
-                }
+                        .count(),
+                ),
                 (None, new_indent) => new_indent,
             });
         }
-        let indent = indent.unwrap_or(&[]).to_vec();
+        let indent_len = indent.map_or(0, |s| s.chars().count());
         for line_idx in lines {
-            let pos = self.text.to_pos([indent.len() as isize, line_idx]);
-            if self
-                .text
-                .chars()
-                .get(pos..)
-                .map_or(false, |l| l.starts_with(&comment_syntax))
+            let pos = self.text.to_pos([indent_len as isize, line_idx]);
+            if pos <= self.text.len()
+                && comment_syntax
+                    .iter()
+                    // is_start_of
+                    .zip(
+                        self.text
+                            .slice(pos..)
+                            .chars()
+                            .map(Some)
+                            .chain(core::iter::repeat(None)),
+                    )
+                    .all(|(x, y)| Some(*x) == y)
             {
                 self.remove(pos..pos + comment_syntax.len());
             } else {
@@ -1121,19 +1189,18 @@ impl Buffer {
         if cursor.selection().is_none() {
             let coord = self.text.to_coord(cursor.pos);
             let line_range = self.text.line_range(coord[1]);
-            if let Some(chars) = self.text.chars.get(line_range.clone()).map(<[_]>::to_vec) {
-                self.remove(line_range);
-                let insert_pos = match dir {
-                    Dir::Up => self.text.to_pos([0, coord[1].saturating_sub(1)]),
-                    Dir::Down => self.text.to_pos([0, coord[1] + 1]),
-                    dir => unreachable!("{dir:?}"),
-                };
-                self.insert_inner(insert_pos, chars);
-                let Some(cursor) = self.cursors.get_mut(cursor_id) else {
-                    return;
-                };
-                cursor.place_at(insert_pos + coord[0].max(0) as usize);
-            }
+            let line_str = self.text.slice(line_range.clone()).to_string();
+            self.remove(line_range);
+            let insert_pos = match dir {
+                Dir::Up => self.text.to_pos([0, coord[1].saturating_sub(1)]),
+                Dir::Down => self.text.to_pos([0, coord[1] + 1]),
+                dir => unreachable!("{dir:?}"),
+            };
+            self.insert_inner(insert_pos, line_str.chars());
+            let Some(cursor) = self.cursors.get_mut(cursor_id) else {
+                return;
+            };
+            cursor.place_at(insert_pos + coord[0].max(0) as usize);
         }
     }
 
@@ -1157,9 +1224,7 @@ impl Buffer {
     pub fn reload(&mut self) {
         if let Some(on_disk) = &mut self.on_disk {
             if let Ok(text) = std::fs::read_to_string(&on_disk.path) {
-                self.text = Text {
-                    chars: text.chars().collect(),
-                };
+                self.text = Text::new(&text);
                 on_disk.last_observed_modification = std::fs::metadata(&on_disk.path)
                     .and_then(|m| m.modified())
                     .unwrap_or_else(|_| SystemTime::now());
@@ -1201,7 +1266,7 @@ impl Buffer {
         self.on_disk
             .as_ref()
             .map(|on_disk| on_disk.diverged)
-            .unwrap_or_else(|| !self.text.chars().is_empty())
+            .unwrap_or_else(|| !self.text.slice(..).is_empty())
     }
 
     pub fn tick(&mut self, needs_render: &mut bool) {
@@ -1335,7 +1400,7 @@ impl State {
                 } else {
                     std::env::current_dir()?.join(path)
                 };
-                Ok(self.buffers.insert(Buffer::file(true, Vec::new(), path)))
+                Ok(self.buffers.insert(Buffer::file(true, "", path)))
             }
             Err(err) => Err(err),
         }
