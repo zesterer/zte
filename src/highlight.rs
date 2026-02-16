@@ -243,11 +243,11 @@ impl TokenCache {
     // accordingly, then keep replacing blocks until we find one that finished at the same place an existing
     // one started.
     pub fn damage_from(&mut self, pos: usize) {
-        // TODO: This isn't valid if a highlight depends on tokens outside of the damage area!
         let idx = self
             .blocks
             .binary_search_by_key(&pos, |b| b.start)
-            .unwrap_or_else(|p| p.saturating_sub(1));
+            .unwrap_or_else(|p| p)
+            .saturating_sub(1);
         if let Some(b) = self.blocks.get(idx) {
             self.total_len = b.start;
             self.blocks.truncate(idx);
