@@ -362,7 +362,13 @@ impl Input {
             {
                 let mut frame = frame.rect([margin_w, i], [!0, 1]);
                 let mut chars = line.chars();
-                let mut pos = Some(line_pos);
+                let mut pos = line_pos;
+                for i in 0..self.focus[0].max(0) as usize {
+                    if let Some(c) = chars.next() {
+                        pos += c.len_utf8();
+                    }
+                }
+                let mut pos = Some(pos);
                 for i in 0..frame.size()[0] {
                     let coord = self.focus[0] + i as isize;
                     let line_c = chars.next();

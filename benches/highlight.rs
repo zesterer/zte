@@ -18,20 +18,11 @@ fn highlight(c: &mut Criterion) {
 }
 
 fn regex(c: &mut Criterion) {
-    let r = Regex::parser().parse(r#"[a-zA-z]*"#).unwrap().optimise();
-    let r1 = Regex::parser()
-        .parse(r#"[a-zA-z]*"#)
-        .unwrap()
-        .optimise()
-        .compile();
-    let r2 = Regex::parser()
-        .parse(r#"[a-zA-z]*"#)
-        .unwrap()
-        .optimise()
-        .compile2();
-    let s = "abcdefghijklmnopqrstuvwxyz".repeat(10_000);
+    let regex = Regex::parser().parse(r#"([a-z]a)*\@"#).unwrap().optimise();
+    let s = format!("{}@", "aabacadaeafagahaiajakalama".repeat(10_000));
 
-    c.bench_function("regex ast", |b| {
+    c.bench_function("regex closures", |b| {
+        let r = regex.clone().compile();
         b.iter(|| {
             assert_eq!(
                 black_box(r.matches(black_box(&s[..]), black_box(0))),
@@ -39,18 +30,11 @@ fn regex(c: &mut Criterion) {
             )
         })
     });
-    c.bench_function("regex compile", |b| {
+    c.bench_function("regex tables", |b| {
+        let r = regex.clone().compile2();
         b.iter(|| {
             assert_eq!(
-                black_box(r1.matches(black_box(&s[..]), black_box(0))),
-                Some(s.len())
-            )
-        })
-    });
-    c.bench_function("regex compile2", |b| {
-        b.iter(|| {
-            assert_eq!(
-                black_box(r2.matches(black_box(&s[..]), black_box(0))),
+                black_box(r.matches(black_box(&s[..]), black_box(0))),
                 Some(s.len())
             )
         })
