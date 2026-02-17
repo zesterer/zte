@@ -29,6 +29,9 @@
 
 ## Issues to fix
 
+- Return should only complete block if matching delim has different ident
+- Rust syntax highlighting treats 0..foo as number
+
 # Keybindings
 
 ## File & buffer manipulation

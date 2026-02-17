@@ -202,7 +202,7 @@ impl Highlighter {
             // Lifetimes
             .with(TokenKind::Special, r"'[a-z_][A-Za-z0-9_]*\b")
             .with(TokenKind::Ident, r"\b[a-z_][A-Za-z0-9_]*\b")
-            .with(TokenKind::Number, r"\b[0-9][A-Za-z0-9_\.]*\b")
+            .with(TokenKind::Number, r"\b[0-9][A-Za-z0-9_(\.[^\.])]*\b")
             .with(TokenKind::Delimiter, r"[\{\}\(\)\[\]]")
             .with(TokenKind::Macro, r"[\{\}\(\)\[\]]")
             .with(TokenKind::Attribute, r"#!?\[[^\]]*\]")

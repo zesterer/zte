@@ -410,19 +410,29 @@ impl Buffer {
             // If there's no token under the cursor, try looking left
             .or_else(|| {
                 self.text
-                    .slice(cursor.pos.checked_sub(1)?..)
+                    .slice(cursor.pos..)
                     .chars()
-                    .next()
+                    .next_back()
                     .and_then(classify)
             })
-            && let start = (0..cursor.pos)
-                .rev()
-                .find(|i| self.text.slice(*i..).chars().next().and_then(classify) != Some(class))
-                .map(|i| i + 1)
-                .unwrap_or(0)
-            && let Some(end) = (cursor.pos..)
-                .find(|i| self.text.slice(*i..).chars().next().and_then(classify) != Some(class))
         {
+            let start = cursor.pos.saturating_sub(
+                self.text
+                    .slice(..cursor.pos)
+                    .chars()
+                    .rev()
+                    .take_while(|c| classify(*c) == Some(class))
+                    .map(|c| c.len_utf8())
+                    .sum(),
+            );
+            let end = cursor.pos
+                + self
+                    .text
+                    .slice(cursor.pos..)
+                    .chars()
+                    .take_while(|c| classify(*c) == Some(class))
+                    .map(|c| c.len_utf8())
+                    .sum::<usize>();
             cursor.select(start..end);
             true
         } else {

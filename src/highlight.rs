@@ -1,5 +1,8 @@
 use crate::{lang::LangPack, state::Text};
-use std::ops::Range;
+use std::{
+    ops::{Range, RangeInclusive},
+    rc::Rc,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(dead_code)]
@@ -56,15 +59,21 @@ pub enum TokenKind {
 
 #[derive(Default)]
 pub struct Highlighter {
-    matchers: Vec<Regex>,
+    // matchers: Vec<Regex>,
+    matchers: Vec<CompiledRegex>,
     entries: Vec<(TokenKind, Option<Highlighter>)>,
 }
 
 impl Highlighter {
     pub fn with(mut self, token: TokenKind, p: impl AsRef<str>) -> Self {
         self.entries.push((token, None));
-        self.matchers
-            .push(Regex::parser().parse(p.as_ref()).unwrap().optimise());
+        self.matchers.push(
+            Regex::parser()
+                .parse(p.as_ref())
+                .unwrap()
+                .optimise()
+                .compile(),
+        );
         self
     }
 
@@ -75,12 +84,17 @@ impl Highlighter {
         child: Highlighter,
     ) -> Self {
         self.entries.push((token, Some(child)));
-        self.matchers
-            .push(Regex::parser().parse(p.as_ref()).unwrap());
+        self.matchers.push(
+            Regex::parser()
+                .parse(p.as_ref())
+                .unwrap()
+                .optimise()
+                .compile(),
+        );
         self
     }
 
-    fn highlight_str(&self, text: &Text, range: Range<usize>) -> (Vec<Token>, usize) {
+    pub fn highlight_str(&self, text: &str, range: Range<usize>) -> (Vec<Token>, usize) {
         let mut tokens = Vec::new();
         let mut i = range.start;
         loop {
@@ -104,7 +118,7 @@ impl Highlighter {
                 });
                 n.max(1)
             } else {
-                i + text.slice(i..).chars().next().unwrap().len_utf8()
+                i + text[i..].chars().next().unwrap().len_utf8()
             };
         }
         (tokens, i)
@@ -228,6 +242,7 @@ impl Highlights {
 pub struct TokenCache {
     blocks: Vec<TokenBlock>,
     total_len: usize,
+    flat_text: String,
 }
 
 // How many characters should be highlighted in one go before we decide that incremental updates are better?
@@ -255,10 +270,18 @@ impl TokenCache {
             return None;
         }
 
+        // Grow the flat string until it covers the area we need
+        self.flat_text.clear();
+        for s in text.slice(..).chunks() {
+            self.flat_text += s;
+        }
+
         // Grow the highlight cache until it covers `pos`
-        while pos >= self.total_len {
-            let (tokens, end) =
-                highlighter.highlight_str(text, self.total_len..self.total_len + HIGHLIGHT_BLOCK);
+        while self.total_len <= pos {
+            let (tokens, end) = highlighter.highlight_str(
+                &self.flat_text,
+                self.total_len..self.total_len + HIGHLIGHT_BLOCK,
+            );
             self.blocks.push(TokenBlock {
                 start: self.total_len,
                 tokens,
@@ -310,82 +333,303 @@ impl TokenBlock {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Regex {
     Whitespace,
     WordBoundary,
     LineStart,
     LineEnd,
     LastDelim,
-    Range(char, char),
+    Range(RangeInclusive<char>),
     Char(char),
-    Chars(Vec<char>),
+    CharGroup(Vec<char>),
+    CharSet(Vec<RangeInclusive<char>>),
     Set(Vec<Self>),
     NegSet(Vec<Self>),
     Group(Vec<Self>),
-    // (at_least, at_most, _)
-    Many(usize, usize, Box<Self>),
+    Maybe(Box<Self>),
+    Repeat(Box<Self>),
+    AtLeastOnce(Box<Self>),
     // (delimiter, x) - parse a pattern, then refer to the substring later in x with `~`
     Delim(Box<Self>, Box<Self>),
     Rewind(Box<Self>),
 }
 
+pub struct CompiledRegex(Rc<dyn Fn(&mut State) -> Option<()>>);
+
+impl CompiledRegex {
+    pub fn matches(&self, text: &str, at: usize) -> Option<usize> {
+        let mut s = State {
+            text,
+            pos: at,
+            delim: None,
+        };
+        (self.0)(&mut s).map(|_| s.pos)
+    }
+}
+
+pub struct CompiledRegex2 {
+    tables: Vec<[u16; 256]>,
+    entry: usize,
+}
+
 impl Regex {
-    fn optimise(mut self) -> Self {
+    pub fn optimise(mut self) -> Self {
         match self {
             Self::Group(ref mut xs) => {
                 if xs.len() == 1 {
-                    xs.remove(0)
+                    xs.remove(0).optimise()
                 } else if let Some(xs) = xs
                     .iter()
-                    .map(|r| {
-                        if let Regex::Char(c) = r {
-                            Some(*c)
-                        } else {
-                            None
-                        }
+                    .map(|r| match r {
+                        Regex::Char(c) => Some(*c),
+                        _ => None,
                     })
                     .collect::<Option<_>>()
                 {
-                    Self::Chars(xs)
+                    Self::CharGroup(xs)
                 } else {
-                    self
+                    Self::Group(
+                        core::mem::take(xs)
+                            .into_iter()
+                            .map(Self::optimise)
+                            .collect(),
+                    )
+                }
+            }
+            Self::Set(ref mut xs) => {
+                if xs.len() == 1 {
+                    xs.remove(0).optimise()
+                } else if let Some(xs) = xs
+                    .iter()
+                    .map(|r| match r {
+                        Regex::Char(c) => Some(*c..=*c),
+                        Regex::Range(r) => Some(r.clone()),
+                        _ => None,
+                    })
+                    .collect::<Option<_>>()
+                {
+                    Self::CharSet(xs)
+                } else {
+                    Self::Set(
+                        core::mem::take(xs)
+                            .into_iter()
+                            .map(Self::optimise)
+                            .collect(),
+                    )
                 }
             }
 
             // Rec
-            Self::Set(xs) => Self::Set(xs.into_iter().map(Self::optimise).collect()),
             Self::NegSet(xs) => Self::NegSet(xs.into_iter().map(Self::optimise).collect()),
-            Self::Many(at_least, at_most, x) => {
-                Self::Many(at_least, at_most, Box::new(x.optimise()))
-            }
+            Self::Maybe(x) => Self::Maybe(Box::new(x.optimise())),
+            Self::Repeat(x) => Self::Repeat(Box::new(x.optimise())),
+            Self::AtLeastOnce(x) => Self::AtLeastOnce(Box::new(x.optimise())),
             Self::Delim(x, y) => Self::Delim(Box::new(x.optimise()), Box::new(y.optimise())),
             Self::Rewind(x) => Self::Rewind(Box::new(x.optimise())),
+
+            // Identity
             Self::Whitespace
             | Self::WordBoundary
             | Self::LineStart
             | Self::LineEnd
             | Self::LastDelim
-            | Self::Range(_, _)
+            | Self::Range(_)
             | Self::Char(_)
-            | Self::Chars(_) => self,
+            | Self::CharGroup(_)
+            | Self::CharSet(_) => self,
         }
+    }
+
+    pub fn compile(self) -> CompiledRegex {
+        CompiledRegex(match self {
+            Self::Whitespace => Rc::new(move |state| state.go(&Self::Whitespace)),
+            Self::WordBoundary => Rc::new(move |state| state.go(&Self::WordBoundary)),
+            Self::LineStart => Rc::new(move |state| state.go(&Self::LineStart)),
+            Self::LineEnd => Rc::new(move |state| state.go(&Self::LineEnd)),
+            Self::LastDelim => Rc::new(move |state| state.go(&Self::LastDelim)),
+            Self::Range(r) => Rc::new(move |state| state.go(&Self::Range(r.clone()))),
+            Self::Char(c) => Rc::new(move |state| state.go(&Self::Char(c))),
+            Self::CharGroup(xs) => Rc::new(move |state| {
+                for x in &xs {
+                    state.skip_if(|c| c == *x)?;
+                }
+                Some(())
+            }),
+            Self::CharSet(xs) => Rc::new(move |state| {
+                for x in &xs {
+                    if state.skip_if(|c| x.contains(&c)).is_some() {
+                        return Some(());
+                    }
+                }
+                None
+            }),
+            Self::Set(xs) => {
+                let xs = xs.into_iter().map(Self::compile).collect::<Vec<_>>();
+                Rc::new(move |state| xs.iter().find_map(|x| state.attempt_f(&*x.0)))
+            }
+            Self::NegSet(xs) => {
+                let xs = xs.into_iter().map(Self::compile).collect::<Vec<_>>();
+                Rc::new(move |state| {
+                    if xs.iter().all(|x| state.attempt_f(&*x.0).is_none()) {
+                        state.skip_if(|_| true)?;
+                        Some(())
+                    } else {
+                        None
+                    }
+                })
+            }
+            Self::Group(xs) => {
+                // Attempt at tail call
+                // let mut xs = xs.into_iter().rev().map(Self::compile);
+                // match xs.next() {
+                //     Some(last) => xs.fold(last.0, |end, x| Rc::new(move |state: &mut State| { state.go_f(&*x.0)?; (&end)(state) })),
+                //     None => Rc::new(|_| Some(())),
+                // }
+                let xs = xs.into_iter().map(Self::compile).collect::<Vec<_>>();
+                Rc::new(move |state| {
+                    for x in &xs {
+                        state.go_f(&*x.0)?;
+                    }
+                    Some(())
+                })
+            }
+            Self::Maybe(x) => {
+                let x = x.compile();
+                Rc::new(move |state| {
+                    let _ = state.attempt_f(&*x.0);
+                    Some(())
+                })
+            }
+            Self::Repeat(x) => {
+                let x = x.compile();
+                Rc::new(move |state| {
+                    loop {
+                        let pos = state.pos;
+                        if state.attempt_f(&*x.0).is_none() {
+                            break Some(());
+                        }
+                        assert!(pos != state.pos);
+                    }
+                })
+            }
+            Self::AtLeastOnce(x) => {
+                let x = x.compile();
+                Rc::new(move |state| {
+                    state.attempt_f(&*x.0)?;
+                    loop {
+                        if state.attempt_f(&*x.0).is_none() {
+                            break Some(());
+                        }
+                    }
+                })
+            }
+            Self::Delim(d, r) => {
+                let d = d.compile();
+                let r = r.compile();
+                Rc::new(move |state| {
+                    let old_pos = state.pos;
+                    state.go_f(&*d.0)?;
+                    let old_delim = state.delim.replace(&state.text[old_pos..state.pos]);
+                    let res = state.go_f(&*r.0);
+                    state.delim = old_delim;
+                    res
+                })
+            }
+            Self::Rewind(r) => {
+                let r = r.compile();
+                Rc::new(move |state| {
+                    let old_pos = state.pos;
+                    let res = state.go_f(&*r.0);
+                    if res.is_some() {
+                        state.pos = old_pos;
+                    }
+                    res
+                })
+            }
+        })
+    }
+
+    fn compile2_inner(self, out: &mut CompiledRegex2) -> usize {
+        match self {
+            Self::Whitespace => out.populate(
+                |c| c.is_ascii_whitespace(),
+                CompiledRegex2::OK,
+                CompiledRegex2::FAIL,
+            ),
+            Self::CharSet(xs) => out.populate(
+                |c| xs.iter().any(|x| x.contains(&(c as char))),
+                CompiledRegex2::OK,
+                CompiledRegex2::FAIL,
+            ),
+            Self::Repeat(x) => {
+                let old_tables = out.tables.len();
+                let addr = x.compile2_inner(out);
+                for t in &mut out.tables[old_tables..] {
+                    for x in t {
+                        *x = match *x {
+                            CompiledRegex2::OK => addr as u16,
+                            CompiledRegex2::FAIL => CompiledRegex2::OK_PREV, // TODO: should go to next
+                            x => x,
+                        };
+                    }
+                }
+                addr
+            }
+            x => todo!("{x:?}"),
+        }
+    }
+
+    pub fn compile2(self) -> CompiledRegex2 {
+        let mut out = CompiledRegex2 {
+            tables: Vec::new(),
+            entry: 0,
+        };
+        out.entry = self.compile2_inner(&mut out);
+        out
+    }
+}
+
+impl CompiledRegex2 {
+    const OK: u16 = 0xFFFF;
+    const OK_PREV: u16 = 0xFFFE;
+    const FAIL: u16 = 0xFFFD;
+
+    fn populate(&mut self, f: impl Fn(u8) -> bool, ok: u16, fail: u16) -> usize {
+        let idx = self.tables.len();
+        self.tables
+            .push(core::array::from_fn(|x| if f(x as u8) { ok } else { fail }));
+        idx
+    }
+
+    pub fn matches(&self, s: &str, mut at: usize) -> Option<usize> {
+        let mut next = self.entry;
+        for b in &s.as_bytes()[at..] {
+            match unsafe { self.tables.get_unchecked(next as usize)[*b as usize] } {
+                Self::OK_PREV => return Some(at),
+                Self::OK => return Some(at + 1),
+                Self::FAIL => return None,
+                x => next = x as usize,
+            }
+            at += 1;
+        }
+        None
     }
 }
 
 struct State<'a> {
-    text: &'a Text,
+    text: &'a str,
     pos: usize,
-    delim: Option<crop::RopeSlice<'a>>,
+    delim: Option<&'a str>,
 }
 
 impl State<'_> {
-    fn peek(&self) -> Option<char> {
-        self.text.slice(self.pos..).chars().next()
+    fn peek(&mut self) -> Option<char> {
+        self.text[self.pos..].chars().next()
     }
 
     fn prev(&self) -> Option<char> {
-        self.text.slice(..self.pos).chars().nth_back(0)
+        self.text[..self.pos].chars().next_back()
     }
 
     fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
@@ -404,6 +648,21 @@ impl State<'_> {
         }
     }
 
+    fn attempt_f(&mut self, f: &(impl Fn(&mut State) -> Option<()> + ?Sized)) -> Option<()> {
+        let old_pos = self.pos;
+        if f(self).is_some() {
+            Some(())
+        } else {
+            self.pos = old_pos;
+            None
+        }
+    }
+
+    fn go_f(&mut self, f: &(impl Fn(&mut State) -> Option<()> + ?Sized)) -> Option<()> {
+        f(self)
+    }
+
+    #[inline(always)]
     fn go(&mut self, r: &Regex) -> Option<()> {
         match r {
             Regex::WordBoundary => {
@@ -415,25 +674,25 @@ impl State<'_> {
             Regex::LineEnd => self.peek().map_or(true, |c| c == '\n').then_some(()),
             Regex::LastDelim => {
                 let delim = self.delim.expect("no delimiter captured");
-                if self
-                    .text
-                    .slice(self.pos..)
-                    .chars()
-                    .zip(delim.chars())
-                    .all(|(x, y)| x == y)
-                {
-                    self.pos += delim.byte_len();
-                    Some(())
-                } else {
-                    None
+                for d in delim.chars() {
+                    self.skip_if(|c| c == d)?;
                 }
+                Some(())
             }
             Regex::Char(x) => self.skip_if(|c| c == *x),
-            Regex::Chars(xs) => {
+            Regex::CharGroup(xs) => {
                 for x in xs {
                     self.skip_if(|c| c == *x)?;
                 }
                 Some(())
+            }
+            Regex::CharSet(xs) => {
+                for x in xs {
+                    if self.skip_if(|c| x.contains(&c)).is_some() {
+                        return Some(());
+                    }
+                }
+                None
             }
             Regex::Whitespace => {
                 let mut once = false;
@@ -457,22 +716,28 @@ impl State<'_> {
                 }
                 Some(())
             }
-            Regex::Range(a, b) => self.skip_if(|c| (a..=b).contains(&&c)),
-            Regex::Many(at_least, at_most, x) => {
-                let mut times = 0;
+            Regex::Range(r) => self.skip_if(|c| r.contains(&&c)),
+            Regex::Maybe(x) => {
+                let _ = self.attempt(x);
+                Some(())
+            }
+            Regex::Repeat(x) => loop {
+                if self.attempt(x).is_none() {
+                    break Some(());
+                }
+            },
+            Regex::AtLeastOnce(x) => {
+                self.go(x)?;
                 loop {
-                    let pos = self.pos;
-                    if times >= *at_most || self.attempt(x).is_none() {
-                        break (times >= *at_least).then_some(());
+                    if self.attempt(x).is_none() {
+                        break Some(());
                     }
-                    debug_assert_ne!(pos, self.pos, "non-progressing many");
-                    times += 1;
                 }
             }
             Regex::Delim(d, r) => {
                 let old_pos = self.pos;
                 self.go(d)?;
-                let old_delim = self.delim.replace(self.text.slice(old_pos..self.pos));
+                let old_delim = self.delim.replace(&self.text[old_pos..self.pos]);
                 let res = self.go(r);
                 self.delim = old_delim;
                 res
@@ -490,7 +755,7 @@ impl State<'_> {
 }
 
 impl Regex {
-    fn matches(&self, text: &Text, at: usize) -> Option<usize> {
+    pub fn matches(&self, text: &str, at: usize) -> Option<usize> {
         let mut s = State {
             text,
             pos: at,
@@ -506,7 +771,7 @@ use chumsky::{
 };
 
 impl Regex {
-    fn parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
+    pub fn parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
         recursive(|regex| {
             let metachars = r"{}[]()^$.|*+-?\/@~%";
             let char_ = choice((
@@ -519,7 +784,7 @@ impl Regex {
             let range = char_
                 .then_ignore(just('-'))
                 .then(char_)
-                .map(|(a, b)| Self::Range(a, b));
+                .map(|(a, b)| Self::Range(a..=b));
 
             let items = regex.clone().repeated().collect();
 
@@ -547,9 +812,9 @@ impl Regex {
             ));
 
             atom.pratt((
-                postfix(1, just('*'), |r, _, _| Self::Many(0, !0, Box::new(r))),
-                postfix(1, just('+'), |r, _, _| Self::Many(1, !0, Box::new(r))),
-                postfix(1, just('?'), |r, _, _| Self::Many(0, 1, Box::new(r))),
+                postfix(1, just('*'), |r, _, _| Self::Repeat(Box::new(r))),
+                postfix(1, just('+'), |r, _, _| Self::AtLeastOnce(Box::new(r))),
+                postfix(1, just('?'), |r, _, _| Self::Maybe(Box::new(r))),
                 // Non-standard: match the lhs, then rewind the input (i.e: as if it had never been parsed).
                 // Most useful at the end of tokens for context-sensitivie behaviour. For example, differentiating idents and function calls
                 postfix(1, just('%'), |r, _, _| Self::Rewind(Box::new(r))),
