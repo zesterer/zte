@@ -105,16 +105,18 @@ impl Text {
         if self.inner.line_len() == 0 {
             [0, 0]
         } else {
-            let y = self
-                .inner
-                .line_of_byte(pos.min(self.len().saturating_sub(1)));
-            let line_byte = pos - self.inner.byte_of_line(y);
-            [
-                Self::slice_char_indices(self.inner.line(y))
-                    .take_while(|(_, i)| *i < line_byte)
-                    .count() as isize,
-                y as isize,
-            ]
+            let y = self.inner.line_of_byte(pos.min(self.len()));
+            if y >= self.inner.line_len() {
+                [0, self.inner.line_len() as isize]
+            } else {
+                let line_byte = pos - self.inner.byte_of_line(y);
+                [
+                    Self::slice_char_indices(self.inner.line(y))
+                        .take_while(|(_, i)| *i < line_byte)
+                        .count() as isize,
+                    y as isize,
+                ]
+            }
         }
     }
 
@@ -147,7 +149,7 @@ impl Text {
         if line >= self.inner.line_len() {
             None
         } else {
-            Some(self.inner.line(line))
+            Some(self.inner.line_slice(line..line + 1))
         }
     }
 

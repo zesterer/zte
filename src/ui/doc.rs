@@ -351,10 +351,22 @@ impl Finder {
         let needle = self.buffer.text.to_string();
         // The needle has changed!
         if self.needle != needle {
-            let haystack = buffer.text.to_string();
+            let haystack = buffer.text.slice(..);
 
-            self.results = (0..haystack.len().saturating_sub(needle.len()))
-                .filter(|i| haystack[*i..].starts_with(&needle))
+            self.results = (0..haystack.byte_len())
+                .filter(|i| haystack.is_char_boundary(*i))
+                .filter(|i| {
+                    needle
+                        .chars()
+                        .zip(
+                            haystack
+                                .byte_slice(*i..)
+                                .chars()
+                                .map(Some)
+                                .chain(core::iter::repeat(None)),
+                        )
+                        .all(|(a, b)| Some(a) == b)
+                })
                 .collect();
 
             // Select the first entry that comes after the current cursor position

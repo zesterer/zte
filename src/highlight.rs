@@ -369,7 +369,7 @@ impl CompiledRegex {
 }
 
 pub struct CompiledRegex2 {
-    tables: Vec<[u16; 256]>,
+    tables: Vec<[(u16, u16); 256]>,
     entry: usize,
 }
 
@@ -550,27 +550,21 @@ impl Regex {
         })
     }
 
-    fn compile2_inner(self, out: &mut CompiledRegex2) -> usize {
+    fn compile2_inner(self, out: &mut CompiledRegex2, ok: (u16, u16), fail: (u16, u16)) -> usize {
         match self {
-            Self::Whitespace => out.populate(
-                |c| c.is_ascii_whitespace(),
-                CompiledRegex2::OK,
-                CompiledRegex2::FAIL,
-            ),
-            Self::CharSet(xs) => out.populate(
-                |c| xs.iter().any(|x| x.contains(&(c as char))),
-                CompiledRegex2::OK,
-                CompiledRegex2::FAIL,
-            ),
+            Self::Whitespace => out.populate(|c| c.is_ascii_whitespace(), ok, fail),
+            Self::CharSet(xs) => {
+                out.populate(|c| xs.iter().any(|x| x.contains(&(c as char))), ok, fail)
+            }
             Self::Repeat(x) => {
                 let old_tables = out.tables.len();
-                let addr = x.compile2_inner(out);
+                let addr =
+                    x.compile2_inner(out, (CompiledRegex2::CONTINUE, CompiledRegex2::FIXUP), ok);
                 for t in &mut out.tables[old_tables..] {
-                    for x in t {
-                        *x = match *x {
-                            CompiledRegex2::OK => addr as u16,
-                            CompiledRegex2::FAIL => CompiledRegex2::OK_PREV, // TODO: should go to next
-                            x => x,
+                    for (_, a) in t {
+                        *a = match *a {
+                            CompiledRegex2::FIXUP => addr as u16,
+                            a => a,
                         };
                     }
                 }
@@ -585,17 +579,21 @@ impl Regex {
             tables: Vec::new(),
             entry: 0,
         };
-        out.entry = self.compile2_inner(&mut out);
+        out.entry =
+            self.compile2_inner(&mut out, (CompiledRegex2::OK, 0), (CompiledRegex2::FAIL, 0));
         out
     }
 }
 
 impl CompiledRegex2 {
-    const OK: u16 = 0xFFFF;
-    const OK_PREV: u16 = 0xFFFE;
-    const FAIL: u16 = 0xFFFD;
+    const OK: u16 = 0;
+    const FAIL: u16 = 1;
+    const PUSH: u16 = 2;
+    const POP: u16 = 3;
+    const CONTINUE: u16 = 4;
+    const FIXUP: u16 = 0xFFFF;
 
-    fn populate(&mut self, f: impl Fn(u8) -> bool, ok: u16, fail: u16) -> usize {
+    fn populate(&mut self, f: impl Fn(u8) -> bool, ok: (u16, u16), fail: (u16, u16)) -> usize {
         let idx = self.tables.len();
         self.tables
             .push(core::array::from_fn(|x| if f(x as u8) { ok } else { fail }));
@@ -604,12 +602,17 @@ impl CompiledRegex2 {
 
     pub fn matches(&self, s: &str, mut at: usize) -> Option<usize> {
         let mut next = self.entry;
-        for b in &s.as_bytes()[at..] {
-            match unsafe { self.tables.get_unchecked(next as usize)[*b as usize] } {
-                Self::OK_PREV => return Some(at),
-                Self::OK => return Some(at + 1),
+        let mut stack = Vec::new();
+        loop {
+            let b = s.as_bytes().get(at).copied().unwrap_or(0);
+            let (action, goto) = self.tables[next as usize][b as usize];
+            next = goto as usize;
+            match action {
+                Self::OK => return Some(at),
                 Self::FAIL => return None,
-                x => next = x as usize,
+                Self::PUSH => stack.push(at),
+                Self::POP => at = stack.pop().unwrap(),
+                _ => {}
             }
             at += 1;
         }

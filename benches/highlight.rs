@@ -32,13 +32,28 @@ fn regex(c: &mut Criterion) {
     let s = "abcdefghijklmnopqrstuvwxyz".repeat(10_000);
 
     c.bench_function("regex ast", |b| {
-        b.iter(|| black_box(r.matches(black_box(&s[..]), black_box(0))))
+        b.iter(|| {
+            assert_eq!(
+                black_box(r.matches(black_box(&s[..]), black_box(0))),
+                Some(s.len())
+            )
+        })
     });
     c.bench_function("regex compile", |b| {
-        b.iter(|| black_box(r1.matches(black_box(&s[..]), black_box(0))))
+        b.iter(|| {
+            assert_eq!(
+                black_box(r1.matches(black_box(&s[..]), black_box(0))),
+                Some(s.len())
+            )
+        })
     });
     c.bench_function("regex compile2", |b| {
-        b.iter(|| black_box(r2.matches(black_box(&s[..]), black_box(0))))
+        b.iter(|| {
+            assert_eq!(
+                black_box(r2.matches(black_box(&s[..]), black_box(0))),
+                Some(s.len())
+            )
+        })
     });
 }
 

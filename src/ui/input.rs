@@ -318,6 +318,11 @@ impl Input {
         for (i, (line_num, (line_pos, line))) in buffer
             .text
             .lines()
+            .chain(if buffer.text.lines().len() == 0 {
+                Some(buffer.text.slice(0..0))
+            } else {
+                None
+            })
             .map(move |line| {
                 let line_pos = pos;
                 pos += line.byte_len();
@@ -429,17 +434,21 @@ impl Input {
                     };
                     frame.text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
 
-                    pos = pos.zip(line_c).map(|(p, c)| p + c.len_utf8());
-                }
-
-                // Set cursor position
-                if cursor_coord[1] == line_num as isize {
-                    frame.set_cursor(
-                        [cursor_coord[0] - self.focus[0], 0],
-                        CursorStyle::BlinkingBar,
-                    );
+                    pos = pos
+                        .zip(line_c)
+                        .map(|(p, c)| p + c.len_utf8())
+                        .filter(|p| *p < line_pos + line.byte_len());
                 }
             }
+
+            // Set cursor position
+            frame.set_cursor(
+                [
+                    margin_w as isize + cursor_coord[0] - self.focus[0],
+                    cursor_coord[1] - self.focus[1],
+                ],
+                CursorStyle::BlinkingBar,
+            );
         }
 
         self.scroller
