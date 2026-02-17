@@ -1,8 +1,5 @@
 use crate::{lang::LangPack, state::Text};
-use std::{
-    ops::{Range, RangeInclusive},
-    rc::Rc,
-};
+use std::ops::{Range, RangeInclusive};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(dead_code)]
@@ -363,26 +360,27 @@ struct State<'a> {
 }
 
 impl State<'_> {
-    fn peek(&mut self) -> Option<char> {
+    fn before(&self) -> &str {
         // SAFETY: `pos` will always be on a char boundary and <= len
-        unsafe { self.text.get_unchecked(self.pos..).chars().next() }
+        unsafe { self.text.get_unchecked(..self.pos) }
     }
-    fn peek_byte(&mut self) -> Option<u8> {
-        // SAFETY: `pos` will always be <= len
-        unsafe {
-            self.text
-                .as_bytes()
-                .get_unchecked(self.pos..)
-                .get(0)
-                .copied()
-        }
+    fn after(&self) -> &str {
+        // SAFETY: `pos` will always be on a char boundary and <= len
+        unsafe { self.text.get_unchecked(self.pos..) }
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.after().chars().next()
+    }
+    fn peek_byte(&self) -> Option<u8> {
+        self.after().as_bytes().first().copied()
     }
 
     fn prev(&self) -> Option<char> {
-        self.text[..self.pos].chars().next_back()
+        self.before().chars().next_back()
     }
     fn prev_byte(&self) -> Option<u8> {
-        self.text.as_bytes()[..self.pos].last().copied()
+        self.before().as_bytes().last().copied()
     }
 
     fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
@@ -399,12 +397,7 @@ impl State<'_> {
     // SAFETY: Must only return `true` if the byte is ASCII
     fn expect_str(&mut self, s: &str) -> Option<()> {
         // SAFETY: `pos` will always be <= len
-        if unsafe {
-            self.text
-                .as_bytes()
-                .get_unchecked(self.pos..)
-                .starts_with(s.as_bytes())
-        } {
+        if self.after().as_bytes().starts_with(s.as_bytes()) {
             self.pos += s.len();
             Some(())
         } else {
@@ -428,11 +421,8 @@ impl State<'_> {
 }
 
 pub struct CompiledPattern {
-    regex: CompiledRegex,
+    regex: FastFn,
 }
-
-#[repr(transparent)]
-pub struct CompiledRegex(Box<dyn Fn(&mut State) -> Option<()>>);
 
 impl CompiledPattern {
     pub fn matches(&self, text: &str, at: usize) -> Option<usize> {
@@ -442,7 +432,43 @@ impl CompiledPattern {
             pos: at,
             delim: "",
         };
-        (self.regex.0)(&mut s).map(|_| s.pos)
+        self.regex.call(&mut s).map(|_| s.pos)
+    }
+}
+
+pub struct FastFn {
+    invoke: unsafe fn(*mut (), &mut State) -> Option<()>,
+    data: *mut (),
+    drop: unsafe fn(*mut ()),
+}
+
+impl FastFn {
+    pub fn new<F: Fn(&mut State) -> Option<()> + 'static>(f: F) -> Self {
+        unsafe fn invoke<F: Fn(&mut State) -> Option<()> + 'static>(
+            data: *mut (),
+            state: &mut State,
+        ) -> Option<()> {
+            let f = unsafe { &*data.cast::<F>() };
+            f(state)
+        }
+        unsafe fn do_drop<F: Fn(&mut State) -> Option<()> + 'static>(data: *mut ()) {
+            drop(unsafe { Box::from_raw(data.cast::<F>()) })
+        }
+        FastFn {
+            invoke: invoke::<F>,
+            data: Box::into_raw(f.into()).cast(),
+            drop: do_drop::<F>,
+        }
+    }
+
+    pub fn call(&self, state: &mut State) -> Option<()> {
+        unsafe { (self.invoke)(self.data, state) }
+    }
+}
+
+impl Drop for FastFn {
+    fn drop(&mut self) {
+        unsafe { (self.drop)(self.data) }
     }
 }
 
@@ -553,22 +579,22 @@ impl Regex {
         }
     }
 
-    pub fn compile_cont(self, opt: Opt) -> CompiledRegex {
-        fn cont(opt: Opt, f: impl Fn(&mut State) -> Option<()> + 'static) -> CompiledRegex {
-            CompiledRegex(match opt {
-                Opt::Return => Box::new(f),
-                Opt::Continue(next) => Box::new(move |state| {
+    pub fn compile_cont(self, opt: Opt) -> FastFn {
+        fn cont(opt: Opt, f: impl Fn(&mut State) -> Option<()> + 'static) -> FastFn {
+            match opt {
+                Opt::Return => FastFn::new(f),
+                Opt::Continue(next) => FastFn::new(move |state| {
                     f(state)?;
-                    (next.0)(state)
+                    next.call(state)
                 }),
-                Opt::RepeatContinue(next) => Box::new(move |state| {
+                Opt::RepeatContinue(next) => FastFn::new(move |state| {
                     loop {
                         if state.attempt_f(&f).is_none() {
-                            break (next.0)(state);
+                            break next.call(state);
                         }
                     }
                 }),
-            })
+            }
         }
         match self {
             Self::Whitespace => cont(opt, move |state| {
@@ -658,14 +684,14 @@ impl Regex {
                         .into_iter()
                         .map(|x| x.compile_cont(Opt::Return))
                         .collect::<Vec<_>>();
-                    cont(opt, move |state| xs.iter().find_map(|x| state.go_f(&*x.0)))
+                    cont(opt, move |state| xs.iter().find_map(|x| x.call(state)))
                 } else {
                     let xs = xs
                         .into_iter()
                         .map(|x| x.compile_cont(Opt::Return))
                         .collect::<Vec<_>>();
                     cont(opt, move |state| {
-                        xs.iter().find_map(|x| state.attempt_f(&*x.0))
+                        xs.iter().find_map(|x| state.attempt_f(&|s| x.call(s)))
                     })
                 }
             }
@@ -675,7 +701,7 @@ impl Regex {
                     .map(|x| x.compile_cont(Opt::Return))
                     .collect::<Vec<_>>();
                 cont(opt, move |state| {
-                    if xs.iter().all(|x| state.attempt_f(&*x.0).is_none()) {
+                    if xs.iter().all(|x| state.attempt_f(&|s| x.call(s)).is_none()) {
                         state.skip_if(|_| true)?;
                         Some(())
                     } else {
@@ -695,7 +721,7 @@ impl Regex {
                             let group = xs.fold(last.compile_cont(Opt::Return), |tail, x| {
                                 x.compile_cont(Opt::Continue(tail))
                             });
-                            cont(opt, move |state| state.go_f(&*group.0))
+                            cont(opt, move |state| group.call(state))
                         }
                     }
                     None => cont(opt, move |state| Some(())),
@@ -704,7 +730,7 @@ impl Regex {
             Self::Maybe(x) => {
                 let x = x.compile_cont(Opt::Return);
                 cont(opt, move |state| {
-                    let _ = state.attempt_f(&*x.0);
+                    let _ = state.attempt_f(&|s| x.call(s));
                     Some(())
                 })
             }
@@ -715,7 +741,7 @@ impl Regex {
                     cont(opt, move |state| {
                         loop {
                             let pos = state.pos;
-                            if state.attempt_f(&*x.0).is_none() {
+                            if state.attempt_f(&|s| x.call(s)).is_none() {
                                 break Some(());
                             }
                             debug_assert!(pos != state.pos, "repeating but no progress");
@@ -727,17 +753,17 @@ impl Regex {
                 let op = x
                     .clone()
                     .compile_cont(Opt::Continue(Self::Repeat(x).compile_cont(Opt::Return)));
-                cont(opt, move |state| state.go_f(&*op.0))
+                cont(opt, move |state| op.call(state))
             }
             Self::Delim(d, r) => {
                 let d = d.compile_cont(Opt::Return);
                 let r = r.compile_cont(Opt::Return);
                 cont(opt, move |state| {
                     let old_pos = state.pos;
-                    state.go_f(&*d.0)?;
+                    d.call(state)?;
                     let old_delim = state.delim;
                     state.delim = &state.text[old_pos..state.pos];
-                    let res = state.go_f(&*r.0);
+                    let res = r.call(state);
                     state.delim = old_delim;
                     res
                 })
@@ -746,7 +772,7 @@ impl Regex {
                 let r = r.compile_cont(Opt::Return);
                 cont(opt, move |state| {
                     let old_pos = state.pos;
-                    let res = state.go_f(&*r.0);
+                    let res = r.call(state);
                     if res.is_some() {
                         state.pos = old_pos;
                     }
@@ -807,9 +833,9 @@ enum Opt {
     // Return after the the current regex is done
     Return,
     // Continue to the given regex
-    Continue(CompiledRegex),
+    Continue(FastFn),
     // Repeat the current regex, then continue to the given one
-    RepeatContinue(CompiledRegex),
+    RepeatContinue(FastFn),
 }
 
 impl Opt {
