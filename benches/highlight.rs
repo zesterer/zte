@@ -18,8 +18,8 @@ fn highlight(c: &mut Criterion) {
 }
 
 fn regex(c: &mut Criterion) {
-    let regex = Regex::parser().parse(r#"([a-z]a)*\@"#).unwrap().optimise();
-    let s = format!("{}@", "aabacadaeafagahaiajakalama".repeat(10_000));
+    let regex = Regex::parser().parse(r#"([a-z]a)*"#).unwrap().optimise();
+    let s = format!("{}", "aabacadaeafagahaiajakalama".repeat(10_000));
 
     c.bench_function("regex closures", |b| {
         let r = regex.clone().compile();

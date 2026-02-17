@@ -60,7 +60,7 @@ pub enum TokenKind {
 #[derive(Default)]
 pub struct Highlighter {
     // matchers: Vec<Regex>,
-    matchers: Vec<CompiledRegex>,
+    matchers: Vec<CompiledPattern>,
     entries: Vec<(TokenKind, Option<Highlighter>)>,
 }
 
@@ -343,7 +343,7 @@ pub enum Regex {
     LastDelim,
     Range(RangeInclusive<char>),
     Char(char),
-    CharGroup(Vec<char>),
+    CharGroup(String),
     CharSet(Vec<RangeInclusive<char>>),
     Set(Vec<Self>),
     NegSet(Vec<Self>),
@@ -356,22 +356,94 @@ pub enum Regex {
     Rewind(Box<Self>),
 }
 
+struct State<'a> {
+    text: &'a str,
+    pos: usize,
+    delim: &'a str,
+}
+
+impl State<'_> {
+    fn peek(&mut self) -> Option<char> {
+        // SAFETY: `pos` will always be on a char boundary and <= len
+        unsafe { self.text.get_unchecked(self.pos..).chars().next() }
+    }
+    fn peek_byte(&mut self) -> Option<u8> {
+        // SAFETY: `pos` will always be <= len
+        unsafe {
+            self.text
+                .as_bytes()
+                .get_unchecked(self.pos..)
+                .get(0)
+                .copied()
+        }
+    }
+
+    fn prev(&self) -> Option<char> {
+        self.text[..self.pos].chars().next_back()
+    }
+    fn prev_byte(&self) -> Option<u8> {
+        self.text.as_bytes()[..self.pos].last().copied()
+    }
+
+    fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
+        let c = self.peek().filter(|c| f(*c))?;
+        self.pos += c.len_utf8();
+        Some(())
+    }
+    // SAFETY: Must only return `true` if the byte is ASCII
+    unsafe fn skip_byte_if(&mut self, f: impl FnOnce(u8) -> bool) -> Option<()> {
+        self.peek_byte().filter(|c| f(*c))?;
+        self.pos += 1;
+        Some(())
+    }
+    // SAFETY: Must only return `true` if the byte is ASCII
+    fn expect_str(&mut self, s: &str) -> Option<()> {
+        // SAFETY: `pos` will always be <= len
+        if unsafe {
+            self.text
+                .as_bytes()
+                .get_unchecked(self.pos..)
+                .starts_with(s.as_bytes())
+        } {
+            self.pos += s.len();
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    fn attempt_f(&mut self, f: &(impl Fn(&mut State) -> Option<()> + ?Sized)) -> Option<()> {
+        let old_pos = self.pos;
+        if f(self).is_some() {
+            Some(())
+        } else {
+            self.pos = old_pos;
+            None
+        }
+    }
+
+    fn go_f(&mut self, f: &(impl Fn(&mut State) -> Option<()> + ?Sized)) -> Option<()> {
+        f(self)
+    }
+}
+
+pub struct CompiledPattern {
+    regex: CompiledRegex,
+}
+
+#[repr(transparent)]
 pub struct CompiledRegex(Box<dyn Fn(&mut State) -> Option<()>>);
 
-impl CompiledRegex {
+impl CompiledPattern {
     pub fn matches(&self, text: &str, at: usize) -> Option<usize> {
+        assert!(at <= text.len());
         let mut s = State {
             text,
             pos: at,
             delim: "",
         };
-        (self.0)(&mut s).map(|_| s.pos)
+        (self.regex.0)(&mut s).map(|_| s.pos)
     }
-}
-
-pub struct CompiledRegex2 {
-    tables: Vec<[(Action, u16); 256]>,
-    entry: usize,
 }
 
 impl Regex {
@@ -442,114 +514,167 @@ impl Regex {
         }
     }
 
-    pub fn compile(self) -> CompiledRegex {
-        self.compile_cont(None)
+    fn preserves_state_on_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::CharSet(_)
+                | Self::Whitespace
+                | Self::WordBoundary
+                | Self::LineStart
+                | Self::LineEnd
+                | Self::Range(_)
+                | Self::Char(_)
+                | Self::CharSet(_)
+                | Self::CharGroup(_)
+        )
     }
 
-    pub fn compile_cont(
-        self,
-        next: impl Into<Option<Box<dyn Fn(&mut State) -> Option<()>>>>,
-    ) -> CompiledRegex {
-        fn cont(
-            next: impl Into<Option<Box<dyn Fn(&mut State) -> Option<()>>>>,
-            f: impl Fn(&mut State) -> Option<()> + 'static,
-        ) -> Box<dyn Fn(&mut State) -> Option<()>> {
-            if let Some(next) = next.into() {
-                Box::new(move |state| {
-                    f(state)?;
-                    (next)(state)
-                })
-            } else {
-                Box::new(f)
-            }
+    fn prefix_inner(&self, prefix: &mut String) -> Option<()> {
+        match self {
+            Self::Char(c) => Some(prefix.push(*c)),
+            Self::CharGroup(s) => Some(s.chars().for_each(|c| prefix.push(c))),
+            Self::Set(xs) if xs.len() == 1 => xs[0].prefix_inner(prefix),
+            Self::Group(xs) => xs.iter().map(|x| x.prefix_inner(prefix)).collect(),
+            Self::AtLeastOnce(x) => x.prefix_inner(prefix),
+            Self::Delim(x, _) => x.prefix_inner(prefix),
+            _ => None,
         }
-        CompiledRegex(match self {
-            Self::Whitespace => cont(next, move |state| {
-                state.skip_byte_if(|c| c.is_ascii_whitespace())?;
-                while state.skip_byte_if(|c| c.is_ascii_whitespace()).is_some() {}
+    }
+
+    fn prefix(&self) -> String {
+        let mut prefix = String::new();
+        self.prefix_inner(&mut prefix);
+        prefix
+    }
+
+    pub fn compile(self) -> CompiledPattern {
+        CompiledPattern {
+            regex: self.compile_cont(Opt::Return),
+        }
+    }
+
+    pub fn compile_cont(self, opt: Opt) -> CompiledRegex {
+        fn cont(opt: Opt, f: impl Fn(&mut State) -> Option<()> + 'static) -> CompiledRegex {
+            CompiledRegex(match opt {
+                Opt::Return => Box::new(f),
+                Opt::Continue(next) => Box::new(move |state| {
+                    f(state)?;
+                    (next.0)(state)
+                }),
+                Opt::RepeatContinue(next) => Box::new(move |state| {
+                    loop {
+                        if state.attempt_f(&f).is_none() {
+                            break (next.0)(state);
+                        }
+                    }
+                }),
+            })
+        }
+        match self {
+            Self::Whitespace => cont(opt, move |state| {
+                // SAFETY: Only matches ASCII bytes
+                unsafe {
+                    state.skip_byte_if(|c| c.is_ascii_whitespace())?;
+                }
+                while unsafe { state.skip_byte_if(|c| c.is_ascii_whitespace()).is_some() } {}
                 Some(())
             }),
-            Self::WordBoundary => cont(next, move |state| {
+            Self::WordBoundary => cont(opt, move |state| {
                 let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
                 (is_word(state.prev_byte().unwrap_or(b' '))
                     != is_word(state.peek_byte().unwrap_or(b' ')))
                 .then_some(())
             }),
-            Self::LineStart => cont(next, move |state| {
+            Self::LineStart => cont(opt, move |state| {
                 state.prev().map_or(true, |c| c == '\n').then_some(())
             }),
-            Self::LineEnd => cont(next, move |state| {
+            Self::LineEnd => cont(opt, move |state| {
                 state.peek().map_or(true, |c| c == '\n').then_some(())
             }),
-            Self::LastDelim => cont(next, move |state| {
-                for d in state.delim.bytes() {
-                    state.skip_byte_if(|c| c == d)?;
+            Self::LastDelim => cont(opt, move |state| {
+                for d in state.delim.chars() {
+                    state.skip_if(|c| c == d)?;
                 }
                 Some(())
             }),
             Self::Range(r) => {
                 if r.start().is_ascii() && r.end().is_ascii() {
                     let r = *r.start() as u8..*r.end() as u8 + 1;
-                    cont(next, move |state| state.skip_byte_if(|x| r.contains(&x)))
+                    // SAFETY: `r` only matches ASCII bytes
+                    cont(opt, move |state| unsafe {
+                        state.skip_byte_if(|x| r.contains(&x))
+                    })
                 } else {
-                    cont(next, move |state| state.skip_if(|x| r.contains(&x)))
+                    cont(opt, move |state| state.skip_if(|x| r.contains(&x)))
                 }
             }
             Self::Char(c) => {
                 if c.is_ascii() {
                     let c = c as u8;
-                    cont(next, move |state| state.skip_byte_if(|x| x == c))
+                    // SAFETY: `c` is ASCII
+                    cont(opt, move |state| unsafe { state.skip_byte_if(|x| x == c) })
                 } else {
-                    cont(next, move |state| state.skip_if(|x| x == c))
+                    cont(opt, move |state| state.skip_if(|x| x == c))
                 }
             }
-            Self::CharGroup(xs) => {
-                if xs.iter().all(char::is_ascii) {
-                    let xs = xs.into_iter().map(|c| c as u8).collect::<Vec<_>>();
-                    cont(next, move |state| {
-                        for x in &xs {
-                            state.skip_byte_if(|c| c == *x)?;
-                        }
-                        Some(())
-                    })
-                } else {
-                    cont(next, move |state| {
-                        for x in &xs {
-                            state.skip_if(|c| c == *x)?;
-                        }
-                        Some(())
-                    })
-                }
-            }
+            Self::CharGroup(s) => cont(opt, move |state| state.expect_str(&s)),
             Self::CharSet(xs) => {
                 if xs
                     .iter()
                     .all(|r| r.start().is_ascii() && r.end().is_ascii())
                 {
-                    // let table = core::array::from_fn::<_, 256, _>(|c| xs.iter().any(|r| r.contains(&(c as u8 as char))));
-                    // Box::new(move |state| state.skip_byte_if(|b| table[b as usize]))
-                    let xs = xs
-                        .into_iter()
-                        .map(|r| *r.start() as u8..*r.end() as u8 + 1)
-                        .collect::<Vec<_>>();
-                    cont(next, move |state| {
-                        state.skip_byte_if(|c| xs.iter().any(|r| r.contains(&c)))
-                    })
+                    // LUT optimisation
+                    if xs.len() > 3 {
+                        let table = core::array::from_fn::<_, 256, _>(|c| {
+                            xs.iter().any(|r| r.contains(&(c as u8 as char)))
+                        });
+                        cont(opt, move |state| {
+                            // SAFETY: All of `xs` are ASCII ranges
+                            unsafe {
+                                state.skip_byte_if(
+                                    |c| table[c as usize], /*xs.iter().any(|r| r.contains(&c))*/
+                                )
+                            }
+                        })
+                    } else {
+                        let xs = xs
+                            .into_iter()
+                            .map(|r| *r.start() as u8..*r.end() as u8 + 1)
+                            .collect::<Vec<_>>();
+                        cont(opt, move |state| {
+                            // SAFETY: All of `xs` are ASCII ranges
+                            unsafe { state.skip_byte_if(|c| xs.iter().any(|r| r.contains(&c))) }
+                        })
+                    }
                 } else {
-                    cont(next, move |state| {
+                    cont(opt, move |state| {
                         state.skip_if(|c| xs.iter().any(|r| r.contains(&c)))
                     })
                 }
             }
             Self::Set(xs) => {
-                let xs = xs.into_iter().map(Self::compile).collect::<Vec<_>>();
-                cont(next, move |state| {
-                    xs.iter().find_map(|x| state.attempt_f(&*x.0))
-                })
+                if xs.iter().all(|x| x.preserves_state_on_failure()) {
+                    let xs = xs
+                        .into_iter()
+                        .map(|x| x.compile_cont(Opt::Return))
+                        .collect::<Vec<_>>();
+                    cont(opt, move |state| xs.iter().find_map(|x| state.go_f(&*x.0)))
+                } else {
+                    let xs = xs
+                        .into_iter()
+                        .map(|x| x.compile_cont(Opt::Return))
+                        .collect::<Vec<_>>();
+                    cont(opt, move |state| {
+                        xs.iter().find_map(|x| state.attempt_f(&*x.0))
+                    })
+                }
             }
             Self::NegSet(xs) => {
-                let xs = xs.into_iter().map(Self::compile).collect::<Vec<_>>();
-                cont(next, move |state| {
+                let xs = xs
+                    .into_iter()
+                    .map(|x| x.compile_cont(Opt::Return))
+                    .collect::<Vec<_>>();
+                cont(opt, move |state| {
                     if xs.iter().all(|x| state.attempt_f(&*x.0).is_none()) {
                         state.skip_if(|_| true)?;
                         Some(())
@@ -559,56 +684,55 @@ impl Regex {
                 })
             }
             Self::Group(xs) => {
-                // Attempt at tail call
-                // let mut xs = xs.into_iter().rev());
-                // match xs.next() {
-                //     Some(last) => xs.fold(last.compile(), |end, x| Rc::new(move |state: &mut State| { state.go_f(&*x.0)?; (&end)(state) })),
-                //     None => Rc::new(|_| Some(())),
-                // }
-                let xs = xs.into_iter().map(Self::compile).collect::<Vec<_>>();
-                cont(next, move |state| {
-                    for x in &xs {
-                        state.go_f(&*x.0)?;
+                let mut xs = xs.into_iter().rev();
+                match xs.next() {
+                    Some(last) => {
+                        if opt.is_tail_only() {
+                            xs.fold(last.compile_cont(opt), |tail, x| {
+                                x.compile_cont(Opt::Continue(tail))
+                            })
+                        } else {
+                            let group = xs.fold(last.compile_cont(Opt::Return), |tail, x| {
+                                x.compile_cont(Opt::Continue(tail))
+                            });
+                            cont(opt, move |state| state.go_f(&*group.0))
+                        }
                     }
-                    Some(())
-                })
+                    None => cont(opt, move |state| Some(())),
+                }
             }
             Self::Maybe(x) => {
-                let x = x.compile();
-                cont(next, move |state| {
+                let x = x.compile_cont(Opt::Return);
+                cont(opt, move |state| {
                     let _ = state.attempt_f(&*x.0);
                     Some(())
                 })
             }
-            Self::Repeat(x) => {
-                let x = x.compile();
-                cont(next, move |state| {
-                    loop {
-                        let pos = state.pos;
-                        if state.attempt_f(&*x.0).is_none() {
-                            break Some(());
+            Self::Repeat(x) => match opt {
+                Opt::Continue(next) => x.compile_cont(Opt::RepeatContinue(next)),
+                _ => {
+                    let x = x.compile_cont(Opt::Return);
+                    cont(opt, move |state| {
+                        loop {
+                            let pos = state.pos;
+                            if state.attempt_f(&*x.0).is_none() {
+                                break Some(());
+                            }
+                            debug_assert!(pos != state.pos, "repeating but no progress");
                         }
-                        debug_assert!(pos != state.pos, "repeating but no progress");
-                    }
-                })
-            }
+                    })
+                }
+            },
             Self::AtLeastOnce(x) => {
-                let x = x.compile();
-                cont(next, move |state| {
-                    state.attempt_f(&*x.0)?;
-                    loop {
-                        let pos = state.pos;
-                        if state.attempt_f(&*x.0).is_none() {
-                            break Some(());
-                        }
-                        debug_assert!(pos != state.pos, "repeating but no progress");
-                    }
-                })
+                let op = x
+                    .clone()
+                    .compile_cont(Opt::Continue(Self::Repeat(x).compile_cont(Opt::Return)));
+                cont(opt, move |state| state.go_f(&*op.0))
             }
             Self::Delim(d, r) => {
-                let d = d.compile();
-                let r = r.compile();
-                cont(next, move |state| {
+                let d = d.compile_cont(Opt::Return);
+                let r = r.compile_cont(Opt::Return);
+                cont(opt, move |state| {
                     let old_pos = state.pos;
                     state.go_f(&*d.0)?;
                     let old_delim = state.delim;
@@ -619,8 +743,8 @@ impl Regex {
                 })
             }
             Self::Rewind(r) => {
-                let r = r.compile();
-                cont(next, move |state| {
+                let r = r.compile_cont(Opt::Return);
+                cont(opt, move |state| {
                     let old_pos = state.pos;
                     let res = state.go_f(&*r.0);
                     if res.is_some() {
@@ -629,7 +753,7 @@ impl Regex {
                     res
                 })
             }
-        })
+        }
     }
 
     fn compile2_inner(
@@ -644,6 +768,7 @@ impl Regex {
             Self::CharSet(xs) => {
                 out.populate(|c| xs.iter().any(|x| x.contains(&(c as char))), ok, fail)
             }
+            Self::Range(r) => out.populate(|c| r.contains(&(c as char)), ok, fail),
             Self::Group(xs) => {
                 let mut ok = ok;
                 for x in xs.into_iter().rev() {
@@ -676,6 +801,27 @@ impl Regex {
         out.entry = self.compile2_inner(&mut out, (Action::Ok, 0), (Action::Fail, 0));
         out
     }
+}
+
+enum Opt {
+    // Return after the the current regex is done
+    Return,
+    // Continue to the given regex
+    Continue(CompiledRegex),
+    // Repeat the current regex, then continue to the given one
+    RepeatContinue(CompiledRegex),
+}
+
+impl Opt {
+    // Some optimisations only need applying to the tail parser (the final parser in the state machine)
+    fn is_tail_only(&self) -> bool {
+        matches!(self, Self::Return | Self::Continue(_))
+    }
+}
+
+pub struct CompiledRegex2 {
+    tables: Vec<[(Action, u16); 256]>,
+    entry: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -719,57 +865,6 @@ impl CompiledRegex2 {
             }
         }
         None
-    }
-}
-
-struct State<'a> {
-    text: &'a str,
-    pos: usize,
-    delim: &'a str,
-}
-
-impl State<'_> {
-    fn peek(&mut self) -> Option<char> {
-        self.text[self.pos..].chars().next()
-    }
-
-    fn peek_byte(&mut self) -> Option<u8> {
-        self.text.as_bytes()[self.pos..].first().copied()
-    }
-
-    fn prev(&self) -> Option<char> {
-        self.text[..self.pos].chars().next_back()
-    }
-
-    fn prev_byte(&self) -> Option<u8> {
-        self.text.as_bytes()[..self.pos].last().copied()
-    }
-
-    fn skip_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<()> {
-        let c = self.peek().filter(|c| f(*c))?;
-        self.pos += c.len_utf8();
-        Some(())
-    }
-
-    // IMPORTANT: Must only return `true` if the byte is ASCII
-    fn skip_byte_if(&mut self, f: impl FnOnce(u8) -> bool) -> Option<()> {
-        let c = self.peek_byte().filter(|c| f(*c))?;
-        self.pos += 1;
-        Some(())
-    }
-
-    fn attempt_f(&mut self, f: &(impl Fn(&mut State) -> Option<()> + ?Sized)) -> Option<()> {
-        let old_pos = self.pos;
-        if f(self).is_some() {
-            Some(())
-        } else {
-            self.pos = old_pos;
-            None
-        }
-    }
-
-    fn go_f(&mut self, f: &(impl Fn(&mut State) -> Option<()> + ?Sized)) -> Option<()> {
-        f(self)
     }
 }
 
