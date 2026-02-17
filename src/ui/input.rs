@@ -363,7 +363,7 @@ impl Input {
                 let mut frame = frame.rect([margin_w, i], [!0, 1]);
                 let mut chars = line.chars();
                 let mut pos = line_pos;
-                for i in 0..self.focus[0].max(0) as usize {
+                for _ in 0..self.focus[0].max(0) as usize {
                     if let Some(c) = chars.next() {
                         pos += c.len_utf8();
                     }

@@ -675,9 +675,7 @@ impl Buffer {
     fn apply_change(&mut self, change: &Change) {
         match &change.kind {
             ChangeKind::Insert(at, s) => {
-                for (i, c) in s.char_indices() {
-                    self.text.inner.insert(at + i, c.encode_utf8(&mut [0; 4]));
-                }
+                self.text.inner.insert(*at, &s);
                 self.highlights.damage_insert(*at..*at + s.len());
             }
             ChangeKind::Remove(at, s) => {
@@ -743,13 +741,12 @@ impl Buffer {
             on_disk.unsaved = true;
         }
 
-        let chars = chars.into_iter().collect::<String>();
+        // TODO: Don't allocate
+        let s = chars.into_iter().collect::<String>();
         let base = pos.min(self.text.len());
-        for (i, c) in chars.char_indices() {
-            self.text.inner.insert(base + i, c.encode_utf8(&mut [0; 4]));
-        }
+        self.text.inner.insert(base, &s);
         self.highlights_stale = true;
-        self.highlights.damage_insert(base..base + chars.len());
+        self.highlights.damage_insert(base..base + s.len());
         Change {
             action_id: self.action_counter,
             cursors: self
@@ -758,16 +755,16 @@ impl Buffer {
                 .map(|(id, cursor)| {
                     let old = *cursor;
                     if cursor.base >= pos {
-                        cursor.base += chars.len();
+                        cursor.base += s.len();
                     }
                     if cursor.pos >= pos {
-                        cursor.pos += chars.len();
+                        cursor.pos += s.len();
                         cursor.reset_desired_col(&self.text);
                     }
                     (id, (old, *cursor))
                 })
                 .collect(),
-            kind: ChangeKind::Insert(base, chars),
+            kind: ChangeKind::Insert(base, s),
         }
     }
 
