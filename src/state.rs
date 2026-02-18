@@ -68,6 +68,18 @@ impl ToString for Text {
     }
 }
 
+trait RopeExt {
+    fn starts_with(&self, cs: impl IntoIterator<Item = char>) -> bool;
+}
+
+impl RopeExt for RopeSlice<'_> {
+    fn starts_with(&self, cs: impl IntoIterator<Item = char>) -> bool {
+        cs.into_iter()
+            .zip(self.chars().map(Some).chain(core::iter::repeat(None)))
+            .all(|(c, this)| Some(c) == this)
+    }
+}
+
 impl Text {
     pub fn new(s: &str) -> Self {
         Self {
@@ -173,6 +185,15 @@ impl Text {
         } else {
             Ok(start)
         }
+    }
+
+    fn start_of_line(&self, line: isize) -> RopeSlice<'_> {
+        self.start_of_line_text(line)
+            .map(|i| {
+                self.slice(i..)
+                    .byte_slice(..self.line(line as usize).unwrap().byte_len())
+            })
+            .unwrap_or_else(|_| self.slice(0..0))
     }
 
     fn line_range(&self, line: isize) -> Range<usize> {
@@ -562,9 +583,7 @@ impl Buffer {
                             else {
                                 break pos;
                             };
-                            if (class.is_some() && new_class.is_none())
-                                || matches!((class, new_class), (Some(c), Some(n)) if c != n)
-                            {
+                            if class != new_class {
                                 break pos;
                             } else {
                                 (new_class, new_pos)
@@ -591,9 +610,7 @@ impl Buffer {
                             break pos;
                         };
                         let new_class = classify(c);
-                        (class, pos) = if (class.is_some() && new_class.is_none())
-                            || matches!((class, new_class), (Some(c), Some(n)) if c != n)
-                        {
+                        (class, pos) = if class != new_class {
                             break pos;
                         } else {
                             (new_class, pos + c.len_utf8())
@@ -1147,8 +1164,17 @@ impl Buffer {
                 coord[1]..=coord[1]
             });
         let mut indent: Option<RopeSlice<'_>> = None;
+        let mut is_comment = false;
         for line_idx in lines.clone() {
+            if !self
+                .text
+                .start_of_line(line_idx)
+                .starts_with(comment_syntax.chars())
+            {
+                is_comment = true;
+            }
             indent = Some(match (indent, self.text.indent_of_line(line_idx)) {
+                // Find common ident with existing ident (i.e: the lesser of the two)
                 (Some(indent), new_indent) => new_indent.byte_slice(
                     ..indent
                         .chars()
@@ -1162,19 +1188,7 @@ impl Buffer {
         let indent_len = indent.map_or(0, |s| s.chars().count());
         for line_idx in lines {
             let pos = self.text.to_pos([indent_len as isize, line_idx]);
-            if pos <= self.text.len()
-                && comment_syntax
-                    .chars()
-                    // is_start_of
-                    .zip(
-                        self.text
-                            .slice(pos..)
-                            .chars()
-                            .map(Some)
-                            .chain(core::iter::repeat(None)),
-                    )
-                    .all(|(x, y)| Some(x) == y)
-            {
+            if !is_comment && self.text.slice(pos..).starts_with(comment_syntax.chars()) {
                 self.remove(pos..pos + comment_syntax.len());
             } else {
                 self.insert(pos, comment_syntax.chars());
