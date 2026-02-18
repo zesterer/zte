@@ -1,6 +1,6 @@
 use super::*;
 use crate::state::{Buffer, CursorId};
-use std::{fs, path::Path};
+use std::{fs, ops::Range, path::Path};
 
 pub struct Searcher {
     options: Options<SearchResult>,
@@ -22,7 +22,7 @@ impl Searcher {
         fn search_in(
             search_path: &Path,
             path: &Path,
-            needle: Option<&str>,
+            needle: &Option<regex::CompiledPattern>,
             results: &mut Vec<SearchResult>,
         ) {
             // Cap reached!
@@ -60,22 +60,51 @@ impl Searcher {
                 );
                 if let Some(needle) = needle {
                     let mut file_matches = 0;
-                    for (line_idx, line_text) in
-                        s.lines().enumerate().filter(|(_, l)| l.contains(needle))
-                    {
-                        let mut line_buffer =
-                            Buffer::file(false, line_text.trim(), path.to_path_buf());
+                    // for (line_idx, line_text) in s
+                    //     .lines()
+                    //     .enumerate()
+                    //     .filter(|(_, l)| needle.find_nonoverlapping_matches(l).next().is_some())
+                    for matching in needle.find_nonoverlapping_matches(&s) {
+                        // Find the line_idx, line_pos, and line_text of the match
+                        let (mut line_idx, mut line_pos, mut line_text) = (0, 0, String::new());
+                        for line in s.split_inclusive('\n') {
+                            if line_pos + line.len() > matching.start {
+                                line_text = s[line_pos..][..line.len()].to_string();
+                                break;
+                            } else {
+                                line_idx += 1;
+                                line_pos += line.len();
+                            }
+                        }
+
+                        let make_preview = {
+                            let path = path.to_path_buf();
+                            move || {
+                                // Construct a single-line preview of the result
+                                let mut line_buffer = Buffer::file(false, &line_text, path);
+                                let cursor_id = line_buffer.start_session();
+                                let mut line_input = Input::search_result(line_idx);
+
+                                // Focus the input properly
+                                line_input.focus(
+                                    line_buffer
+                                        .text
+                                        .to_coord(line_text.len() - line_text.trim_start().len()),
+                                );
+                                let line_matching = matching.start.saturating_sub(line_pos)
+                                    ..matching.end.saturating_sub(line_pos);
+                                line_buffer.select_cursor(cursor_id, line_matching);
+                                (line_input, cursor_id, line_buffer)
+                            }
+                        };
+
                         results.push(SearchResult {
                             loc: SearchLoc {
                                 path: path.to_path_buf(),
-                                line_idx: Some(line_idx),
+                                span: Some((line_idx, matching)),
                             },
                             rdir: rdir.clone(),
-                            line: Some((
-                                Input::search_result(line_idx),
-                                line_buffer.start_session(),
-                                line_buffer,
-                            )),
+                            line: Some(Err(Box::new(make_preview))),
                         });
                         file_matches += 1;
                         if file_matches >= 150 {
@@ -86,7 +115,7 @@ impl Searcher {
                     results.push(SearchResult {
                         loc: SearchLoc {
                             path: path.to_path_buf(),
-                            line_idx: None,
+                            span: None,
                         },
                         rdir,
                         line: None,
@@ -110,7 +139,18 @@ impl Searcher {
         }
 
         let mut results = Vec::new();
-        search_in(&search_path, &search_path, needle.as_deref(), &mut results);
+        let compiled_needle = needle.as_deref().map(|n| {
+            // Search needles have special syntax: whitespace is interpreted as any amount
+            // of whitespace, everything else is interpreted literally
+            let group = n
+                .trim()
+                .split_whitespace()
+                .map(|s| [regex::Regex::String(s.to_string())])
+                .collect::<Vec<_>>()
+                .join(&regex::Regex::Whitespace);
+            regex::Regex::Group(group).compile()
+        });
+        search_in(&search_path, &search_path, &compiled_needle, &mut results);
 
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
@@ -182,7 +222,7 @@ impl Element<()> for Searcher {
                 // Selecting a directory enters the directory
                 Ok(Some(result)) => Ok(Resp::end(Some(Event::Action(Action::OpenFile(
                     result.loc.path,
-                    result.loc.line_idx,
+                    result.loc.span.clone().map(|(_, span)| span),
                 ))))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
@@ -222,13 +262,14 @@ impl Element<()> for Searcher {
 #[derive(Clone, PartialEq)]
 struct SearchLoc {
     path: PathBuf,
-    line_idx: Option<usize>,
+    // (line_idx, span)
+    span: Option<(usize, Range<usize>)>,
 }
 
 struct SearchResult {
     loc: SearchLoc,
     rdir: String,
-    line: Option<(Input, CursorId, Buffer)>,
+    line: Option<Result<(Input, CursorId, Buffer), Box<dyn FnOnce() -> (Input, CursorId, Buffer)>>>,
 }
 
 impl Visual for SearchResult {
@@ -249,13 +290,19 @@ impl Visual for SearchResult {
             .rect([col_a, 0], [col_b, !0])
             .with_theme(state.theme.option_dir)
             .text([0, 0], &self.rdir);
-        // Code snippet
-        if let Some((input, cursor, buffer)) = &mut self.line {
+        // Resolve the search result preview
+        self.line = match self.line.take() {
+            Some(Err(f)) => Some(Ok(f())),
+            l => l,
+        };
+        if let Some(line) = &mut self.line
+            && let Ok((input, cursor_id, buffer)) = line
+        {
             input.render(
                 &state.theme,
                 None,
                 buffer,
-                *cursor,
+                *cursor_id,
                 None,
                 &mut frame.rect([col_a + col_b, 0], [!0, !0]),
             );
@@ -282,9 +329,10 @@ impl Visual for Searcher {
                     let mut buffer = Buffer::open(result.loc.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     let mut input = Input::default();
-                    if let Some(line_idx) = result.loc.line_idx {
+                    if let Some((line_idx, range)) = result.loc.span.clone() {
                         buffer.goto_cursor(cursor_id, [0, line_idx as isize], true);
-                        input.focus([0, line_idx as isize - preview_sz as isize / 2]);
+                        input.refocus(&mut buffer, cursor_id);
+                        buffer.select_cursor(cursor_id, range);
                     }
                     Some((buffer, cursor_id, input, result.loc.clone()))
                 })

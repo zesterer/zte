@@ -50,11 +50,15 @@ impl Input {
     }
 
     pub fn focus(&mut self, coord: [isize; 2]) {
-        for i in 0..2 {
-            self.focus[i] = self.focus[i]
-                .max(coord[i] - self.text_area.size()[i] as isize + 1)
-                .max(0)
-                .min(coord[i]);
+        if self.text_area.size() == [0, 0] {
+            self.focus = coord;
+        } else {
+            for i in 0..2 {
+                self.focus[i] = self.focus[i]
+                    .max(coord[i] - self.text_area.size()[i] as isize + 1)
+                    .max(0)
+                    .min(coord[i]);
+            }
         }
     }
 

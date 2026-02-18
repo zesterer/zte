@@ -2,7 +2,7 @@ use crate::{state::BufferId, terminal::TerminalEvent};
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
-use std::path::PathBuf;
+use std::{ops::Range, path::PathBuf};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Dir {
@@ -58,7 +58,7 @@ pub enum Action {
     // Switch the current pane to the given buffer
     SwitchBuffer(BufferId),
     // Open or create the file (on the given line) and switch the current pane to it
-    OpenFile(PathBuf, Option<usize>),
+    OpenFile(PathBuf, Option<Range<usize>>),
     // Save the current buffer
     SaveFile,
     SaveFileForce,

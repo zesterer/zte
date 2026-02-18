@@ -111,14 +111,14 @@ impl Element<()> for Doc {
                 self.switch_buffer(state, new_buffer);
                 Ok(Resp::handled(None))
             }
-            Some(Action::OpenFile(path, line_idx)) => match state.create(path) {
+            Some(Action::OpenFile(path, range)) => match state.create(path) {
                 Ok(buffer_id) => {
                     self.switch_buffer(state, buffer_id);
                     if let Some(buffer) = state.buffers.get_mut(self.buffer)
-                        && let Some(line_idx) = line_idx
+                        && let Some(range) = range
                     {
                         let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
-                        buffer.goto_cursor(*cursor_id, [0, line_idx as isize], true);
+                        buffer.select_cursor(*cursor_id, range);
                         input.refocus(buffer, *cursor_id);
                     }
                     Ok(Resp::handled(None))

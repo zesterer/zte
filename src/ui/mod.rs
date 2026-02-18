@@ -261,7 +261,7 @@ impl<T: Visual> Visual for Options<T> {
             frame
                 .rect([0, row], [frame.size()[0], 1])
                 .with_theme(if self.selected == i {
-                    Some(state.theme.select)
+                    Some(state.theme.unfocus_select)
                 } else {
                     None
                 })

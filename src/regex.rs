@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::ops::{Range, RangeInclusive};
 
 #[derive(Clone, Debug)]
 pub enum Regex {
@@ -96,11 +96,37 @@ impl State<'_> {
 
 pub struct CompiledPattern {
     regex: FastFn,
+    prefix: String,
 }
 
 impl CompiledPattern {
     pub fn create(regex: &str) -> Self {
-        Regex::parser().parse(regex).unwrap().optimise().compile()
+        Regex::parser().parse(regex).unwrap().compile()
+    }
+
+    pub fn find_nonoverlapping_matches(&self, text: &str) -> impl Iterator<Item = Range<usize>> {
+        let mut at = 0;
+        core::iter::from_fn(move || {
+            loop {
+                if let Some(left) = text.get(at..)
+                    && let Some(c) = left.chars().next()
+                {
+                    let start = at;
+                    // Fast path
+                    if left.starts_with(&self.prefix)
+                    // Slow path
+                    && let Some(end) = self.matches(text, at)
+                    {
+                        at = end;
+                        break Some(start..end);
+                    } else {
+                        at += c.len_utf8();
+                    }
+                } else {
+                    break None;
+                }
+            }
+        })
     }
 
     pub fn matches(&self, text: &str, at: usize) -> Option<usize> {
@@ -249,6 +275,18 @@ impl Regex {
         }
     }
 
+    fn prefix_inner(&self, prefix: &mut String) -> Option<()> {
+        match self {
+            Self::Char(c) => Some(prefix.push(*c)),
+            Self::String(s) => Some(prefix.push_str(s)),
+            Self::Set(xs) if xs.len() == 1 => xs[0].prefix_inner(prefix),
+            Self::Group(xs) => xs.iter().map(|x| x.prefix_inner(prefix)).collect(),
+            Self::AtLeastOnce(x) => x.prefix_inner(prefix),
+            Self::Delim(x, _) => x.prefix_inner(prefix),
+            _ => None,
+        }
+    }
+
     fn preserves_state_on_failure(&self) -> bool {
         matches!(
             self,
@@ -266,8 +304,12 @@ impl Regex {
     }
 
     pub fn compile(self) -> CompiledPattern {
+        let this = self.optimise();
+        let mut prefix = String::new();
+        this.prefix_inner(&mut prefix);
         CompiledPattern {
-            regex: self.compile_cont(Opt::Return),
+            regex: this.compile_cont(Opt::Return),
+            prefix,
         }
     }
 
