@@ -497,13 +497,13 @@ impl<'a> Terminal<'a> {
     }
 
     fn leave(mut stdout: impl io::Write) {
-        let _ = terminal::disable_raw_mode();
-        let _ = stdout.execute(terminal::LeaveAlternateScreen);
-        let _ = stdout.execute(terminal::EnableLineWrap);
-        let _ = stdout.execute(cursor::Show);
-        let _ = stdout.execute(event::DisableMouseCapture);
-        let _ = stdout.execute(event::DisableBracketedPaste);
         let _ = stdout.execute(event::PopKeyboardEnhancementFlags);
+        let _ = stdout.execute(event::DisableBracketedPaste);
+        let _ = stdout.execute(event::DisableMouseCapture);
+        let _ = stdout.execute(terminal::EnableLineWrap);
+        let _ = stdout.execute(terminal::LeaveAlternateScreen);
+        let _ = stdout.execute(cursor::Show);
+        let _ = terminal::disable_raw_mode();
     }
 
     pub fn with<T>(
