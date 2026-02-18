@@ -1,6 +1,7 @@
 pub mod action;
 pub mod highlight;
 pub mod lang;
+pub mod regex;
 pub mod state;
 pub mod terminal;
 pub mod theme;

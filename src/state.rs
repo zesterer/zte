@@ -940,23 +940,11 @@ impl Buffer {
 
         if let Some(selection) = cursor.selection() {
             self.remove(selection);
-        } else
-        /*if line_start != cursor.pos && (line_start..cursor.pos)
-            .all(|p| self.text.chars().get(p).map_or(false, |c| [' ', '\t'].contains(c)))
+        } else if !word
+            && cursor.pos != line_start
+            && cursor.pos == line_text_start.unwrap_or_else(|s| s)
         {
-            self.remove(line_start..cursor.pos);
-            self.backspace(cursor_id); // Remove the newline too
-        } else*/
-        if word && cursor.pos != line_start && line_text_start == Ok(cursor.pos) {
-            let prev_bytes = self
-                .text
-                .slice(..line_start)
-                .chars()
-                .nth_back(0)
-                .map_or(0, |c| c.len_utf8());
-            self.remove(line_start.saturating_sub(prev_bytes)..cursor.pos);
-        } else if cursor.pos != line_start && cursor.pos == line_text_start.unwrap_or_else(|s| s) {
-            // If a backspace is performed on a space, a deindent takes place instead
+            // If a simple backspace is performed at the start of indentation, a deindent takes place instead
             // Ensure there's only whitespace to our left
             self.indent_at(cursor.pos, false);
         } else {
