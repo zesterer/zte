@@ -484,12 +484,14 @@ impl Buffer {
 
             // Keep removing whitespace until we hit the desired column
             for _ in 0..n {
-                pos = match pos.checked_sub(1) {
-                    Some(pos) if self.text.slice(pos..).chars().next() == Some(' ') => {
-                        self.remove(pos..pos + 1);
-                        pos
-                    }
-                    _ => break,
+                if let Some(c) = self.text.slice(..pos).chars().next_back()
+                    && c == ' '
+                {
+                    pos -= c.len_utf8();
+                    self.remove(pos..pos + c.len_utf8());
+                    pos
+                } else {
+                    break;
                 };
             }
         }
@@ -882,17 +884,22 @@ impl Buffer {
                         .lines()
                         .nth(line_idx + 1)
                         .and_then(|l| l.chars().nth(0));
-                    if line.chars().nth_back(0) == Some('\n')
+                    if let Some(newline) = line.chars().next_back()
+                        && newline == '\n'
                         && let Some(next_line_char) = next_line_char
                         && !next_line_char.is_whitespace()
                     {
                         self.replace(
-                            line_start + line.byte_len().saturating_sub(1)
+                            line_start + line.byte_len().saturating_sub(newline.len_utf8())
                                 ..line_start + line.byte_len(),
                             [' '],
                         );
                     }
-                    self.replace(line_start + reflow_col..line_start + reflow_col + 1, ['\n']);
+                    let newline = '\n';
+                    self.replace(
+                        line_start + reflow_col..line_start + reflow_col + newline.len_utf8(),
+                        [newline],
+                    );
                     let Some(cursor) = self.cursors.get_mut(cursor_id) else {
                         return;
                     };
@@ -1157,7 +1164,7 @@ impl Buffer {
             let pos = self.text.to_pos([indent_len as isize, line_idx]);
             if pos <= self.text.len()
                 && comment_syntax
-                    .iter()
+                    .chars()
                     // is_start_of
                     .zip(
                         self.text
@@ -1166,11 +1173,11 @@ impl Buffer {
                             .map(Some)
                             .chain(core::iter::repeat(None)),
                     )
-                    .all(|(x, y)| Some(*x) == y)
+                    .all(|(x, y)| Some(x) == y)
             {
                 self.remove(pos..pos + comment_syntax.len());
             } else {
-                self.insert(pos, comment_syntax.iter().copied());
+                self.insert(pos, comment_syntax.chars());
             }
         }
     }

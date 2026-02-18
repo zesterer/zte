@@ -4,7 +4,7 @@ use std::path::Path;
 #[derive(Default)]
 pub struct LangPack {
     pub highlighter: Highlighter,
-    pub comment_syntax: Option<Vec<char>>,
+    pub comment_syntax: Option<String>,
     pub delims: Vec<(char, char)>,
     pub reflow_col: Option<usize>,
 }
@@ -29,14 +29,14 @@ impl LangPack {
         } else if matches!(fname, "Cargo.lock") || matches!(fextension, "toml") {
             Self {
                 highlighter: Highlighter::code().toml(),
-                comment_syntax: Some(vec!['#', ' ']),
+                comment_syntax: Some("# ".to_string()),
                 delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
                 ..Default::default()
             }
         } else if matches!(fextension, "yaml" | "yml") {
             Self {
                 highlighter: Highlighter::code().yaml(),
-                comment_syntax: Some(vec!['#', ' ']),
+                comment_syntax: Some("# ".to_string()),
                 ..Default::default()
             }
         } else if matches!(fextension, "c" | "h" | "cpp" | "hpp" | "cxx") {
@@ -56,31 +56,31 @@ impl LangPack {
         } else if matches!(fextension, "sh" | "bash" | "zsh") {
             Self {
                 highlighter: Highlighter::code().shell(),
-                comment_syntax: Some(vec!['#', ' ']),
+                comment_syntax: Some("# ".to_string()),
                 ..Default::default()
             }
         } else if matches!(fprefix, "Dockerfile") {
             Self {
                 highlighter: Highlighter::code().dockerfile(),
-                comment_syntax: Some(vec!['#', ' ']),
+                comment_syntax: Some("# ".to_string()),
                 ..Default::default()
             }
         } else if matches!(fname, "CMakeLists.txt") || matches!(fextension, "cmake") {
             Self {
                 highlighter: Highlighter::code().cmake(),
-                comment_syntax: Some(vec!['#', ' ']),
+                comment_syntax: Some("# ".to_string()),
                 ..Default::default()
             }
         } else if matches!(fextension, "camkes") {
             Self {
                 highlighter: Highlighter::code().camkes(),
-                comment_syntax: Some(vec!['/', '/', ' ']),
+                comment_syntax: Some("// ".to_string()),
                 ..Default::default()
             }
         } else if matches!(fextension, "cherb") {
             Self {
                 highlighter: Highlighter::code().cherb(),
-                comment_syntax: Some(vec!['#', ' ']),
+                comment_syntax: Some("# ".to_string()),
                 ..Default::default()
             }
         } else {
@@ -94,7 +94,7 @@ impl LangPack {
     fn clike(highlighter: Highlighter) -> Self {
         Self {
             highlighter,
-            comment_syntax: Some(vec!['/', '/', ' ']),
+            comment_syntax: Some("// ".to_string()),
             delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
             ..Default::default()
         }
@@ -103,7 +103,7 @@ impl LangPack {
     fn pythonic(highlighter: Highlighter) -> Self {
         Self {
             highlighter,
-            comment_syntax: Some(vec!['#', ' ']),
+            comment_syntax: Some("# ".to_string()),
             delims: vec![('(', ')'), ('{', '}'), ('[', ']')],
             ..Default::default()
         }

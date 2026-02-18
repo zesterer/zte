@@ -592,24 +592,6 @@ impl Regex {
         )
     }
 
-    fn prefix_inner(&self, prefix: &mut String) -> Option<()> {
-        match self {
-            Self::Char(c) => Some(prefix.push(*c)),
-            Self::String(s) => Some(s.chars().for_each(|c| prefix.push(c))),
-            Self::Set(xs) if xs.len() == 1 => xs[0].prefix_inner(prefix),
-            Self::Group(xs) => xs.iter().map(|x| x.prefix_inner(prefix)).collect(),
-            Self::AtLeastOnce(x) => x.prefix_inner(prefix),
-            Self::Delim(x, _) => x.prefix_inner(prefix),
-            _ => None,
-        }
-    }
-
-    fn prefix(&self) -> String {
-        let mut prefix = String::new();
-        self.prefix_inner(&mut prefix);
-        prefix
-    }
-
     pub fn compile(self) -> CompiledPattern {
         CompiledPattern {
             regex: self.compile_cont(Opt::Return),
@@ -943,8 +925,6 @@ enum Action {
     Continue,
     Ok,
     Fail,
-    Push,
-    Pop,
 }
 
 impl CompiledRegex2 {
@@ -964,7 +944,6 @@ impl CompiledRegex2 {
 
     pub fn matches(&self, s: &str, mut at: usize) -> Option<usize> {
         let mut next = self.entry;
-        let mut stack = Vec::new();
         loop {
             let b = s.as_bytes().get(at).copied().unwrap_or(0);
             let (action, goto) = self.tables[next as usize][b as usize];
@@ -973,11 +952,8 @@ impl CompiledRegex2 {
                 Action::Continue => at += 1,
                 Action::Ok => return Some(at),
                 Action::Fail => return None,
-                Action::Push => stack.push(at),
-                Action::Pop => at = stack.pop().unwrap(),
             }
         }
-        None
     }
 }
 
