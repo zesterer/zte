@@ -6,7 +6,6 @@ pub struct Searcher {
     options: Options<SearchResult>,
     path: PathBuf,
     search_path: PathBuf,
-    needle: Option<String>,
     // Filter
     buffer: Buffer,
     cursor_id: CursorId,
@@ -15,14 +14,14 @@ pub struct Searcher {
 }
 
 impl Searcher {
-    pub fn new(path: PathBuf, needle: Option<String>) -> Self {
+    pub fn new(path: PathBuf, needle: Option<&regex::CompiledPattern>) -> Self {
         let search_path = util::workspace_dir(path.clone());
         let search_path = search_path.canonicalize().unwrap_or_else(|_| search_path);
 
         fn search_in(
             search_path: &Path,
             path: &Path,
-            needle: &Option<regex::CompiledPattern>,
+            needle: Option<&regex::CompiledPattern>,
             results: &mut Vec<SearchResult>,
         ) {
             // Cap reached!
@@ -139,18 +138,7 @@ impl Searcher {
         }
 
         let mut results = Vec::new();
-        let compiled_needle = needle.as_deref().map(|n| {
-            // Search needles have special syntax: whitespace is interpreted as any amount
-            // of whitespace, everything else is interpreted literally
-            let group = n
-                .trim()
-                .split_whitespace()
-                .map(|s| [regex::Regex::String(s.to_string())])
-                .collect::<Vec<_>>()
-                .join(&regex::Regex::Whitespace);
-            regex::Regex::Group(group).compile()
-        });
-        search_in(&search_path, &search_path, &compiled_needle, &mut results);
+        search_in(&search_path, &search_path, needle, &mut results);
 
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
@@ -159,7 +147,6 @@ impl Searcher {
             options: Options::new(results),
             path,
             search_path,
-            needle,
             cursor_id,
             buffer,
             input: Input::filter(),
@@ -315,8 +302,8 @@ impl Visual for Searcher {
         let path_input_sz = 3;
         let remaining_sz = frame.size()[1].saturating_sub(path_input_sz);
         let (preview_sz, options_sz) = if remaining_sz > 12 {
-            let preview_sz = remaining_sz / 2;
-            (preview_sz, remaining_sz - preview_sz)
+            let options_sz = self.options.requested_height().min(remaining_sz / 2);
+            (remaining_sz - options_sz, options_sz)
         } else {
             (0, remaining_sz)
         };
@@ -369,16 +356,7 @@ impl Visual for Searcher {
                         self.options.ranking.len()
                     )
                 };
-                let title = if let Some(needle) = &self.needle {
-                    format!(
-                        "{} results for '{}' in {}/",
-                        num_results,
-                        needle,
-                        self.search_path.display()
-                    )
-                } else {
-                    format!("{} results in {}/", num_results, self.search_path.display())
-                };
+                let title = format!("{} results in {}/", num_results, self.search_path.display());
                 self.input.render(
                     &state.theme,
                     Some(&title),

@@ -1,4 +1,7 @@
-use std::ops::{Range, RangeInclusive};
+use std::{
+    fmt,
+    ops::{Range, RangeInclusive},
+};
 
 #[derive(Clone, Debug)]
 pub enum Regex {
@@ -99,9 +102,23 @@ pub struct CompiledPattern {
     prefix: String,
 }
 
+impl fmt::Debug for CompiledPattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<compiled regex>")
+    }
+}
+
 impl CompiledPattern {
     pub fn create(regex: &str) -> Self {
         Regex::parser().parse(regex).unwrap().compile()
+    }
+
+    pub fn create_search(needle: &str) -> Result<Self, String> {
+        Ok(Regex::search_parser()
+            .parse(needle)
+            .into_result()
+            .map_err(|err| err[0].to_string())?
+            .compile())
     }
 
     pub fn find_nonoverlapping_matches(&self, text: &str) -> impl Iterator<Item = Range<usize>> {
@@ -114,8 +131,10 @@ impl CompiledPattern {
                     let start = at;
                     // Fast path
                     if left.starts_with(&self.prefix)
-                    // Slow path
-                    && let Some(end) = self.matches(text, at)
+                        // Slow path
+                        && let Some(end) = self.matches(text, at)
+                        // Zero-length matches don't count!
+                        && end > at
                     {
                         at = end;
                         break Some(start..end);
@@ -736,5 +755,20 @@ impl Regex {
         .repeated()
         .collect()
         .map(Self::Group)
+    }
+
+    pub fn search_parser<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
+        let str_part = none_of(" \t")
+            .and_is(just("@(").not())
+            .repeated()
+            .at_least(1)
+            .to_slice()
+            .map(|s: &str| Self::String(s.to_string()));
+        let regex = Self::parser().delimited_by(just("@("), just(")"));
+        let gap = text::inline_whitespace().at_least(1).to(Self::Whitespace);
+        choice((regex, str_part, gap))
+            .repeated()
+            .collect()
+            .map(Self::Group)
     }
 }

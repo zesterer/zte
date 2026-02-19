@@ -1,6 +1,6 @@
 use super::*;
 use crate::state::{Buffer, BufferId, Cursor, CursorId};
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 pub struct Doc {
     pub buffer: BufferId,
@@ -298,7 +298,8 @@ pub struct Finder {
 
     selected: usize,
     needle: String,
-    results: Vec<usize>,
+    error: Option<String>,
+    results: Vec<Range<usize>>,
 }
 
 impl Finder {
@@ -324,10 +325,11 @@ impl Finder {
 
             selected: 0,
             needle: String::new(),
+            error: None,
             results: Vec::new(),
         };
 
-        this.update(state, buffer_id);
+        this.update(state, input, buffer_id);
         this.refocus_selected(&mut state.buffers[buffer_id], input, cursor_id);
 
         this
@@ -336,51 +338,49 @@ impl Finder {
     pub fn contains(&self, pos: usize) -> Option<bool> {
         let idx = self
             .results
-            .binary_search(&pos)
+            .binary_search_by_key(&pos, |r| r.start)
             .unwrap_or_else(|p| p.saturating_sub(1));
 
         self.results
             .get(idx)
-            .filter(|start| (**start..**start + self.needle.len()).contains(&pos))
+            .filter(|range| (range.start..range.end).contains(&pos))
             .map(|_| idx == self.selected)
     }
 
-    fn update(&mut self, state: &mut State, buffer_id: BufferId) {
+    fn update(&mut self, state: &mut State, input: &mut Input, buffer_id: BufferId) {
         let buffer = &mut state.buffers[buffer_id];
 
         let needle = self.buffer.text.to_string();
         // The needle has changed!
         if self.needle != needle {
+            self.needle = needle;
+
             let haystack = buffer.text.slice(..);
 
-            self.results = (0..haystack.byte_len())
-                .filter(|i| haystack.is_char_boundary(*i))
-                .filter(|i| {
-                    needle
-                        .chars()
-                        .zip(
-                            haystack
-                                .byte_slice(*i..)
-                                .chars()
-                                .map(Some)
-                                .chain(core::iter::repeat(None)),
-                        )
-                        .all(|(a, b)| Some(a) == b)
-                })
-                .collect();
+            self.error = None;
+            self.results = match regex::CompiledPattern::create_search(&self.needle) {
+                Ok(regex) => regex
+                    .find_nonoverlapping_matches(&haystack.to_string())
+                    .collect(),
+                Err(err) => {
+                    self.error = Some(err);
+                    Vec::new()
+                }
+            };
 
             // Select the first entry that comes after the current cursor position
             self.selected = (0..self.results.len())
-                .find(|i| self.results[*i] >= self.old_cursor.pos)
+                .rev()
+                .find(|i| (self.results[*i].start..).contains(&buffer.cursors[self.cursor_id].pos))
                 .unwrap_or(0);
 
-            self.needle = needle;
+            self.refocus_selected(buffer, input, self.cursor_id);
         }
     }
 
     fn refocus_selected(&mut self, buffer: &mut Buffer, input: &mut Input, cursor_id: CursorId) {
         if let Some(result) = self.results.get(self.selected) {
-            buffer.cursors[cursor_id].select(*result..*result + self.needle.len());
+            buffer.cursors[cursor_id].select(result.clone());
             input.refocus(buffer, cursor_id);
         }
     }
@@ -431,7 +431,7 @@ impl Finder {
             }
         };
 
-        self.update(state, buffer_id);
+        self.update(state, input, buffer_id);
 
         res
     }
@@ -439,7 +439,9 @@ impl Finder {
 
 impl Visual for Finder {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let title = if self.results.is_empty() {
+        let title = if let Some(err) = &self.error {
+            format!("Error: {err}")
+        } else if self.results.is_empty() {
             format!("No results found")
         } else {
             format!("{} of {} results", self.selected + 1, self.results.len())

@@ -100,7 +100,8 @@ impl Element<()> for Root {
                     }
                     Action::OpenSearcher(path, needle) => {
                         self.tasks.clear(); // Overrides all
-                        self.tasks.push(Task::Searcher(Searcher::new(path, needle)));
+                        self.tasks
+                            .push(Task::Searcher(Searcher::new(path, needle.as_deref())));
                         break Ok(Resp::handled(None));
                     }
                     Action::CommandStart(cmd) => {
