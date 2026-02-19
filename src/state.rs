@@ -190,8 +190,11 @@ impl Text {
     fn start_of_line(&self, line: isize) -> RopeSlice<'_> {
         self.start_of_line_text(line)
             .map(|i| {
-                self.slice(i..)
-                    .byte_slice(..self.line(line as usize).unwrap().byte_len())
+                if line + 1 >= self.inner.line_len() as isize {
+                    self.slice(i..)
+                } else {
+                    self.slice(i..self.inner.byte_of_line(line as usize + 1))
+                }
             })
             .unwrap_or_else(|_| self.slice(0..0))
     }
