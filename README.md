@@ -114,3 +114,10 @@ Ctrl + v = Paste
 Ctrl + / = Comment line or selection
 Ctrl + d = Duplicate line or selection
 ```
+
+## Search regex
+
+When searching, a non-standard regex is supported in which:
+
+- Any inline whitespace matches any inline whitespace in the search
+- An inline regex expression can be included with `@(...)`. For example, `foo@([dl])` will match `food` and `fool`

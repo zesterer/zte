@@ -23,7 +23,7 @@ impl LangPack {
         } else if matches!(fextension, "md") {
             Self {
                 highlighter: Highlighter::code().markdown(),
-                reflow_col: Some(88),
+                reflow_col: None, //Some(88),
                 ..Default::default()
             }
         } else if matches!(fname, "Cargo.lock") || matches!(fextension, "toml") {
