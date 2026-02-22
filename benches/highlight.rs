@@ -1,7 +1,7 @@
 use chumsky::Parser as _;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::{hint::black_box, path::Path};
-use zte::{highlight::Regex, lang::LangPack};
+use zte::{lang::LangPack, regex::Regex};
 
 fn highlight(c: &mut Criterion) {
     let s = include_str!("../src/state.rs");
@@ -18,7 +18,11 @@ fn highlight(c: &mut Criterion) {
 }
 
 fn regex(c: &mut Criterion) {
-    let regex = Regex::parser().parse(r#"([a-z]a)*"#).unwrap().optimise();
+    let regex = Regex::parser()
+        .parse(r#"([a-z]a)*"#)
+        .unwrap()
+        .optimise()
+        .optimise();
     let s = format!("{}", "aabacadaeafagahaiajakalama".repeat(10_000));
 
     c.bench_function("regex closures", |b| {

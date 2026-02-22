@@ -121,7 +121,7 @@ impl Text {
             if y >= self.inner.line_len() {
                 [0, self.inner.line_len() as isize]
             } else {
-                let line_byte = pos - self.inner.byte_of_line(y);
+                let line_byte = pos.saturating_sub(self.inner.byte_of_line(y));
                 [
                     Self::slice_char_indices(self.inner.line(y))
                         .take_while(|(_, i)| *i < line_byte)
@@ -133,7 +133,7 @@ impl Text {
     }
 
     pub fn to_pos(&self, coord: [isize; 2]) -> usize {
-        if coord[1] <= 0 {
+        if coord[1] < 0 {
             0
         } else if coord[1] as usize >= self.inner.line_len() {
             self.inner.byte_len()
