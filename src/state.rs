@@ -202,9 +202,24 @@ impl Text {
     }
 
     fn line_range(&self, line: isize) -> Range<usize> {
-        let start = self.to_pos([0, line]);
-        let end = self.to_pos([100000000, line]);
-        start..end + 1
+        let line = line.max(0) as usize;
+        let line_len = self.inner.line_len();
+        if line > line_len {
+            self.inner.byte_len()..self.inner.byte_len()
+        } else {
+            self.inner.byte_of_line(line)..self.inner.byte_of_line((line + 1).min(line_len))
+        }
+    }
+
+    fn line_range_no_newline(&self, line: isize) -> Range<usize> {
+        let line = line.max(0) as usize;
+        let line_len = self.inner.line_len();
+        if line >= line_len {
+            self.inner.byte_len()..self.inner.byte_len()
+        } else {
+            let start = self.inner.byte_of_line(line);
+            start..start + self.inner.line(line.min(line_len)).byte_len()
+        }
     }
 }
 
@@ -1211,19 +1226,41 @@ impl Buffer {
 
         if cursor.selection().is_none() {
             let coord = self.text.to_coord(cursor.pos);
-            let line_range = self.text.line_range(coord[1]);
-            let line_str = self.text.slice(line_range.clone()).to_string();
-            self.remove(line_range);
-            let insert_pos = match dir {
-                Dir::Up => self.text.to_pos([0, coord[1].saturating_sub(1)]),
-                Dir::Down => self.text.to_pos([0, coord[1] + 1]),
+            let line_a = coord[1];
+            let line_b = match dir {
+                Dir::Up => line_a - 1,
+                Dir::Down => line_a + 1,
                 dir => unreachable!("{dir:?}"),
             };
-            self.insert_inner(insert_pos, line_str.chars());
+
+            if line_b
+                .max(0)
+                .min(self.text.inner.line_len().saturating_sub(1) as isize)
+                == line_a
+            {
+                return; // Nothing to do, trying to move outside of buffer
+            }
+
+            let line_range_a = self.text.line_range_no_newline(line_a);
+            let line_str_a = self.text.slice(line_range_a.clone()).to_string();
+            self.remove(line_range_a.clone());
+            let line_range_b = self.text.line_range_no_newline(line_b);
+            let line_str_b = self.text.slice(line_range_b.clone()).to_string();
+            self.remove(line_range_b);
+
+            self.insert(
+                self.text.line_range_no_newline(line_a).start,
+                line_str_b.chars(),
+            );
+            self.insert(
+                self.text.line_range_no_newline(line_b).start,
+                line_str_a.chars(),
+            );
+
             let Some(cursor) = self.cursors.get_mut(cursor_id) else {
                 return;
             };
-            cursor.place_at(insert_pos + coord[0].max(0) as usize);
+            cursor.place_at(self.text.to_pos([coord[0], line_b]));
         }
     }
 
