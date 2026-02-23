@@ -123,9 +123,9 @@ impl Element<()> for Root {
                                 action: Action::Quit,
                             }));
                             break Ok(Resp::handled(None));
-                        } else if self.tabs.should_warn_close() {
+                        } else if !state.terms.is_empty() {
                             self.tasks.push(Task::Confirm(Confirm {
-                                label: Label(format!("Are you sure you wish to quit? (y/n). Some tasks are still active!")),
+                                label: Label(format!("Are you sure you wish to quit? (y/n). Some terminal tasks are still active!")),
                                 action: Action::Quit,
                             }));
                             break Ok(Resp::handled(None));

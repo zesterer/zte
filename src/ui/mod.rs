@@ -13,7 +13,7 @@ pub use self::{
     prompt::{Confirm, FileBrowser, FileBrowserMode, Prompt, Show, Switcher},
     root::Root,
     search::Searcher,
-    term::Term,
+    term::{Term, TermWindow},
 };
 
 use super::*;

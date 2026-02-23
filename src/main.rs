@@ -89,6 +89,11 @@ fn main() -> Result<(), Error> {
                     state.pre_render();
                     term.update(|fb| {
                         ui.render(&mut state, fb);
+
+                        if state.bell_rung {
+                            state.bell_rung = false;
+                            fb.ring_bell();
+                        }
                     });
                 }
             }

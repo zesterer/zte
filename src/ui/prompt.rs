@@ -1,5 +1,5 @@
 use super::*;
-use crate::state::{Buffer, BufferId, CursorId};
+use crate::state::{Buffer, CursorId, TaskId};
 use chrono::{DateTime, Local};
 use slotmap::Key;
 use std::{fs, path::PathBuf, rc::Rc};
@@ -214,7 +214,7 @@ impl Visual for Confirm {
 }
 
 pub struct Switcher {
-    pub options: Options<BufferId>,
+    pub options: Options<TaskId>,
     // Filter
     pub buffer: Buffer,
     pub cursor_id: CursorId,
@@ -222,10 +222,10 @@ pub struct Switcher {
 }
 
 impl Switcher {
-    pub fn new(buffers: impl IntoIterator<Item = BufferId>) -> Self {
+    pub fn new(tasks: impl IntoIterator<Item = TaskId>) -> Self {
         let mut buffer = Buffer::default();
         Self {
-            options: Options::new(buffers),
+            options: Options::new(tasks),
             cursor_id: buffer.start_session(),
             buffer,
             input: Input::filter(),
@@ -242,7 +242,7 @@ impl Element<()> for Switcher {
         match event.to_action(|e| e.to_cancel()) {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             _ => match self.options.handle(state, event).map(Resp::into_ended) {
-                Ok(Some(buffer_id)) => Ok(Resp::end(Some(Action::SwitchBuffer(buffer_id).into()))),
+                Ok(Some(task_id)) => Ok(Resp::end(Some(Action::SwitchTask(task_id).into()))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
                     let res = self
@@ -257,25 +257,29 @@ impl Element<()> for Switcher {
                     // Score entries
                     let filter = self.buffer.text.to_string().to_lowercase();
                     if res.is_ok() {
-                        self.options.apply_scoring(|b| {
-                            let Some(buffer) = state.buffers.get(*b) else {
-                                return None;
-                            };
-                            let name = buffer.name().as_deref().unwrap_or("").to_lowercase();
-                            let parent = buffer
-                                .path()
-                                .and_then(|p| Some(p.parent()?.to_str()?.to_lowercase()));
-                            if name.starts_with(&filter) {
-                                Some(1)
-                            } else if name.contains(&filter) {
-                                Some(2)
-                            } else if let Some(parent) = parent
-                                && parent.contains(&filter)
-                            {
-                                Some(3)
-                            } else {
-                                None
+                        self.options.apply_scoring(|task| match task {
+                            TaskId::Buffer(b) => {
+                                let Some(buffer) = state.buffers.get(*b) else {
+                                    return None;
+                                };
+                                let name = buffer.name().as_deref().unwrap_or("").to_lowercase();
+                                let parent = buffer
+                                    .path()
+                                    .and_then(|p| Some(p.parent()?.to_str()?.to_lowercase()));
+                                if name.starts_with(&filter) {
+                                    Some(1)
+                                } else if name.contains(&filter) {
+                                    Some(2)
+                                } else if let Some(parent) = parent
+                                    && parent.contains(&filter)
+                                {
+                                    Some(3)
+                                } else {
+                                    None
+                                }
                             }
+                            // TODO: Filter terminals
+                            TaskId::Term(_) => Some(4),
                         });
                     }
                     res
@@ -305,22 +309,38 @@ impl Visual for Switcher {
     }
 }
 
-impl Visual for BufferId {
+impl Visual for TaskId {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let Some(buffer) = state.buffers.get(*self) else {
-            return;
-        };
-        frame
-            .with_theme(state.theme.option_file)
-            .text([0, 0], buffer.name().as_deref().unwrap_or("<unknown>"));
-        let path_x = (frame.size()[0] as isize / 3).max(32);
-        frame.with_theme(state.theme.option_dir).text(
-            [path_x, 0],
-            &buffer
-                .path()
-                .and_then(|p| Some(format!("{}", p.parent()?.display())))
-                .unwrap_or_else(|| format!("<anonymous #{}>", self.data().as_ffi())),
-        );
+        match self {
+            TaskId::Buffer(buffer_id) => {
+                let Some(buffer) = state.buffers.get(*buffer_id) else {
+                    return;
+                };
+                frame
+                    .with_theme(state.theme.option_file)
+                    .text([0, 0], buffer.name().as_deref().unwrap_or("<unknown>"));
+                let path_x = (frame.size()[0] as isize / 3).max(32);
+                frame.with_theme(state.theme.option_dir).text(
+                    [path_x, 0],
+                    &buffer
+                        .path()
+                        .and_then(|p| Some(format!("{}", p.parent()?.display())))
+                        .unwrap_or_else(|| format!("<anonymous #{}>", buffer_id.data().as_ffi())),
+                );
+            }
+            TaskId::Term(term_id) => {
+                let Some(term) = state.terms.get(*term_id) else {
+                    return;
+                };
+                frame.with_theme(state.theme.option_term).text(
+                    [0, 0],
+                    &term
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| format!("<terminal #{}>", term_id.data().as_ffi())),
+                );
+            }
+        }
     }
 }
 

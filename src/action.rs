@@ -1,5 +1,5 @@
 use super::*;
-use crate::{state::BufferId, terminal::TerminalEvent};
+use crate::{state::TaskId, terminal::TerminalEvent};
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
@@ -56,8 +56,8 @@ pub enum Action {
     OpenMover(PathBuf),
     // Open the finder, with the given default query
     OpenFinder(Option<String>),
-    // Switch the current pane to the given buffer
-    SwitchBuffer(BufferId),
+    // Switch the current pane to the given task
+    SwitchTask(TaskId),
     // Open or create the file (on the given line) and switch the current pane to it
     OpenFile(PathBuf, Option<Range<usize>>),
     // Save the current buffer

@@ -1,10 +1,14 @@
 use super::*;
-use std::time::{Duration, Instant};
+use crate::state::{BufferId, TaskId};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 pub enum PaneKind {
     Empty,
-    Doc(Doc),
-    Term(Box<Term>),
+    Doc(BufferId),
+    Term(TermWindow),
 }
 
 enum PaneTask {
@@ -17,30 +21,56 @@ const _: () = assert!(core::mem::size_of::<PaneKind>() < 128);
 
 pub struct Pane {
     kind: PaneKind,
-    last_area: Area,
     task: Option<Box<PaneTask>>,
+    // Remember the cursor we use for each buffer
+    docs: HashMap<BufferId, Doc>,
+    last_area: Area,
 }
 
 impl Pane {
-    fn should_close(&mut self) -> bool {
+    fn should_close(&mut self, state: &mut State) -> bool {
         match &self.kind {
             PaneKind::Empty | PaneKind::Doc(_) => false,
-            PaneKind::Term(term) => term.should_close(),
+            PaneKind::Term(term) => term.should_close(state),
         }
     }
 
     pub fn should_warn_close(&self) -> bool {
         matches!(&self.kind, PaneKind::Term(_))
     }
+
+    fn doc_mut(&mut self, state: &mut State, buffer_id: BufferId) -> &mut Doc {
+        self.docs
+            .entry(buffer_id)
+            .or_insert_with(|| Doc::new(state, buffer_id))
+    }
+
+    fn switch_task(&mut self, state: &mut State, task: TaskId) {
+        state.set_most_recent(task);
+        self.kind = match task {
+            TaskId::Buffer(buffer_id) => PaneKind::Doc(buffer_id),
+            TaskId::Term(term_id) => PaneKind::Term(state.switch_term(term_id)),
+        };
+    }
+
+    pub fn close(self, state: &mut State) {
+        match self.kind {
+            PaneKind::Doc(_) | PaneKind::Empty => {}
+            PaneKind::Term(term) => term.close(state),
+        }
+        for doc in self.docs.into_values() {
+            doc.close(state);
+        }
+    }
 }
 
 impl Element<()> for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
-        match event.to_action(|e| e.to_new_term(None)) {
+        match event.to_action(|e| e.to_new_term(None).or_else(|| e.to_open_switcher())) {
             Some(Action::NewTerm(path)) => {
                 let path = path.or_else(|| {
-                    if let PaneKind::Doc(doc) = &self.kind
-                        && let Some(buf) = state.buffers.get(doc.buffer)
+                    if let PaneKind::Doc(buffer_id) = &self.kind
+                        && let Some(buf) = state.buffers.get(*buffer_id)
                         && let Some(path) = buf.path()
                     {
                         path.parent().map(ToOwned::to_owned)
@@ -51,7 +81,7 @@ impl Element<()> for Pane {
                 // TODO: Close other kinds
                 match Term::new(path, state) {
                     Ok(term) => {
-                        self.kind = PaneKind::Term(term.into());
+                        self.kind = PaneKind::Term(state.create_term(term));
                         Ok(Resp::handled(None))
                     }
                     Err(err) => Ok(Resp::handled(Some(
@@ -79,13 +109,37 @@ impl Element<()> for Pane {
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenSwitcher) => {
-                let most_recent = state.most_recent();
+                let most_recent = state.most_recent_tasks();
                 if most_recent.is_empty() {
                     Err(event)
                 } else {
                     self.task = Some(PaneTask::Switcher(Switcher::new(most_recent)).into());
                     Ok(Resp::handled(None))
                 }
+            }
+            Some(Action::NewFile) => {
+                let buffer_id = state.new_anonymous();
+                self.switch_task(state, TaskId::Buffer(buffer_id));
+                Ok(Resp::handled(None))
+            }
+            Some(Action::OpenFile(path, range)) => match state.create(path) {
+                Ok(buffer_id) => {
+                    self.switch_task(state, TaskId::Buffer(buffer_id));
+                    let cursor = self.doc_mut(state, buffer_id).cursor;
+                    if let Some(buffer) = state.buffers.get_mut(buffer_id)
+                        && let Some(range) = range
+                    {
+                        buffer.select_cursor(cursor, range);
+                    }
+                    Ok(Resp::handled(None))
+                }
+                Err(err) => Ok(Resp::handled(Some(
+                    Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
+                ))),
+            },
+            Some(Action::SwitchTask(new_task)) => {
+                self.switch_task(state, new_task);
+                Ok(Resp::handled(None))
             }
             _ => {
                 let event = if let Some(task) = self.task.as_deref_mut() {
@@ -108,7 +162,23 @@ impl Element<()> for Pane {
 
                 match &mut self.kind {
                     PaneKind::Empty => Err(event),
-                    PaneKind::Doc(doc) => doc.handle(state, event),
+                    PaneKind::Doc(buffer_id) => {
+                        let buffer_id = *buffer_id;
+                        let resp = self.doc_mut(state, buffer_id).handle(state, event)?;
+                        if resp.is_end() {
+                            self.docs.remove(&buffer_id);
+                            // Switch to another buffer
+                            if let Some(new_buffer) = state.most_recent().first() {
+                                self.switch_task(state, TaskId::Buffer(*new_buffer));
+                                Ok(Resp::handled(None))
+                            } else {
+                                self.kind = PaneKind::Empty;
+                                Ok(Resp::end(None))
+                            }
+                        } else {
+                            Ok(resp)
+                        }
+                    }
                     PaneKind::Term(term) => term.handle(state, event).map(Resp::into_can_end),
                 }
             }
@@ -137,10 +207,12 @@ impl Visual for Pane {
         if let Some((pos, sz)) = remaining_space {
             match &mut self.kind {
                 PaneKind::Empty => {}
-                PaneKind::Doc(doc) => doc.render(
-                    state,
-                    &mut frame.with_focus(self.task.is_none()).rect(pos, sz),
-                ),
+                PaneKind::Doc(buffer_id) => {
+                    let buffer_id = *buffer_id;
+                    let is_focus = self.task.is_none();
+                    self.doc_mut(state, buffer_id)
+                        .render(state, &mut frame.with_focus(is_focus).rect(pos, sz))
+                }
                 PaneKind::Term(term) => term.render(
                     state,
                     &mut frame.with_focus(self.task.is_none()).rect(pos, sz),
@@ -179,34 +251,14 @@ impl Element<()> for VBox {
                 self.selected = (self.selected + 1) % self.panes.len();
                 Ok(Resp::handled(None))
             }
-            Some(action @ (Action::PaneClose | Action::PaneCloseForce)) => {
+            Some(Action::PaneClose | Action::PaneCloseForce) => {
                 if self.selected < self.panes.len() {
-                    // If not forced, ask the user if they want to close terminal panes
-                    if matches!(action, Action::PaneClose)
-                        && matches!(
-                            &self.panes.get(self.selected).map(|p| &p.kind),
-                            Some(PaneKind::Term(_))
-                        )
-                    {
-                        Ok(Resp::handled(Some(
-                            Action::Confirm(
-                                format!("Are you sure you wish to close the terminal? (y/n)"),
-                                Box::new(Action::PaneCloseForce),
-                            )
-                            .into(),
-                        )))
+                    self.panes.remove(self.selected).close(state);
+                    self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
+                    if self.panes.is_empty() {
+                        Ok(Resp::end(None))
                     } else {
-                        match self.panes.remove(self.selected).kind {
-                            PaneKind::Empty => {}
-                            PaneKind::Doc(doc) => doc.close(state),
-                            PaneKind::Term(term) => term.close(state),
-                        }
-                        self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
-                        if self.panes.is_empty() {
-                            Ok(Resp::end(None))
-                        } else {
-                            Ok(Resp::handled(None))
-                        }
+                        Ok(Resp::handled(None))
                     }
                 } else {
                     Err(event)
@@ -219,7 +271,7 @@ impl Element<()> for VBox {
                     Dir::Left | Dir::Right => return Err(event),
                 };
                 let kind = match state.buffers.keys().next() {
-                    Some(b) => PaneKind::Doc(Doc::new(state, b)),
+                    Some(b) => PaneKind::Doc(b),
                     None => PaneKind::Empty,
                 };
                 self.panes.insert(
@@ -227,6 +279,7 @@ impl Element<()> for VBox {
                     Pane {
                         kind,
                         last_area: Area::default(),
+                        docs: HashMap::default(),
                         task: None,
                     },
                 );
@@ -276,12 +329,8 @@ impl Visual for VBox {
 
         // Close panes that request to be closed
         for (i, pane) in self.panes.iter_mut().enumerate() {
-            if pane.should_close() {
-                match self.panes.remove(i).kind {
-                    PaneKind::Empty => {}
-                    PaneKind::Doc(doc) => doc.close(state),
-                    PaneKind::Term(term) => term.close(state),
-                }
+            if pane.should_close(state) {
+                self.panes.remove(i).close(state);
                 self.selected = self.selected.clamp(0, self.panes.len().saturating_sub(1));
                 state.wakeup.notify_one();
                 break;
@@ -331,13 +380,13 @@ impl Element for Panes {
             let name = if let Some(vbox) = self.vboxes.get(self.selected)
                 && let Some(pane) = vbox.panes.get(vbox.selected)
             {
-                if let PaneKind::Doc(doc) = &pane.kind
-                    && let Some(buffer) = state.buffers.get(doc.buffer)
+                if let PaneKind::Doc(buffer_id) = &pane.kind
+                    && let Some(buffer) = state.buffers.get(*buffer_id)
                     && let Some(path) = buffer.path()
                 {
                     Some(format!("{}", util::workspace_dir(path.clone()).display()))
                 } else if let PaneKind::Term(term) = &pane.kind {
-                    term.title.clone()
+                    state.terms[term.term].title.clone()
                 } else {
                     None
                 }
@@ -372,7 +421,7 @@ impl Element for Panes {
                     _ => unreachable!(),
                 };
                 let kind = match state.buffers.keys().next() {
-                    Some(b) => PaneKind::Doc(Doc::new(state, b)),
+                    Some(b) => PaneKind::Doc(b),
                     None => PaneKind::Empty,
                 };
                 let size_weight = 1.0 / self.vboxes.len().max(1) as f32;
@@ -382,8 +431,9 @@ impl Element for Panes {
                         selected: 0,
                         panes: vec![Pane {
                             kind,
-                            last_area: Area::default(),
+                            docs: HashMap::default(),
                             task: None,
+                            last_area: Area::default(),
                         }],
                         last_area: Area::default(),
                         size_weight,
@@ -518,9 +568,10 @@ impl Tabs {
                         vboxes: vec![VBox {
                             selected: 0,
                             panes: vec![Pane {
-                                kind: PaneKind::Doc(Doc::new(state, buffer_id)),
-                                last_area: Area::default(),
+                                kind: PaneKind::Doc(buffer_id),
                                 task: task.map(Into::into),
+                                docs: HashMap::default(),
+                                last_area: Area::default(),
                             }],
                             last_area: Area::default(),
                             size_weight: 1.0,
@@ -575,7 +626,7 @@ impl Element for Tabs {
                     _ => unreachable!(),
                 };
                 let kind = match state.buffers.keys().next() {
-                    Some(b) => PaneKind::Doc(Doc::new(state, b)),
+                    Some(b) => PaneKind::Doc(b),
                     None => PaneKind::Empty,
                 };
                 let size_weight = 1.0 / self.tabs.len().max(1) as f32;
@@ -588,6 +639,7 @@ impl Element for Tabs {
                             panes: vec![Pane {
                                 kind,
                                 last_area: Area::default(),
+                                docs: HashMap::default(),
                                 task: None,
                             }],
                             last_area: Area::default(),

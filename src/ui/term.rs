@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::{Clipboard, TermId};
 use alacritty_terminal::{
     Term as Alacritty,
     event::{Event as TermEvent, EventListener},
@@ -10,6 +11,7 @@ use alacritty_terminal::{
     },
     vte::ansi,
 };
+use std::time::SystemTime;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::mpsc::{self, Receiver, Sender},
@@ -43,9 +45,9 @@ pub struct Term {
     in_tx: Sender<Input>,
     out_rx: Receiver<Output>,
     cmd: task::JoinHandle<()>,
-    scroller: Scroller,
     bell: bool,
-    term_area: Area,
+    pub last_switch: Option<SystemTime>,
+    pub is_open: bool,
 }
 
 impl Term {
@@ -105,9 +107,9 @@ impl Term {
             in_tx,
             out_rx,
             cmd,
-            scroller: Scroller::default(),
             bell: false,
-            term_area: Area::default(),
+            last_switch: None,
+            is_open: false,
         })
     }
 
@@ -122,23 +124,88 @@ impl Term {
     fn send_bytes(&self, bytes: impl AsRef<[u8]>) {
         let _ = self.in_tx.try_send(Input::Bytes(bytes.as_ref().to_vec()));
     }
+
+    pub fn pre_render(
+        &mut self,
+        clipboard: &mut Clipboard,
+        needs_render: &mut bool,
+        bell_rung: &mut bool,
+    ) {
+        while let Ok(out) = self.out_rx.try_recv() {
+            *needs_render = true;
+            match out {
+                Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
+                // Title changes
+                Output::Event(TermEvent::Title(title)) => self.title = Some(title),
+                Output::Event(TermEvent::ResetTitle) => self.title = None,
+                // Proxy clipboard events to our internal clipboard
+                Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
+                    _ = clipboard.set(s)
+                }
+                Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
+                    if let Ok(s) = clipboard.get() {
+                        let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
+                    }
+                }
+                // Pass bell events on to host
+                Output::Event(TermEvent::Bell) => self.bell = true,
+                Output::Event(_) => {}
+            }
+        }
+
+        if self.bell {
+            self.bell = false;
+            *bell_rung = true;
+        }
+    }
 }
 
-impl Element for Term {
+pub struct TermWindow {
+    pub term: TermId,
+    scroller: Scroller,
+    term_area: Area,
+}
+
+impl TermWindow {
+    pub fn new(term: TermId) -> Self {
+        Self {
+            term,
+            scroller: Scroller::default(),
+            term_area: Area::default(),
+        }
+    }
+
+    pub fn close(self, state: &mut State) {
+        state.close_term_window(self.term);
+    }
+
+    pub fn should_close(&self, state: &mut State) -> bool {
+        state
+            .terms
+            .get(self.term)
+            .map_or(true, |t| t.should_close())
+    }
+}
+
+impl Element for TermWindow {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
-        let display_offset = self.term.grid().display_offset() as isize;
+        let Some(term) = state.terms.get_mut(self.term) else {
+            return Err(event);
+        };
+
+        let display_offset = term.term.grid().display_offset() as isize;
         // First, handle scroller events
         let old_focus = [
             0,
-            self.term.total_lines() as isize - self.term.screen_lines() as isize - display_offset,
+            term.term.total_lines() as isize - term.term.screen_lines() as isize - display_offset,
         ];
         let mut focus = old_focus;
         let event = match self
             .scroller
-            .handle(event, self.term.total_lines(), &mut focus)
+            .handle(event, term.term.total_lines(), &mut focus)
         {
             Ok(resp) => {
-                self.term
+                term.term
                     .scroll_display(Scroll::Delta((old_focus[1] - focus[1]) as i32));
                 return Ok(resp);
             }
@@ -156,7 +223,7 @@ impl Element for Term {
 
         match event.to_action(|e| e.to_move().or_else(|| e.to_edit())) {
             Some(Action::Move(dir, dist @ (Dist::Doc | Dist::Page), false, false))
-                if !self.term.mode().contains(TermMode::ALT_SCREEN) =>
+                if !term.term.mode().contains(TermMode::ALT_SCREEN) =>
             {
                 let dir = match dir {
                     Dir::Up => 1,
@@ -164,39 +231,39 @@ impl Element for Term {
                     _ => 0,
                 };
                 let dist = match dist {
-                    Dist::Doc => self.term.total_lines(),
-                    Dist::Page => self.term.screen_lines(),
+                    Dist::Doc => term.term.total_lines(),
+                    Dist::Page => term.term.screen_lines(),
                     Dist::Char => 1,
                 };
-                self.term.scroll_display(Scroll::Delta(dir * dist as i32));
+                term.term.scroll_display(Scroll::Delta(dir * dist as i32));
                 Ok(Resp::handled(None))
             }
             Some(Action::Copy)
-                if self
+                if term
                     .term
                     .selection
                     .as_ref()
                     .map_or(false, |s| !s.is_empty()) =>
             {
-                if let Some(s) = self.term.selection_to_string() {
+                if let Some(s) = term.term.selection_to_string() {
                     let _ = state.clipboard.set(s);
                 }
                 Ok(Resp::handled(None))
             }
             Some(Action::Paste) => {
                 if let Ok(s) = state.clipboard.get() {
-                    let s = if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
+                    let s = if term.term.mode().contains(TermMode::BRACKETED_PASTE) {
                         format!("\x1B[200~{s}\x1B[201~")
                     } else {
                         s
                     };
-                    self.send_bytes(s);
+                    term.send_bytes(s);
                 }
                 Ok(Resp::handled(None))
             }
             Some(Action::Mouse(MouseAction::Click, pos, Modifiers::NONE, _drag_id)) => {
                 if let Some(point) = pos_to_point(pos) {
-                    self.term.selection =
+                    term.term.selection =
                         Some(Selection::new(SelectionType::Simple, point, Side::Left));
                     Ok(Resp::handled(None))
                 } else {
@@ -205,7 +272,7 @@ impl Element for Term {
             }
             Some(Action::Mouse(MouseAction::Drag, pos, Modifiers::NONE, _drag_id)) => {
                 if let Some(point) = pos_to_point(pos)
-                    && let Some(sel) = &mut self.term.selection
+                    && let Some(sel) = &mut term.term.selection
                 {
                     sel.update(point, Side::Left);
                     Ok(Resp::handled(None))
@@ -215,13 +282,13 @@ impl Element for Term {
             }
             _ => {
                 if let Event::Raw(ref ev) = event
-                    && let Some(s) = ev.to_esc_seq(self.term.mode())
+                    && let Some(s) = ev.to_esc_seq(term.term.mode())
                 {
                     // Ensure the cursor is on-screen. TODO: Better way of differentiating this than `ALT_SCREEN`
-                    if !self.term.mode().contains(TermMode::ALT_SCREEN) {
-                        self.term.scroll_to_point(self.term.grid().cursor.point);
+                    if !term.term.mode().contains(TermMode::ALT_SCREEN) {
+                        term.term.scroll_to_point(term.term.grid().cursor.point);
                     }
-                    self.send_bytes(s);
+                    term.send_bytes(s);
                     Ok(Resp::handled(None))
                 } else {
                     // Ok(Resp::handled(Some(Action::Show(
@@ -235,41 +302,18 @@ impl Element for Term {
     }
 }
 
-impl Visual for Term {
+impl Visual for TermWindow {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        while let Ok(out) = self.out_rx.try_recv() {
-            state.needs_render = true;
-            match out {
-                Output::Bytes(bytes) => self.ansi.advance(&mut self.term, &bytes),
-                // Title changes
-                Output::Event(TermEvent::Title(title)) => self.title = Some(title),
-                Output::Event(TermEvent::ResetTitle) => self.title = None,
-                // Proxy clipboard events to our internal clipboard
-                Output::Event(TermEvent::ClipboardStore(ClipboardType::Clipboard, s)) => {
-                    _ = state.clipboard.set(s)
-                }
-                Output::Event(TermEvent::ClipboardLoad(ClipboardType::Clipboard, fmt)) => {
-                    if let Ok(s) = state.clipboard.get() {
-                        let _ = self.in_tx.try_send(Input::Bytes(fmt(&s).into()));
-                    }
-                }
-                // Pass bell events on to host
-                Output::Event(TermEvent::Bell) => self.bell = true,
-                Output::Event(_) => {}
-            }
-        }
+        let Some(term) = state.terms.get_mut(self.term) else {
+            return;
+        };
 
-        let display_offset = self.term.grid().display_offset() as isize;
+        let display_offset = term.term.grid().display_offset() as isize;
 
         if frame.has_focus()
-            && let Some(title) = &self.title
+            && let Some(title) = &term.title
         {
             frame.set_title(format!("{}: {title}", env!("CARGO_PKG_NAME")));
-        }
-
-        if self.bell {
-            self.bell = false;
-            frame.ring_bell();
         }
 
         frame
@@ -279,23 +323,23 @@ impl Visual for Term {
                 } else {
                     &state.theme.border
                 },
-                self.title.as_deref(),
+                term.title.as_deref(),
             )
             .with(|frame| {
                 self.term_area = frame.area();
 
                 // Resize terminal if needed
                 let term_size = frame.size().map(|e| e.max(1));
-                if Some(term_size) != self.old_term_size {
-                    self.old_term_size = Some(term_size);
-                    self.term.resize(TermSize::new(term_size[0], term_size[1]));
-                    let _ = self.in_tx.try_send(Input::Resize(frame.size()));
+                if Some(term_size) != term.old_term_size {
+                    term.old_term_size = Some(term_size);
+                    term.term.resize(TermSize::new(term_size[0], term_size[1]));
+                    let _ = term.in_tx.try_send(Input::Resize(frame.size()));
                 }
 
                 if frame.has_focus() {
                     let style = match (
-                        self.term.cursor_style().shape,
-                        self.term.cursor_style().blinking,
+                        term.term.cursor_style().shape,
+                        term.term.cursor_style().blinking,
                     ) {
                         (ansi::CursorShape::Beam, true) => Some(CursorStyle::BlinkingBar),
                         (ansi::CursorShape::Beam, false) => Some(CursorStyle::SteadyBar),
@@ -316,8 +360,8 @@ impl Visual for Term {
                     if let Some(style) = style {
                         frame.set_cursor(
                             [
-                                self.term.grid().cursor.point.column.0 as isize,
-                                self.term.grid().cursor.point.line.0 as isize + display_offset,
+                                term.term.grid().cursor.point.column.0 as isize,
+                                term.term.grid().cursor.point.line.0 as isize + display_offset,
                             ],
                             style,
                         );
@@ -327,7 +371,7 @@ impl Visual for Term {
                 }
 
                 // Draw terminal cells
-                for cell in self.term.grid().display_iter() {
+                for cell in term.term.grid().display_iter() {
                     let map_color = |c| match c {
                         ansi::Color::Named(
                             ansi::NamedColor::Foreground
@@ -377,8 +421,8 @@ impl Visual for Term {
                         .with_bg(map_color(cell.bg))
                         .with_fg(map_color(cell.fg))
                         .with_theme(
-                            if let Some(sel) = &self.term.selection
-                                && let Some(range) = sel.to_range(&self.term)
+                            if let Some(sel) = &term.term.selection
+                                && let Some(range) = sel.to_range(&term.term)
                                 && range.contains(cell.point)
                             {
                                 Some(state.theme.select)
@@ -399,11 +443,11 @@ impl Visual for Term {
 
         let focus = [
             0,
-            self.term.total_lines() as isize
-                - self.term.screen_lines() as isize
-                - self.term.grid().display_offset() as isize,
+            term.term.total_lines() as isize
+                - term.term.screen_lines() as isize
+                - term.term.grid().display_offset() as isize,
         ];
-        self.scroller.render(frame, self.term.total_lines(), focus);
+        self.scroller.render(frame, term.term.total_lines(), focus);
     }
 }
 

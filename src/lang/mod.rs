@@ -160,7 +160,7 @@ impl Highlighter {
             .with_comment(r"\/\*[^(\*\/)]*\*\/")
             .with(
                 TokenKind::Keyword,
-                r"\b[(async)(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(mut)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
+                r"\b[(async)(pub)(enum)(let)(self)(Self)(fn)(impl)(struct)(use)(if)(while)(for)(in)(loop)(mod)(match)(else)(break)(continue)(trait)(const)(static)(type)(as)(crate)(extern)(move)(ref)(return)(super)(unsafe)(use)(where)(dyn)(try)(gen)(macro_rules)(union)(raw)]\b",
             )
             .with(TokenKind::Constant, r"\b[(true)(false)]\b")
             // Flow-control operators count as keywords
@@ -191,7 +191,7 @@ impl Highlighter {
             )
             .with(
                 TokenKind::Operator,
-                r"[(&(mut)?)(\?)(\+=?)(\-=?)(\*=?)(\/=?)(\%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
+                r"[(&(mut)?)(\bmut\b)(\?)(\+=?)(\-=?)(\*=?)(\/=?)(\%=?)(!=?)(==?)(&&?=?)(\|\|?=?)(<<?=?)(>>?=?)(\.\.[\.=]?)\\\~\^:;,\@(=>?)]",
             )
             // Function/method call
             .with(TokenKind::Function, r"(\.)?\b[a-z_][A-Za-z0-9_]*\b[\(<]%")

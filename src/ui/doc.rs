@@ -1,55 +1,36 @@
 use super::*;
 use crate::state::{Buffer, BufferId, Cursor, CursorId};
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
 
 pub struct Doc {
     pub buffer: BufferId,
-    // Remember the cursor we use for each buffer
-    inputs: HashMap<BufferId, (CursorId, Input)>,
+    pub cursor: CursorId,
+    pub input: Input,
     finder: Option<Box<Finder>>,
 }
 
 impl Doc {
     pub fn new(state: &mut State, buffer: BufferId) -> Self {
-        let mut this = Self {
+        Self {
             buffer,
-            inputs: HashMap::default(),
+            cursor: state.buffers.get_mut(buffer).unwrap().start_session(),
+            input: Input::default(),
             finder: None,
-        };
-        this.switch_buffer(state, buffer);
-        this
-    }
-
-    pub fn close(self, state: &mut State) {
-        for (buffer, (cursor, _)) in self.inputs {
-            let Some(buffer) = state.buffers.get_mut(buffer) else {
-                continue;
-            };
-            buffer.end_session(cursor);
         }
     }
 
-    fn switch_buffer(&mut self, state: &mut State, buffer: BufferId) {
-        state.set_most_recent(buffer);
-        self.buffer = buffer;
+    pub fn close(self, state: &mut State) {
         let Some(buffer) = state.buffers.get_mut(self.buffer) else {
             return;
         };
-        // Start a new cursor session for this buffer if one doesn't exist
-        let (cursor_id, input) = self
-            .inputs
-            .entry(self.buffer)
-            .or_insert_with(|| (buffer.start_session(), Input::default()));
-        input.refocus(buffer, *cursor_id);
+        buffer.end_session(self.cursor);
     }
 }
 
 impl Element<()> for Doc {
     fn handle(&mut self, state: &mut State, mut event: Event) -> Result<Resp<()>, Event> {
-        let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
-
         if let Some(finder) = &mut self.finder {
-            let resp = finder.handle(state, input, self.buffer, *cursor_id, event);
+            let resp = finder.handle(state, &mut self.input, self.buffer, self.cursor, event);
             event = match resp {
                 Ok(resp) => {
                     if resp.is_end() {
@@ -75,23 +56,21 @@ impl Element<()> for Doc {
             .unwrap_or_else(|| std::env::current_dir().expect("no working dir"));
 
         match event.to_action(|e| {
-            e.to_open_switcher()
-                .or_else(|| e.to_fs(&open_path))
+            e.to_fs(&open_path)
                 .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_path_search())
         }) {
-            action @ Some(Action::OpenSwitcher)
-            | action @ Some(Action::OpenOpener(_))
+            action @ Some(Action::OpenOpener(_))
             | action @ Some(Action::OpenSaver(_))
             | action @ Some(Action::OpenMover(_)) => Ok(Resp::handled(action.map(Into::into))),
             Some(Action::OpenFinder(ref query)) => {
                 self.finder = Some(
                     Finder::new(
-                        buffer.cursors[*cursor_id],
+                        buffer.cursors[self.cursor],
                         query.clone(),
                         state,
-                        input,
+                        &mut self.input,
                         self.buffer,
                     )
                     .into(),
@@ -107,26 +86,24 @@ impl Element<()> for Doc {
                     Action::OpenSearcher(path, needle).into(),
                 )))
             }
-            Some(Action::SwitchBuffer(new_buffer)) => {
-                self.switch_buffer(state, new_buffer);
-                Ok(Resp::handled(None))
+            Some(Action::OpenFile(path, range)) => {
+                Ok(Resp::handled(Some(Action::OpenFile(path, range).into())))
             }
-            Some(Action::OpenFile(path, range)) => match state.create(path) {
-                Ok(buffer_id) => {
-                    self.switch_buffer(state, buffer_id);
-                    if let Some(buffer) = state.buffers.get_mut(self.buffer)
-                        && let Some(range) = range
-                    {
-                        let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
-                        buffer.select_cursor(*cursor_id, range);
-                        input.refocus(buffer, *cursor_id);
-                    }
-                    Ok(Resp::handled(None))
-                }
-                Err(err) => Ok(Resp::handled(Some(
-                    Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
-                ))),
-            },
+            // Some(Action::OpenFile(path, range)) => match state.create(path) {
+            //     Ok(buffer_id) => {
+            //         self.switch_buffer(state, buffer_id);
+            //         if let Some(buffer) = state.buffers.get_mut(self.buffer)
+            //             && let Some(range) = range
+            //         {
+            //             buffer.select_cursor(self.cursor, range);
+            //             self.input.refocus(buffer, self.cursor);
+            //         }
+            //         Ok(Resp::handled(None))
+            //     }
+            //     Err(err) => Ok(Resp::handled(Some(
+            //         Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
+            //     ))),
+            // },
 
             // Save
             Some(Action::SaveFile) => Ok(Resp::handled(if buffer.has_changes() {
@@ -199,32 +176,20 @@ impl Element<()> for Doc {
                 )))
                 } else {
                     state.close(self.buffer);
-                    // Switch to another buffer, or open a new one
-                    if let Some(new_buffer) = state.most_recent().first() {
-                        self.switch_buffer(state, *new_buffer);
-                        Ok(Resp::handled(None))
-                    } else {
-                        Ok(Resp::end(None))
-                    }
+                    Ok(Resp::end(None))
                 }
             }
             Some(Action::CloseFileForce) => {
                 state.close(self.buffer);
-                // Switch to another buffer, or open a new one
-                if let Some(new_buffer) = state.most_recent().first() {
-                    self.switch_buffer(state, *new_buffer);
-                    Ok(Resp::handled(None))
-                } else {
-                    Ok(Resp::end(None))
-                }
+                Ok(Resp::end(None))
             }
 
-            Some(Action::NewFile) => {
-                let buffer_id = state.new_anonymous();
-                self.switch_buffer(state, buffer_id);
-                Ok(Resp::handled(None))
-            }
-
+            Some(Action::NewFile) => Ok(Resp::handled(Some(Action::NewFile.into()))),
+            // Some(Action::NewFile) => {
+            //     let buffer_id = state.new_anonymous();
+            //     self.switch_buffer(state, buffer_id);
+            //     Ok(Resp::handled(None))
+            // }
             Some(Action::Reload) => {
                 buffer.reload();
                 Ok(Resp::handled(None))
@@ -233,8 +198,8 @@ impl Element<()> for Doc {
                 let Some(buffer) = state.buffers.get_mut(self.buffer) else {
                     return Err(event);
                 };
-                input
-                    .handle(&mut state.clipboard, buffer, *cursor_id, event)
+                self.input
+                    .handle(&mut state.clipboard, buffer, self.cursor, event)
                     .map(Resp::into_can_end)
             }
         }
@@ -246,7 +211,6 @@ impl Visual for Doc {
         let Some(buffer) = state.buffers.get_mut(self.buffer) else {
             return;
         };
-        let (cursor_id, input) = &mut self.inputs.get_mut(&self.buffer).unwrap();
 
         if frame.has_focus() {
             frame.set_title(if let Some(path) = buffer.path() {
@@ -266,11 +230,11 @@ impl Visual for Doc {
             )
             .with_focus(true /*self.finder.is_none()*/)
             .with(|f| {
-                input.render(
+                self.input.render(
                     &state.theme,
                     buffer.name().as_deref(),
                     buffer,
-                    *cursor_id,
+                    self.cursor,
                     self.finder.as_deref(),
                     f,
                 )

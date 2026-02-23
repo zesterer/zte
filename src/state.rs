@@ -3,6 +3,7 @@ use crate::{
     highlight::{Highlights, Token},
     lang::LangPack,
     theme,
+    ui::{Term, TermWindow},
 };
 #[cfg(feature = "clipboard")]
 use clipboard::{ClipboardContext, ClipboardProvider};
@@ -20,6 +21,7 @@ use std::{
 new_key_type! {
     pub struct BufferId;
     pub struct CursorId;
+    pub struct TermId;
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -223,7 +225,7 @@ pub struct Buffer {
     pub redo: Vec<Change>,
     undo_dont_merge: bool,
     action_counter: usize,
-    most_recent_rank: usize,
+    last_switch: Option<SystemTime>,
 
     // Note: ensure `sync_highlights` is called before use
     pub highlights: Highlights,
@@ -278,7 +280,7 @@ impl Buffer {
             redo: Vec::new(),
             undo_dont_merge: false,
             action_counter: 0,
-            most_recent_rank: 0,
+            last_switch: Some(SystemTime::now()),
         }
     }
 
@@ -1363,21 +1365,22 @@ impl Clipboard {
 
 pub struct State {
     pub buffers: DenseSlotMap<BufferId, Buffer>,
+    pub terms: DenseSlotMap<TermId, Term>,
     pub tick: u64,
     pub theme: theme::Theme,
-    pub most_recent_counter: usize,
     pub clipboard: Clipboard,
     pub wakeup: Arc<tokio::sync::Notify>,
     pub needs_render: bool,
+    pub bell_rung: bool,
 }
 
 impl State {
     pub fn new(_args: &Args, wakeup: Arc<tokio::sync::Notify>) -> Self {
         Self {
             buffers: DenseSlotMap::default(),
+            terms: DenseSlotMap::default(),
             tick: 0,
             theme: theme::Theme::default(),
-            most_recent_counter: 0,
             clipboard: 'clipboard: {
                 #[cfg(feature = "clipboard")]
                 if let Ok(ctx) = ClipboardContext::new() {
@@ -1390,6 +1393,7 @@ impl State {
             },
             wakeup,
             needs_render: true,
+            bell_rung: false,
         }
     }
 }
@@ -1446,18 +1450,93 @@ impl State {
         for b in self.buffers.values_mut() {
             b.pre_render();
         }
+
+        for (term_id, term) in &mut self.terms {
+            term.pre_render(
+                &mut self.clipboard,
+                &mut self.needs_render,
+                &mut self.bell_rung,
+            );
+            if term.should_close() {
+                self.close_term(term_id);
+                break;
+            }
+        }
     }
 
-    pub fn set_most_recent(&mut self, buffer: BufferId) {
-        if let Some(buffer) = self.buffers.get_mut(buffer) {
-            self.most_recent_counter += 1;
-            buffer.most_recent_rank = self.most_recent_counter;
+    pub fn set_most_recent(&mut self, task: TaskId) {
+        match task {
+            TaskId::Buffer(buffer_id) => {
+                if let Some(buffer) = self.buffers.get_mut(buffer_id) {
+                    buffer.last_switch = Some(SystemTime::now());
+                }
+            }
+            TaskId::Term(term_id) => {
+                if let Some(term) = self.terms.get_mut(term_id) {
+                    term.last_switch = Some(SystemTime::now());
+                }
+            }
         }
     }
 
     pub fn most_recent(&self) -> Vec<BufferId> {
         let mut most_recent = self.buffers.keys().collect::<Vec<_>>();
-        most_recent.sort_by_key(|b| core::cmp::Reverse(self.buffers[*b].most_recent_rank));
+        most_recent.sort_by_key(|b| core::cmp::Reverse(self.buffers[*b].last_switch));
         most_recent
     }
+
+    pub fn most_recent_tasks(&self) -> Vec<TaskId> {
+        let mut most_recent = self
+            .buffers
+            .keys()
+            .map(TaskId::Buffer)
+            // Only list non-open terms, terms can only be open in one place
+            .chain(
+                self.terms
+                    .keys()
+                    .filter(|t| !self.terms[*t].is_open)
+                    .map(TaskId::Term),
+            )
+            .collect::<Vec<_>>();
+        most_recent.sort_by_key(|t| {
+            core::cmp::Reverse(match t {
+                TaskId::Buffer(b) => self.buffers[*b].last_switch,
+                TaskId::Term(t) => self.terms[*t].last_switch,
+            })
+        });
+        most_recent
+    }
+
+    pub fn create_term(&mut self, term: Term) -> TermWindow {
+        let term_id = self.terms.insert(term);
+        self.switch_term(term_id)
+    }
+
+    pub fn close_term(&mut self, term: TermId) {
+        if let Some(term) = self.terms.remove(term) {
+            term.close(self);
+        }
+    }
+
+    pub fn close_term_window(&mut self, term_id: TermId) {
+        if let Some(term) = self.terms.get_mut(term_id) {
+            if term.is_open {
+                term.is_open = false;
+            } else {
+                self.close_term(term_id);
+            }
+        }
+    }
+
+    pub fn switch_term(&mut self, term: TermId) -> TermWindow {
+        assert!(!self.terms[term].is_open);
+        self.terms[term].is_open = false;
+        TermWindow::new(term)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum TaskId {
+    Buffer(BufferId),
+    Term(TermId),
 }
