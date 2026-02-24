@@ -39,7 +39,7 @@ impl EventListener for Listener {
 
 pub struct Term {
     term: Alacritty<Listener>,
-    old_term_size: Option<[usize; 2]>,
+    resize_req: Option<Option<[usize; 2]>>,
     pub title: Option<String>,
     ansi: ansi::Processor,
     in_tx: Sender<Input>,
@@ -47,7 +47,7 @@ pub struct Term {
     cmd: task::JoinHandle<()>,
     bell: bool,
     pub last_switch: Option<SystemTime>,
-    pub is_open: bool,
+    pub open_count: usize,
 }
 
 impl Term {
@@ -102,14 +102,14 @@ impl Term {
                 Listener(out_tx.clone()),
             ),
             title: None,
-            old_term_size: None,
+            resize_req: None,
             ansi: Default::default(),
             in_tx,
             out_rx,
             cmd,
             bell: false,
             last_switch: None,
-            is_open: false,
+            open_count: 0,
         })
     }
 
@@ -131,6 +131,10 @@ impl Term {
         needs_render: &mut bool,
         bell_rung: &mut bool,
     ) {
+        if let Some(Some(sz)) = self.resize_req.take() {
+            self.term.resize(TermSize::new(sz[0], sz[1]));
+            let _ = self.in_tx.try_send(Input::Resize(sz));
+        }
         while let Ok(out) = self.out_rx.try_recv() {
             *needs_render = true;
             match out {
@@ -330,10 +334,17 @@ impl Visual for TermWindow {
 
                 // Resize terminal if needed
                 let term_size = frame.size().map(|e| e.max(1));
-                if Some(term_size) != term.old_term_size {
-                    term.old_term_size = Some(term_size);
-                    term.term.resize(TermSize::new(term_size[0], term_size[1]));
-                    let _ = term.in_tx.try_send(Input::Resize(frame.size()));
+                // If we have focus, our request takes priority
+                if frame.has_focus() || term.resize_req.is_none() {
+                    // Only actually perform a resize if the terminal needs it
+                    if term_size[0] != term.term.columns()
+                        || term_size[1] != term.term.screen_lines()
+                    {
+                        term.resize_req = Some(Some(term_size));
+                        state.needs_render = true;
+                    } else {
+                        term.resize_req = Some(None);
+                    }
                 }
 
                 if frame.has_focus() {

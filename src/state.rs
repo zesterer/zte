@@ -1528,12 +1528,7 @@ impl State {
             .keys()
             .map(TaskId::Buffer)
             // Only list non-open terms, terms can only be open in one place
-            .chain(
-                self.terms
-                    .keys()
-                    .filter(|t| !self.terms[*t].is_open)
-                    .map(TaskId::Term),
-            )
+            .chain(self.terms.keys().map(TaskId::Term))
             .collect::<Vec<_>>();
         most_recent.sort_by_key(|t| {
             core::cmp::Reverse(match t {
@@ -1557,17 +1552,15 @@ impl State {
 
     pub fn close_term_window(&mut self, term_id: TermId) {
         if let Some(term) = self.terms.get_mut(term_id) {
-            if term.is_open {
-                term.is_open = false;
-            } else {
+            term.open_count -= 1;
+            if term.open_count == 0 {
                 self.close_term(term_id);
             }
         }
     }
 
     pub fn switch_term(&mut self, term: TermId) -> TermWindow {
-        assert!(!self.terms[term].is_open);
-        self.terms[term].is_open = false;
+        self.terms[term].open_count += 1;
         TermWindow::new(term)
     }
 }
