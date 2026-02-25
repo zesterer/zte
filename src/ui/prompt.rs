@@ -515,6 +515,10 @@ impl Element<()> for FileBrowser {
                 self.set_string(&format!("{}/", std::env::home_dir().unwrap().display()));
                 Ok(Resp::handled(None))
             }
+            Some(Action::Char('/')) if path_str.ends_with("/") => {
+                self.set_string(&"/");
+                Ok(Resp::handled(None))
+            }
             // Tab can be used to auto-complete directories
             Some(Action::Indent(true)) => if let Some(file) = self.options.selected() {
                 let tail = if let FileKind::Dir = file.kind { "/" } else { "" };
