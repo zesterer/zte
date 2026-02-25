@@ -475,22 +475,6 @@ impl RawEvent {
         }
     }
 
-    pub fn to_new_term(&self, path: Option<&PathBuf>) -> Option<Action> {
-        if matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('t'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        ) {
-            Some(Action::NewTerm(path.cloned()))
-        } else {
-            None
-        }
-    }
-
     pub fn to_command_start(&self) -> Option<Action> {
         if matches!(
             &self.0,

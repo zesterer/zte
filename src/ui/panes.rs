@@ -47,6 +47,11 @@ impl Pane {
 
     fn switch_task(&mut self, state: &mut State, task: TaskId) {
         state.set_most_recent(task);
+        // Close existing task
+        match core::mem::replace(&mut self.kind, PaneKind::Empty) {
+            PaneKind::Doc(_) | PaneKind::Empty => {}
+            PaneKind::Term(term) => term.close(state),
+        }
         self.kind = match task {
             TaskId::Buffer(buffer_id) => PaneKind::Doc(buffer_id),
             TaskId::Term(term_id) => PaneKind::Term(state.switch_term(term_id)),
@@ -66,7 +71,7 @@ impl Pane {
 
 impl Element<()> for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
-        match event.to_action(|e| e.to_new_term(None).or_else(|| e.to_open_switcher())) {
+        match event.to_action(|e| e.to_open_switcher()) {
             Some(Action::NewTerm(path)) => {
                 let path = path.or_else(|| {
                     if let PaneKind::Doc(buffer_id) = &self.kind
@@ -78,10 +83,10 @@ impl Element<()> for Pane {
                         None
                     }
                 });
-                // TODO: Close other kinds
                 match Term::new(path, state) {
                     Ok(term) => {
-                        self.kind = PaneKind::Term(state.create_term(term));
+                        let term = state.create_term(term);
+                        self.switch_task(state, TaskId::Term(term));
                         Ok(Resp::handled(None))
                     }
                     Err(err) => Ok(Resp::handled(Some(

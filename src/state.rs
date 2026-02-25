@@ -1539,9 +1539,8 @@ impl State {
         most_recent
     }
 
-    pub fn create_term(&mut self, term: Term) -> TermWindow {
-        let term_id = self.terms.insert(term);
-        self.switch_term(term_id)
+    pub fn create_term(&mut self, term: Term) -> TermId {
+        self.terms.insert(term)
     }
 
     pub fn close_term(&mut self, term: TermId) {
