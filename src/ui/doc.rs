@@ -3,7 +3,7 @@ use crate::state::{Buffer, BufferId, Cursor, CursorId};
 use std::ops::Range;
 
 pub struct Doc {
-    pub buffer: BufferId,
+    buffer: BufferId,
     pub cursor: CursorId,
     pub input: Input,
     finder: Option<Box<Finder>>,
@@ -335,7 +335,7 @@ impl Finder {
             // Select the first entry that comes after the current cursor position
             self.selected = (0..self.results.len())
                 .rev()
-                .find(|i| (self.results[*i].start..).contains(&buffer.cursors[self.cursor_id].pos))
+                .find(|i| (self.results[*i].start..).contains(&self.old_cursor.pos))
                 .unwrap_or(0);
 
             self.refocus_selected(buffer, input, self.cursor_id);
