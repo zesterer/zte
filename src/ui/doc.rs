@@ -293,7 +293,6 @@ impl Finder {
             results: Vec::new(),
         };
 
-        this.update(state, input, buffer_id);
         this.refocus_selected(&mut state.buffers[buffer_id], input, cursor_id);
 
         this
@@ -311,7 +310,13 @@ impl Finder {
             .map(|_| idx == self.selected)
     }
 
-    fn update(&mut self, state: &mut State, input: &mut Input, buffer_id: BufferId) {
+    fn update(
+        &mut self,
+        state: &mut State,
+        input: &mut Input,
+        buffer_id: BufferId,
+        cursor_id: CursorId,
+    ) {
         let buffer = &mut state.buffers[buffer_id];
 
         let needle = self.buffer.text.to_string();
@@ -338,7 +343,7 @@ impl Finder {
                 .find(|i| (self.results[*i].start..).contains(&self.old_cursor.pos))
                 .unwrap_or(0);
 
-            self.refocus_selected(buffer, input, self.cursor_id);
+            self.refocus_selected(buffer, input, cursor_id);
         }
     }
 
@@ -395,7 +400,7 @@ impl Finder {
             }
         };
 
-        self.update(state, input, buffer_id);
+        self.update(state, input, buffer_id, cursor_id);
 
         res
     }
