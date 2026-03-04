@@ -572,6 +572,7 @@ impl<'a> Terminal<'a> {
 
                 if self.fb[0].title != self.fb[1].title {
                     stdout.queue(terminal::SetTitle(&self.fb[0].title)).unwrap();
+                    self.fb[0].title = self.fb[1].title.clone();
                 }
 
                 let mut cursor_pos = [0, 0];

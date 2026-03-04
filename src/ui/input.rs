@@ -85,7 +85,7 @@ impl Input {
         let event = if is_doc {
             match self
                 .scroller
-                .handle(event, buffer.text.lines().count(), &mut self.focus)
+                .handle(event, buffer.text.lines().count(), self.focus.each_mut())
             {
                 Ok(resp) => return Ok(resp),
                 Err(event) => event,

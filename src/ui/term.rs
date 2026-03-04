@@ -199,18 +199,16 @@ impl Element for TermWindow {
 
         let display_offset = term.term.grid().display_offset() as isize;
         // First, handle scroller events
-        let old_focus = [
-            0,
-            term.term.total_lines() as isize - term.term.screen_lines() as isize - display_offset,
-        ];
+        let old_focus =
+            term.term.total_lines() as isize - term.term.screen_lines() as isize - display_offset;
         let mut focus = old_focus;
         let event = match self
             .scroller
-            .handle(event, term.term.total_lines(), &mut focus)
+            .handle(event, term.term.total_lines(), [&mut 0, &mut focus])
         {
             Ok(resp) => {
                 term.term
-                    .scroll_display(Scroll::Delta((old_focus[1] - focus[1]) as i32));
+                    .scroll_display(Scroll::Delta((old_focus - focus) as i32));
                 return Ok(resp);
             }
             Err(event) => event,

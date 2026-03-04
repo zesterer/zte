@@ -109,11 +109,12 @@ impl Visual for Label {
 
 /// List selection
 pub struct Options<T> {
-    pub focus: usize,
+    pub focus: isize,
     pub selected: usize,
     // (score, option)
     pub options: Vec<T>,
     pub ranking: Vec<usize>,
+    scroller: Scroller,
     last_area: Area,
 }
 
@@ -125,6 +126,7 @@ impl<T> Options<T> {
             selected: 0,
             options,
             ranking,
+            scroller: Scroller::default().with_clamp_focus(),
             last_area: Area::default(),
         }
     }
@@ -138,7 +140,8 @@ impl<T> Options<T> {
         options: impl IntoIterator<Item = T>,
         f: F,
     ) {
-        self.options = options.into_iter().collect();
+        // Pretty much just a reset
+        *self = Self::new(options);
         self.apply_scoring(f);
     }
 
@@ -152,6 +155,7 @@ impl<T> Options<T> {
         ranking.sort_by_key(|(_, score)| score.clone());
         self.ranking = ranking.into_iter().map(|(i, _)| i).collect();
         self.selected = 0;
+        self.focus = 0;
     }
 
     pub fn requested_height(&self) -> usize {
@@ -182,11 +186,29 @@ impl<T> Options<T> {
             }
             _ => {}
         }
+
+        // Clamp focus to selected idx
+        self.focus = self
+            .focus
+            .max(
+                self.selected
+                    .saturating_sub(self.last_area.size()[1].saturating_sub(1))
+                    as isize,
+            )
+            .min(self.selected as isize);
     }
 }
 
 impl<T> Element<T> for Options<T> {
     fn handle(&mut self, _state: &mut State, event: Event) -> Result<Resp<T>, Event> {
+        let event = match self
+            .scroller
+            .handle(event, self.ranking.len(), [&mut 0, &mut self.focus])
+        {
+            Ok(resp) => return Ok(Resp::handled(resp.event)),
+            Err(event) => event,
+        };
+
         match event.to_action(|e| e.to_go().or_else(|| e.to_move())) {
             Some(Action::Move(
                 dir @ (Dir::Up | Dir::Down),
@@ -202,7 +224,7 @@ impl<T> Element<T> for Options<T> {
             {
                 if let Some(pos) = self.last_area.contains(pos) {
                     let new_selected =
-                        ((pos[1] - self.focus as isize).max(0) as usize).min(self.ranking.len());
+                        ((pos[1] + self.focus).max(0) as usize).min(self.ranking.len());
                     if self.selected == new_selected {
                         return Ok(Resp::end_with(
                             self.options.remove(self.ranking[self.selected]),
@@ -212,12 +234,6 @@ impl<T> Element<T> for Options<T> {
                         self.selected = new_selected;
                     }
                 }
-                Ok(Resp::handled(None))
-            }
-            Some(Action::Mouse(MouseAction::Scroll(dir @ (Dir::Up | Dir::Down)), pos, _, _))
-                if self.last_area.contains(pos).is_some() =>
-            {
-                self.scroll(dir, Dist::Char);
                 Ok(Resp::handled(None))
             }
             Some(Action::Go) => {
@@ -236,9 +252,9 @@ impl<T> Element<T> for Options<T> {
 }
 
 impl<T: Visual> Visual for Options<T> {
-    fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let mut frame = frame.with_border(
-            if frame.has_focus() {
+    fn render(&mut self, state: &mut State, outer_frame: &mut Rect) {
+        let mut frame = outer_frame.with_border(
+            if outer_frame.has_focus() {
                 &state.theme.focus_border
             } else {
                 &state.theme.border
@@ -248,15 +264,14 @@ impl<T: Visual> Visual for Options<T> {
 
         self.last_area = frame.area();
 
-        self.focus = self
-            .focus
-            .max(
-                self.selected
-                    .saturating_sub(frame.size()[1].saturating_sub(1)),
-            )
-            .min(self.selected);
-
-        for (row, (i, idx)) in self.ranking.iter().enumerate().skip(self.focus).enumerate() {
+        for (row, (i, idx)) in self
+            .ranking
+            .iter()
+            .enumerate()
+            .skip(self.focus.max(0) as usize)
+            .take(frame.size()[1])
+            .enumerate()
+        {
             let option = &mut self.options[*idx];
             frame
                 .rect([0, row], [frame.size()[0], 1])
@@ -268,6 +283,9 @@ impl<T: Visual> Visual for Options<T> {
                 .fill(' ')
                 .with(|f| option.render(state, f));
         }
+
+        self.scroller
+            .render(outer_frame, self.ranking.len(), [0, self.focus]);
     }
 }
 
@@ -277,16 +295,22 @@ pub struct Scroller {
     pub last_area: Area,
     pub last_scroll_pos: Option<([isize; 2], usize, usize)>,
     pub scroll_grab: Option<(usize, isize)>,
+    clamp_focus: bool,
 }
 
 impl Scroller {
+    pub fn with_clamp_focus(mut self) -> Self {
+        self.clamp_focus = true;
+        self
+    }
+
     fn handle(
         &mut self,
         event: Event,
         line_count: usize,
-        focus: &mut [isize; 2],
+        focus: [&mut isize; 2],
     ) -> Result<Resp, Event> {
-        match event.to_action(|_| None) {
+        let res = match event.to_action(|_| None) {
             Some(Action::Mouse(MouseAction::Scroll(dir), pos, _, _))
                 if self.last_area.contains(pos).is_some() =>
             {
@@ -297,8 +321,8 @@ impl Scroller {
                     Dir::Left => [-1, 0],
                     Dir::Right => [1, 0],
                 };
-                focus[0] = (focus[0] + dfocus[0] * dist[0] as isize).max(0);
-                focus[1] = (focus[1] + dfocus[1] * dist[1] as isize).max(0);
+                *focus[0] += dfocus[0] * dist[0] as isize;
+                *focus[1] += dfocus[1] * dist[1] as isize;
                 Ok(Resp::handled(None))
             }
             Some(Action::Mouse(MouseAction::Click, pos, Modifiers::NONE, drag_id))
@@ -322,14 +346,29 @@ impl Scroller {
                 if let Some((_, offset)) = self.scroll_grab
                     && let Some((_, _, frame_sz)) = self.last_scroll_pos
                 {
-                    focus[1] = ((self.last_area.translate(pos)[1] - offset).max(0) as usize
+                    *focus[1] = ((self.last_area.translate(pos)[1] - offset).max(0) as usize
                         * line_count
                         / frame_sz) as isize;
                 }
                 Ok(Resp::handled(None))
             }
             _ => Err(event),
+        };
+
+        // Limit focus to the content area
+        let limit = if self.clamp_focus {
+            [
+                !0,
+                line_count.saturating_sub(self.last_area.size()[1].saturating_sub(2)),
+            ]
+        } else {
+            [!0, line_count]
+        };
+        for i in 0..2 {
+            *focus[i] = (*focus[i]).max(0).min(limit[i] as isize);
         }
+
+        res
     }
 
     fn render(&mut self, frame: &mut Rect, line_count: usize, focus: [isize; 2]) {
