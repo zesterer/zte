@@ -124,10 +124,12 @@ impl CompiledPattern {
     pub fn find_nonoverlapping_matches(&self, text: &str) -> impl Iterator<Item = Range<usize>> {
         let mut at = 0;
         core::iter::from_fn(move || {
+            // Don't need to search the whole string!
+            let max_start = text.len().saturating_sub(self.prefix.len());
             loop {
-                if let Some(left) = text.get(at..)
-                    && let Some(c) = left.chars().next()
-                {
+                if at < max_start {
+                    // SAFETY: `at` will always be on a char boundary
+                    let left = unsafe { &text.get_unchecked(at..) };
                     let start = at;
                     // Fast path
                     if left.starts_with(&self.prefix)
@@ -139,7 +141,7 @@ impl CompiledPattern {
                         at = end;
                         break Some(start..end);
                     } else {
-                        at += c.len_utf8();
+                        at = text.ceil_char_boundary(at + 1);
                     }
                 } else {
                     break None;
@@ -165,8 +167,12 @@ pub struct FastFn {
     drop: unsafe fn(*mut ()),
 }
 
+// SAFETY: `FastFn::new` requires that the function be `Send + Sync`
+unsafe impl Send for FastFn {}
+unsafe impl Sync for FastFn {}
+
 impl FastFn {
-    fn new<F: Fn(&mut State) -> Option<()> + 'static>(f: F) -> Self {
+    fn new<F: Fn(&mut State) -> Option<()> + Send + Sync + 'static>(f: F) -> Self {
         unsafe fn invoke<F: Fn(&mut State) -> Option<()> + 'static>(
             data: *mut (),
             state: &mut State,
@@ -174,7 +180,7 @@ impl FastFn {
             let f = unsafe { &*data.cast::<F>() };
             f(state)
         }
-        unsafe fn do_drop<F: Fn(&mut State) -> Option<()> + 'static>(data: *mut ()) {
+        unsafe fn do_drop<F: Fn(&mut State) -> Option<()> + Send + Sync + 'static>(data: *mut ()) {
             drop(unsafe { Box::from_raw(data.cast::<F>()) })
         }
         FastFn {
@@ -333,7 +339,7 @@ impl Regex {
     }
 
     fn compile_cont(self, opt: Opt) -> FastFn {
-        fn cont(opt: Opt, f: impl Fn(&mut State) -> Option<()> + 'static) -> FastFn {
+        fn cont(opt: Opt, f: impl Fn(&mut State) -> Option<()> + Send + Sync + 'static) -> FastFn {
             match opt {
                 Opt::Return => FastFn::new(f),
                 Opt::Continue(next) => FastFn::new(move |state| {

@@ -1,6 +1,16 @@
 use super::*;
 use crate::state::{Buffer, CursorId};
-use std::{fs, ops::Range, path::Path};
+use std::{
+    fs,
+    io::Read as _,
+    ops::Range,
+    path::Path,
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    thread,
+};
 
 pub struct Searcher {
     options: Options<SearchResult>,
@@ -23,12 +33,11 @@ impl Searcher {
             path: &Path,
             needle: Option<&regex::CompiledPattern>,
             results: &mut Vec<SearchResult>,
+            // Extra paths that need searching
+            to_search: &mut Vec<PathBuf>,
+            // Can be anything, will be cleared anyway: only exists to reuse the allocation!
+            buf: &mut String,
         ) {
-            // Cap reached!
-            if results.len() > 10_000 {
-                return;
-            }
-
             // Skip hidden files
             if path
                 .file_name()
@@ -45,11 +54,10 @@ impl Searcher {
                 && link.starts_with(search_path)
             {
                 // Skip links that point back into the search path: we'll be visiting them anyway!
-            } else if let Ok(file) = fs::File::open(path)
-                && let Ok(md) = file.metadata()
+            } else if let Ok(md) = fs::metadata(path)
                 // Maximum 1 MB
                 && md.len() < 1 << 20
-                && let Ok(s) = fs::read_to_string(path)
+                && fs::File::open(path).and_then(|mut f| { buf.clear(); f.read_to_string(buf) }).is_ok()
             {
                 let rdir = format!(
                     "./{}",
@@ -59,16 +67,12 @@ impl Searcher {
                 );
                 if let Some(needle) = needle {
                     let mut file_matches = 0;
-                    // for (line_idx, line_text) in s
-                    //     .lines()
-                    //     .enumerate()
-                    //     .filter(|(_, l)| needle.find_nonoverlapping_matches(l).next().is_some())
-                    for matching in needle.find_nonoverlapping_matches(&s) {
+                    for matching in needle.find_nonoverlapping_matches(&buf) {
                         // Find the line_idx, line_pos, and line_text of the match
                         let (mut line_idx, mut line_pos, mut line_text) = (0, 0, String::new());
-                        for line in s.split_inclusive('\n') {
+                        for line in buf.split_inclusive('\n') {
                             if line_pos + line.len() > matching.start {
-                                line_text = s[line_pos..][..line.len()].to_string();
+                                line_text = buf[line_pos..][..line.len()].to_string();
                                 break;
                             } else {
                                 line_idx += 1;
@@ -122,7 +126,7 @@ impl Searcher {
                 }
             } else if let Ok(entries) = fs::read_dir(path) {
                 // Special case, ignore Rust target dir to prevent searching too many places
-                {
+                if path.ends_with("target") {
                     let mut path = path.to_path_buf();
                     path.push("CACHEDIR.TAG");
                     if path.exists() {
@@ -132,13 +136,59 @@ impl Searcher {
 
                 for entry in entries {
                     let Ok(entry) = entry else { continue };
-                    search_in(search_path, &entry.path(), needle, results);
+                    to_search.push(entry.path());
                 }
             }
         }
 
-        let mut results = Vec::new();
-        search_in(&search_path, &search_path, needle, &mut results);
+        let results = Mutex::new(Vec::new());
+        let to_search = Mutex::new(vec![search_path.clone()]);
+        let par = thread::available_parallelism().map_or(1, |p| p.get());
+        let waiting = AtomicUsize::new(0);
+        thread::scope(|s| {
+            for _ in 0..par {
+                s.spawn(|| {
+                    let mut buf = String::new();
+                    loop {
+                        // Search the next path
+                        if let Some(next) = { to_search.lock().unwrap().pop() } {
+                            // Stop looking for results if we hit our quota
+                            if { results.lock().unwrap().len() } >= 10_000 {
+                                break;
+                            } else {
+                                let mut results_new = Vec::new();
+                                let mut to_search_new = Vec::new();
+                                search_in(
+                                    &search_path,
+                                    &next,
+                                    needle,
+                                    &mut results_new,
+                                    &mut to_search_new,
+                                    &mut buf,
+                                );
+                                // Only add the results of the search to the working data if we found anything
+                                if !results_new.is_empty() {
+                                    results.lock().unwrap().append(&mut results_new)
+                                }
+                                if !to_search_new.is_empty() {
+                                    to_search.lock().unwrap().append(&mut to_search_new)
+                                }
+                            }
+                        } else {
+                            // Wait until every thread is waiting, which would imply that there's no more work to be done
+                            if waiting.fetch_add(1, Ordering::Relaxed) + 1 >= par {
+                                break;
+                            } else {
+                                // Wait for a while in the hope that more work will become available
+                                thread::sleep(Duration::from_micros(10));
+                                waiting.fetch_sub(1, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        let results = results.into_inner().unwrap();
 
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
@@ -256,7 +306,12 @@ struct SearchLoc {
 struct SearchResult {
     loc: SearchLoc,
     rdir: String,
-    line: Option<Result<(Input, CursorId, Buffer), Box<dyn FnOnce() -> (Input, CursorId, Buffer)>>>,
+    line: Option<
+        Result<
+            (Input, CursorId, Buffer),
+            Box<dyn FnOnce() -> (Input, CursorId, Buffer) + Send + Sync>,
+        >,
+    >,
 }
 
 impl Visual for SearchResult {
