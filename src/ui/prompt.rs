@@ -501,7 +501,9 @@ impl Element<()> for FileBrowser {
             Some(Action::Cancel) => Ok(Resp::end(None)),
             // Backspace removes the entire path segment!
             // Only works if we're at the end of the string
-            Some(Action::Char('\x08')) if self.buffer.cursors.get(self.cursor_id).map_or(false, |c| c.selection().is_none() && c.pos == self.buffer.text.len()) => {
+            Some(Action::Char('\x08')) if self.buffer.cursors.get(self.cursor_id).map_or(false, |c| c.selection().is_none()
+                && c.pos == self.buffer.text.len())
+                && path_str.ends_with("/") => {
                 if path_str != "/" {
                     self.set_string(
                         path_str

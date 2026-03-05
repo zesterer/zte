@@ -85,7 +85,7 @@ impl Input {
         let event = if is_doc {
             match self
                 .scroller
-                .handle(event, buffer.text.lines().count(), self.focus.each_mut())
+                .handle(event, buffer.text.lines().len(), self.focus.each_mut())
             {
                 Ok(resp) => return Ok(resp),
                 Err(event) => event,
@@ -295,7 +295,7 @@ impl Input {
             Mode::Prompt => (2, 2),
             Mode::Filter => (0, 0),
             Mode::Doc => {
-                let line_num_w = (self.line_offset + buffer.text.lines().count())
+                let line_num_w = (self.line_offset + buffer.text.lines().len())
                     .max(1)
                     .ilog10() as usize
                     + 1;
@@ -464,6 +464,6 @@ impl Input {
         }
 
         self.scroller
-            .render(outer_frame, buffer.text.lines().count(), self.focus);
+            .render(outer_frame, buffer.text.lines().len(), self.focus);
     }
 }

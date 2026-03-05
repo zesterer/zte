@@ -250,6 +250,7 @@ impl TokenCache {
             self.total_len = b.start;
             self.blocks.truncate(idx);
         }
+        self.flat_text.truncate(pos);
     }
 
     pub fn get_at(&mut self, highlighter: &Highlighter, text: &Text, pos: usize) -> Option<&Token> {
@@ -258,9 +259,10 @@ impl TokenCache {
             return None;
         }
 
-        // Grow the flat string until it covers the area we need
-        self.flat_text.clear();
-        for s in text.slice(..).chunks() {
+        // We know that we're going to need *at least* `pos` bytes
+        self.flat_text
+            .reserve(pos.saturating_sub(self.flat_text.len()));
+        for s in text.slice(self.flat_text.len()..).chunks() {
             self.flat_text += s;
         }
 

@@ -26,6 +26,8 @@
 ## Todo
 
 - [ ] Replace
+- [ ] Git integration
+- [ ] LSP integration
 
 ## Issues to fix
 
