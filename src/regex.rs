@@ -124,27 +124,24 @@ impl CompiledPattern {
     pub fn find_nonoverlapping_matches(&self, text: &str) -> impl Iterator<Item = Range<usize>> {
         let mut at = 0;
         core::iter::from_fn(move || {
-            // Don't need to search the whole string!
-            let max_start = text.len().saturating_sub(self.prefix.len());
             loop {
-                if at < max_start {
-                    // SAFETY: `at` will always be on a char boundary
-                    let left = unsafe { &text.get_unchecked(at..) };
-                    let start = at;
-                    // Fast path
-                    if left.starts_with(&self.prefix)
-                        // Slow path
-                        && let Some(end) = self.matches(text, at)
-                        // Zero-length matches don't count!
-                        && end > at
-                    {
-                        at = end;
-                        break Some(start..end);
-                    } else {
-                        at = text.ceil_char_boundary(at + 1);
-                    }
+                // SAFETY: `at` will always be on a char boundary
+                let left = unsafe { &text.get_unchecked(at..) };
+
+                at += if let Some(idx) = left.find(&self.prefix) {
+                    idx
                 } else {
                     break None;
+                };
+
+                let start = at;
+                if let Some(end) = self.matches(text, at)
+                    && end > at
+                {
+                    at = end;
+                    break Some(start..end);
+                } else {
+                    at = text.ceil_char_boundary(at + 1);
                 }
             }
         })

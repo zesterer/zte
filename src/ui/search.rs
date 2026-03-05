@@ -48,16 +48,34 @@ impl Searcher {
                 return;
             }
 
-            if let Ok(meta) = fs::symlink_metadata(path)
-                && meta.is_symlink()
+            // Avoid infinitely recursing through links
+            if path.as_os_str().len() > 512 {
+                return;
+            }
+
+            let Ok(meta) = fs::symlink_metadata(path) else {
+                return;
+            };
+
+            // Maximum 1 MB, any larger and we don't include it in results when searching for a text pattern
+            if needle.is_some() && meta.len() >= 1 << 20 {
+                return;
+            }
+
+            if meta.is_symlink()
                 && let Ok(link) = path.canonicalize()
                 && link.starts_with(search_path)
             {
                 // Skip links that point back into the search path: we'll be visiting them anyway!
-            } else if let Ok(md) = fs::metadata(path)
-                // Maximum 1 MB
-                && md.len() < 1 << 20
-                && fs::File::open(path).and_then(|mut f| { buf.clear(); f.read_to_string(buf) }).is_ok()
+                return;
+            }
+
+            if fs::File::open(path)
+                .and_then(|mut f| {
+                    buf.clear();
+                    f.read_to_string(buf)
+                })
+                .is_ok()
             {
                 let rdir = format!(
                     "./{}",

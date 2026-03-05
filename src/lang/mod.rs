@@ -148,7 +148,7 @@ impl Highlighter {
             // Inline code
             .with(TokenKind::Constant, r"`[^`$]*[`$]")
             // HTML
-            .with(TokenKind::Special, r"<[^<>]*>")
+            .with(TokenKind::Macro, r"<[^<>]*>")
     }
 
     pub fn rust(self) -> Self {
