@@ -358,14 +358,14 @@ impl Scroller {
         // Limit focus to the content area
         let limit = if self.clamp_focus {
             [
-                !0,
-                line_count.saturating_sub(self.last_area.size()[1].saturating_sub(2)),
+                isize::MAX,
+                line_count.saturating_sub(self.last_area.size()[1].saturating_sub(2)) as isize,
             ]
         } else {
-            [!0, line_count]
+            [isize::MAX, line_count as isize]
         };
         for i in 0..2 {
-            *focus[i] = (*focus[i]).max(0).min(limit[i] as isize);
+            *focus[i] = (*focus[i]).max(0).min(limit[i]);
         }
 
         res
