@@ -260,10 +260,12 @@ impl TokenCache {
         }
 
         // We know that we're going to need *at least* `pos` bytes
-        self.flat_text
-            .reserve(pos.saturating_sub(self.flat_text.len()));
-        for s in text.slice(self.flat_text.len()..).chunks() {
-            self.flat_text += s;
+        if self.flat_text.len() < text.len() {
+            self.flat_text
+                .reserve(text.len().saturating_sub(self.flat_text.len()));
+            for s in text.slice(self.flat_text.len()..).chunks() {
+                self.flat_text += s;
+            }
         }
 
         // Grow the highlight cache until it covers `pos`

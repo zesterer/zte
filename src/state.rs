@@ -201,7 +201,7 @@ impl Text {
             .unwrap_or_else(|_| self.slice(0..0))
     }
 
-    fn line_range(&self, line: isize) -> Range<usize> {
+    pub fn line_range(&self, line: isize) -> Range<usize> {
         let line = line.max(0) as usize;
         let line_len = self.inner.line_len();
         if line > line_len {

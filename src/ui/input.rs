@@ -319,23 +319,22 @@ impl Input {
                 && buffer.text.to_coord(s.start)[1]
                     != buffer.text.to_coord(s.end.saturating_sub(1))[1]
         });
+        let block_col = cursor_block
+            .as_ref()
+            .map(|(_, s)| buffer.text.to_coord(s.end.saturating_sub(1))[0]);
 
-        let mut pos = 0;
-        for (i, (line_num, (line_pos, line))) in buffer
-            .text
-            .lines()
-            .chain(if buffer.text.lines().len() == 0 {
-                Some(buffer.text.slice(0..0))
-            } else {
-                None
+        for (i, (line_num, line_pos, line)) in (self.focus[1].max(0) as usize
+            ..buffer.text.lines().len().max(1))
+            .map(|line_num| {
+                (
+                    line_num,
+                    buffer.text.line_range(line_num as isize).start,
+                    buffer
+                        .text
+                        .line(line_num)
+                        .unwrap_or_else(|| buffer.text.slice(0..0)),
+                )
             })
-            .map(move |line| {
-                let line_pos = pos;
-                pos += line.byte_len();
-                (line_pos, line)
-            })
-            .enumerate()
-            .skip(self.focus[1].max(0) as usize)
             .enumerate()
             .take(frame.size()[1])
         {
@@ -357,12 +356,8 @@ impl Input {
                     ),
             };
 
-            let line_highlight_selected = matches!(self.mode, Mode::Doc)
-                && buffer.text.to_coord(cursor.pos)[1] == line_num as isize;
-
-            let block_col = cursor_block
-                .as_ref()
-                .map(|(_, s)| buffer.text.to_coord(s.end.saturating_sub(1))[0]);
+            let line_highlight_selected =
+                matches!(self.mode, Mode::Doc) && cursor_coord[1] == line_num as isize;
 
             // Line
             {
