@@ -439,7 +439,7 @@ impl Input {
                     } else {
                         frame.with_theme(None)
                     };
-                    frame.text([i as isize, 0], c.encode_utf8(&mut [0; 4]));
+                    frame.char([i as isize, 0], c);
 
                     pos = pos
                         .zip(line_c)

@@ -394,27 +394,33 @@ impl<'a> Rect<'a> {
 
     pub fn text(&mut self, origin: [isize; 2], text: &str) -> Rect<'_> {
         for (idx, c) in text.chars().enumerate() {
-            if (0..self.size()[0] as isize).contains(&(origin[0] + idx as isize)) && origin[1] >= 0
-            {
+            self.char([origin[0] + idx as isize, origin[1]], *c.borrow());
+        }
+        self.reborrow()
+    }
+
+    pub fn char(&mut self, origin: [isize; 2], c: char) -> Rect<'_> {
+        if (0..self.size()[0] as isize).contains(&origin[0])
+            && (0..self.size()[1] as isize).contains(&origin[1])
+        {
+            self.set(
+                origin.map(|e| e as usize),
+                c,
                 // TODO: uline
-                self.set(
-                    [(origin[0] + idx as isize) as usize, origin[1] as usize],
-                    *c.borrow(),
-                    theme::CellTheme {
-                        fg: Some(self.fg),
-                        bg: Some(self.bg),
-                        // Apply dimming to all unfocused things
-                        attr: Some(
-                            self.attr
-                                | if self.has_focus {
-                                    Attributes::none()
-                                } else {
-                                    Attributes::none().with(Attribute::Dim)
-                                },
-                        ),
-                    },
-                );
-            }
+                theme::CellTheme {
+                    fg: Some(self.fg),
+                    bg: Some(self.bg),
+                    // Apply dimming to all unfocused things
+                    attr: Some(
+                        self.attr
+                            | if self.has_focus {
+                                Attributes::none()
+                            } else {
+                                Attributes::none().with(Attribute::Dim)
+                            },
+                    ),
+                },
+            );
         }
         self.reborrow()
     }
