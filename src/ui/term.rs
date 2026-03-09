@@ -283,14 +283,44 @@ impl Element for TermWindow {
                 }
             }
             _ => {
+                use terminput::{Encoding, KittyFlags};
+
                 if let Event::Raw(ref ev) = event
-                    && let Some(s) = ev.to_esc_seq(term.term.mode())
+                    && let Ok(ev) = terminput_crossterm::to_terminput(ev.0.clone())
+                    && let mut bytes = [0; 16]
+                    && let mode = term.term.mode()
+                    && let Ok(n) = ev.encode(
+                        &mut bytes,
+                        Encoding::Kitty(
+                            KittyFlags::empty()
+                                | if mode.contains(TermMode::DISAMBIGUATE_ESC_CODES) {
+                                    KittyFlags::DISAMBIGUATE_ESCAPE_CODES
+                                } else {
+                                    KittyFlags::empty()
+                                }
+                                | if mode.contains(TermMode::REPORT_EVENT_TYPES) {
+                                    KittyFlags::REPORT_EVENT_TYPES
+                                } else {
+                                    KittyFlags::empty()
+                                }
+                                | if mode.contains(TermMode::REPORT_ALTERNATE_KEYS) {
+                                    KittyFlags::REPORT_ALTERNATE_KEYS
+                                } else {
+                                    KittyFlags::empty()
+                                }
+                                | if mode.contains(TermMode::REPORT_ALL_KEYS_AS_ESC) {
+                                    KittyFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                                } else {
+                                    KittyFlags::empty()
+                                },
+                        ),
+                    )
                 {
                     // Ensure the cursor is on-screen. TODO: Better way of differentiating this than `ALT_SCREEN`
                     if !term.term.mode().contains(TermMode::ALT_SCREEN) {
                         term.term.scroll_to_point(term.term.grid().cursor.point);
                     }
-                    term.send_bytes(s);
+                    term.send_bytes(&bytes[..n]);
                     Ok(Resp::handled(None))
                 } else {
                     // Ok(Resp::handled(Some(Action::Show(
@@ -457,142 +487,5 @@ impl Visual for TermWindow {
                 - term.term.grid().display_offset() as isize,
         ];
         self.scroller.render(frame, term.term.total_lines(), focus);
-    }
-}
-
-use crate::action::RawEvent;
-impl RawEvent {
-    fn to_esc_seq(&self, mode: &TermMode) -> Option<String> {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-
-        match &self.0 {
-            TerminalEvent::Key(KeyEvent {
-                code,
-                modifiers,
-                kind,
-                state: _,
-            }) => {
-                // Base on `https://www.leonerd.org.uk/hacks/fixterms/`
-
-                let kind = if mode.contains(TermMode::REPORT_EVENT_TYPES) {
-                    match kind {
-                        KeyEventKind::Press => None,
-                        KeyEventKind::Repeat => Some(2),
-                        KeyEventKind::Release => Some(3),
-                    }
-                } else {
-                    match kind {
-                        KeyEventKind::Press => None,
-                        KeyEventKind::Repeat => None,
-                        KeyEventKind::Release => return None,
-                    }
-                };
-
-                /*
-                if state.contains(KeyEventState::KEYPAD) {
-                    return None;
-                }
-                if state.contains(KeyEventState::CAPS_LOCK) {
-                    return None;
-                }
-                if state.contains(KeyEventState::NUM_LOCK) {
-                    return None;
-                }
-                */
-
-                enum Class {
-                    Unicode(char),
-                    ModifiedC0(&'static str),
-                    Special(u8),
-                    ReallySpecial(char),
-                }
-
-                let class = match code {
-                    KeyCode::Enter => Class::Unicode('\r'),
-                    KeyCode::Tab => Class::Unicode('\t'),
-                    KeyCode::BackTab => Class::ModifiedC0("\x1B[Z"),
-                    KeyCode::Backspace => Class::Unicode('\x7F'),
-                    KeyCode::Left => Class::ReallySpecial('D'),
-                    KeyCode::Right => Class::ReallySpecial('C'),
-                    KeyCode::Up => Class::ReallySpecial('A'),
-                    KeyCode::Down => Class::ReallySpecial('B'),
-                    KeyCode::Home => Class::ReallySpecial('H'),
-                    KeyCode::End => Class::ReallySpecial('F'),
-                    KeyCode::F(1) => Class::ReallySpecial('P'),
-                    KeyCode::F(2) => Class::ReallySpecial('Q'),
-                    KeyCode::F(3) => Class::ReallySpecial('R'),
-                    KeyCode::F(4) => Class::ReallySpecial('S'),
-                    KeyCode::Insert => Class::Special(2),
-                    KeyCode::Delete => Class::Special(3),
-                    KeyCode::PageUp => Class::Special(5),
-                    KeyCode::PageDown => Class::Special(6),
-                    KeyCode::F(5) => Class::Special(15),
-                    KeyCode::F(6) => Class::Special(17),
-                    KeyCode::F(7) => Class::Special(18),
-                    KeyCode::F(8) => Class::Special(19),
-                    KeyCode::F(9) => Class::Special(20),
-                    KeyCode::F(10) => Class::Special(21),
-                    KeyCode::F(11) => Class::Special(23),
-                    KeyCode::F(12) => Class::Special(24),
-                    KeyCode::F(_) => return None, // Should be unreachable
-                    // KeyCode::Esc => Class::Unicode('\x1B'),
-                    KeyCode::Char(c) => Class::Unicode(*c),
-                    // Not handled
-                    KeyCode::Null
-                    | KeyCode::Esc
-                    | KeyCode::CapsLock
-                    | KeyCode::ScrollLock
-                    | KeyCode::NumLock
-                    | KeyCode::PrintScreen
-                    | KeyCode::Pause
-                    | KeyCode::Menu
-                    | KeyCode::KeypadBegin
-                    | KeyCode::Media(_)
-                    | KeyCode::Modifier(_) => return None,
-                    // _ => return None,
-                };
-
-                let mut modifiers = *modifiers;
-
-                // Shift is removed for unicode
-                if matches!(&class, Class::Unicode(_)) {
-                    modifiers.remove(KeyModifiers::SHIFT);
-                }
-
-                let modifiers = 1
-                    + (0 | (modifiers.contains(KeyModifiers::SHIFT) as u32) << 0
-                        | (modifiers.contains(KeyModifiers::ALT) as u32) << 1
-                        | (modifiers.contains(KeyModifiers::CONTROL) as u32) << 2);
-
-                let mod_seq = if let Some(kind) = kind {
-                    format!("{modifiers}:{kind}")
-                } else {
-                    format!("{modifiers}")
-                };
-
-                Some(match class {
-                    Class::Unicode(c) if modifiers == 1 && kind.is_none() => format!("{c}"),
-                    // Special cases
-                    Class::Unicode(c @ ('i' | 'm' | '[' | '@')) if modifiers == 5 => {
-                        format!("\x1B[{};{mod_seq}{c}~", c as u8)
-                    }
-                    Class::Unicode(c @ 'a'..='z') if modifiers == 5 && kind.is_none() => {
-                        format!("{}", (c as u8 & 0x1F) as char)
-                    }
-                    Class::Unicode(c) => format!("\x1B[{};{mod_seq};{}u", c as u8, c as u8),
-
-                    Class::ModifiedC0(s) => format!("{s}"),
-
-                    Class::Special(c) if modifiers == 1 && kind.is_none() => format!("\x1B[{c}~"),
-                    Class::Special(c) => format!("\x1B[;{mod_seq}{c}~"),
-
-                    Class::ReallySpecial(c) if modifiers == 1 && kind.is_none() => {
-                        format!("\x1B[{c}")
-                    }
-                    Class::ReallySpecial(c) => format!("\x1B[1;{mod_seq}{c}"),
-                })
-            }
-            _ => None,
-        }
     }
 }
