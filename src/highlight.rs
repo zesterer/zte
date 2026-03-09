@@ -114,7 +114,7 @@ impl Highlighter {
 }
 
 impl LangPack {
-    fn delims(&self, text: &Text) -> Vec<DelimTree> {
+    fn delims(&self, tokens: &mut TokenCache, text: &Text) -> Vec<DelimTree> {
         let mut chars = text.char_indices();
         let mut top_level = Vec::new();
         let mut open = Vec::new();
@@ -122,9 +122,21 @@ impl LangPack {
             let Some((c, i)) = chars.next() else {
                 break top_level;
             };
-            if let Some((_, e)) = self.delims.iter().find(|(s, _)| *s == c) {
+            // Check to ensure that the delimiter we think we found is actually marked as a delimiter by
+            // the highlighter so we don't erroneously include delimiters that appear in comments, docs, etc.
+            // TODO: Find a faster solution than this
+            let mut is_delimiter = || {
+                tokens
+                    .get_at(&self.highlighter, text, i)
+                    .map_or(false, |t| matches!(t.kind, TokenKind::Delimiter))
+            };
+
+            if let Some((_, e)) = self.delims.iter().find(|(s, _)| *s == c)
+                && is_delimiter()
+            {
                 open.push((i, e, Vec::new()));
             } else if self.delims.iter().any(|(_, e)| *e == c)
+                && is_delimiter()
                 && let Some(&(broken_start, e, _)) = open.last()
                 && (c == *e || {
                     let end_indent = text.indent_of_line(text.to_coord(i)[1]);
@@ -150,9 +162,10 @@ impl LangPack {
     }
 
     pub fn highlight(&self, text: &Text) -> Highlights {
+        let mut tokens = TokenCache::default();
         Highlights {
-            tokens: TokenCache::default(),
-            delims: self.delims(text),
+            delims: self.delims(&mut tokens, text),
+            tokens,
         }
     }
 }
@@ -210,7 +223,7 @@ impl Highlights {
     }
 
     pub fn sync(&mut self, lang: &LangPack, text: &Text) {
-        self.delims = lang.delims(text);
+        self.delims = lang.delims(&mut self.tokens, text);
     }
 
     pub fn damage_insert(&mut self, r: Range<usize>) {

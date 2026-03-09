@@ -768,7 +768,9 @@ impl Regex {
             .to_slice()
             .map(|s: &str| Self::String(s.to_string()));
         let regex = Self::parser().delimited_by(just("@("), just(")"));
-        let gap = text::inline_whitespace().at_least(1).to(Self::Whitespace);
+        let gap = text::inline_whitespace()
+            .at_least(1)
+            .map(|_| Self::Maybe(Box::new(Self::Whitespace)));
         choice((regex, str_part, gap))
             .repeated()
             .collect()

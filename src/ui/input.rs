@@ -66,10 +66,7 @@ impl Input {
         let Some(cursor) = buffer.cursors.get(cursor_id) else {
             return;
         };
-        // Try to focus on both base and pos
-        for coord in [cursor.base, cursor.pos].map(|p| buffer.text.to_coord(p)) {
-            self.focus(coord);
-        }
+        self.focus(buffer.text.to_coord(cursor.pos));
     }
 
     pub fn handle(
