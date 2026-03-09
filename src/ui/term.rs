@@ -1,5 +1,8 @@
 use super::*;
-use crate::state::{Clipboard, TermId};
+use crate::{
+    state::{Clipboard, TermId},
+    terminal::TerminalEvent,
+};
 use alacritty_terminal::{
     Term as Alacritty,
     event::{Event as TermEvent, EventListener},
@@ -191,8 +194,8 @@ impl TermWindow {
     }
 }
 
-impl Element for TermWindow {
-    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp, Event> {
+impl Element<()> for TermWindow {
+    fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         let Some(term) = state.terms.get_mut(self.term) else {
             return Err(event);
         };
@@ -209,7 +212,7 @@ impl Element for TermWindow {
             Ok(resp) => {
                 term.term
                     .scroll_display(Scroll::Delta((old_focus - focus) as i32));
-                return Ok(resp);
+                return Ok(resp.into_can_end());
             }
             Err(event) => event,
         };
@@ -223,7 +226,22 @@ impl Element for TermWindow {
             })
         };
 
-        match event.to_action(|e| e.to_move().or_else(|| e.to_edit())) {
+        match event.to_action(|e| {
+            e.to_move()
+                .or_else(|| e.to_edit())
+                .or_else(|| e.to_close_buffer())
+        }) {
+            Some(Action::CloseFile) => Ok(Resp::handled(Some(
+                Action::Confirm(
+                    format!("Terminal is still running. Are you sure you wish to close it (y/n)?"),
+                    Box::new(Action::CloseFileForce),
+                )
+                .into(),
+            ))),
+            Some(Action::CloseFileForce) => {
+                state.close_term(self.term);
+                Ok(Resp::end(None))
+            }
             Some(Action::Move(dir, dist @ (Dist::Doc | Dist::Page), false, false))
                 if !term.term.mode().contains(TermMode::ALT_SCREEN) =>
             {
@@ -286,9 +304,18 @@ impl Element for TermWindow {
                 use terminput::{Encoding, KittyFlags};
 
                 if let Event::Raw(ref ev) = event
+                    && let mode = term.term.mode()
+                    && match ev.0 {
+                        TerminalEvent::Mouse(_) => mode.contains(TermMode::MOUSE_MODE),
+                        TerminalEvent::FocusGained | TerminalEvent::FocusLost => {
+                            mode.contains(TermMode::FOCUS_IN_OUT)
+                        }
+                        TerminalEvent::Key(_) => true,
+                        TerminalEvent::Paste(_) => mode.contains(TermMode::BRACKETED_PASTE),
+                        TerminalEvent::Resize(..) => false,
+                    }
                     && let Ok(ev) = terminput_crossterm::to_terminput(ev.0.clone())
                     && let mut bytes = [0; 16]
-                    && let mode = term.term.mode()
                     && let Ok(n) = ev.encode(
                         &mut bytes,
                         Encoding::Kitty(

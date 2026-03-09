@@ -60,6 +60,7 @@ impl Element<()> for Doc {
                 .or_else(|| e.to_open_finder(None))
                 .or_else(|| e.to_move())
                 .or_else(|| e.to_path_search())
+                .or_else(|| e.to_close_buffer())
         }) {
             action @ Some(Action::OpenOpener(_))
             | action @ Some(Action::OpenSaver(_))

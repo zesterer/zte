@@ -1552,9 +1552,6 @@ impl State {
     pub fn close_term_window(&mut self, term_id: TermId) {
         if let Some(term) = self.terms.get_mut(term_id) {
             term.open_count -= 1;
-            if term.open_count == 0 {
-                self.close_term(term_id);
-            }
         }
     }
 

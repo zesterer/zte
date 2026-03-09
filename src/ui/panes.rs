@@ -165,26 +165,35 @@ impl Element<()> for Pane {
                     event
                 };
 
-                match &mut self.kind {
-                    PaneKind::Empty => Err(event),
+                let resp = match &mut self.kind {
+                    PaneKind::Empty => return Err(event),
                     PaneKind::Doc(buffer_id) => {
                         let buffer_id = *buffer_id;
-                        let resp = self.doc_mut(state, buffer_id).handle(state, event)?;
-                        if resp.is_end() {
-                            self.docs.remove(&buffer_id);
-                            // Switch to another buffer
-                            if let Some(new_buffer) = state.most_recent().first() {
-                                self.switch_task(state, TaskId::Buffer(*new_buffer));
-                                Ok(Resp::handled(None))
-                            } else {
-                                self.kind = PaneKind::Empty;
-                                Ok(Resp::end(None))
-                            }
-                        } else {
-                            Ok(resp)
-                        }
+                        self.doc_mut(state, buffer_id).handle(state, event)?
                     }
-                    PaneKind::Term(term) => term.handle(state, event).map(Resp::into_can_end),
+                    PaneKind::Term(term) => term.handle(state, event)?,
+                };
+
+                if resp.is_end() {
+                    // Close the current pane task if it asked to be ended
+                    match core::mem::replace(&mut self.kind, PaneKind::Empty) {
+                        PaneKind::Empty => {}
+                        PaneKind::Doc(buffer_id) => {
+                            self.docs.remove(&buffer_id).map(|d| d.close(state));
+                        }
+                        PaneKind::Term(term) => term.close(state),
+                    }
+
+                    // Switch to another buffer, or not
+                    if let Some(new_buffer) = state.most_recent().first() {
+                        self.switch_task(state, TaskId::Buffer(*new_buffer));
+                        Ok(Resp::handled(None))
+                    } else {
+                        self.kind = PaneKind::Empty;
+                        Ok(Resp::end(None))
+                    }
+                } else {
+                    Ok(resp)
                 }
             }
         }

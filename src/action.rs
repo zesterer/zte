@@ -393,6 +393,22 @@ impl RawEvent {
         }
     }
 
+    pub fn to_close_buffer(&self) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('q'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::CloseFile)
+        } else {
+            None
+        }
+    }
+
     pub fn to_fs(&self, path: &PathBuf) -> Option<Action> {
         if matches!(
             &self.0,
@@ -434,16 +450,6 @@ impl RawEvent {
             })
         ) {
             Some(Action::OpenMover(path.clone()))
-        } else if matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        ) {
-            Some(Action::CloseFile)
         } else if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
