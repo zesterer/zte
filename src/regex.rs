@@ -140,6 +140,8 @@ impl CompiledPattern {
                 {
                     at = end;
                     break Some(start..end);
+                } else if at == text.len() {
+                    break None;
                 } else {
                     at = text.ceil_char_boundary(at + 1);
                 }
