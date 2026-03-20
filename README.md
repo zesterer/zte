@@ -17,11 +17,14 @@
 - [x] Search in buffer switcher
 - [x] Syntax highlighting
 - [x] Project search (including file path search)
+- [x] Regex search
 - [x] Auto-indent (and related features)
 - [x] Undo/redo
 - [x] Ability to resize panes
 - [x] Terminal buffers
 - [x] Tabs
+- [x] Mouse support
+- [x] Delimiter matching
 
 ## Todo
 

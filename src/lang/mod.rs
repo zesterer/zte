@@ -462,7 +462,7 @@ impl Highlighter {
     pub fn url(self) -> Self {
         self
             // Automatically detect URLs
-            .with(TokenKind::Url, r"\b(https?):\/\/[A-Za-z0-9_\-:\.\/]+")
+            .with(TokenKind::Url, r"\b(https?):\/\/[A-Za-z0-9_\-:\.\/#]+")
     }
 
     pub fn cherb(self) -> Self {
