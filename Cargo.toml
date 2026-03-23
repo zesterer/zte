@@ -1,7 +1,14 @@
 [package]
 name = "zte"
 version = "0.2.0"
+description = "An extremely opinionated personal text editor"
 edition = "2024"
+license = "LGPL-3.0-or-later"
+categories = ["command-line-utilities", "text-editors"]
+exclude = [
+	"/misc",
+	"/misc/*",
+]
 
 [features]
 clipboard = ["dep:clipboard"]

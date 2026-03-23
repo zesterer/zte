@@ -1,5 +1,7 @@
 # ZTE
 
+<img src="misc/demo.svg" alt="ZTE in action"/>
+
 ## Features
 
 - [x] Buffers
