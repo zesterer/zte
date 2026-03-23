@@ -2,6 +2,19 @@
 
 <img src="misc/demo.svg" alt="ZTE in action"/>
 
+## About
+
+ZTE is my personal text editor. I daily-drive it, and it fits my needs exactly. It probably doesn't fit yours, although I've made
+some effort to avoid it being overly obtuse to use.
+
+There are no configuration options: everything is hard-coded. As a rule of thumb, I avoid speculative feature development: unless
+I feel a feature's lack of presence, I don't add it.
+
+While the code is largely undocumented, I care about simplicity and make an effort to remove redundancy: you may find it a useful
+resource if you're building your own text editor.
+
+You can learn more about its development [here](https://blog.jsbarretto.com/post/text-editor).
+
 ## Installation
 
 Install Cargo (Rust package manager). Your system package manager probably has it. If not, [try here](https://rustup.rs/).
