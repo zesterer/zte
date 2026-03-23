@@ -2,6 +2,16 @@
 
 <img src="misc/demo.svg" alt="ZTE in action"/>
 
+## Installation
+
+Install Cargo (Rust package manager). Your system package manager probably has it. If not, [try here](https://rustup.rs/).
+
+```
+sudo cargo install --root / --git https://git.jsbarretto.com/zesterer/zte.git
+```
+
+You can run this command again to update your installation. `sudo cargo remove zte` will uninstall.
+
 ## Features
 
 - [x] Buffers
