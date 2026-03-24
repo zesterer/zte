@@ -17,6 +17,7 @@ use alacritty_terminal::{
 use std::time::SystemTime;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
+    process,
     sync::mpsc::{self, Receiver, Sender},
     task,
 };
@@ -42,19 +43,21 @@ impl EventListener for Listener {
 
 pub struct Term {
     term: Alacritty<Listener>,
-    resize_req: Option<Option<[usize; 2]>>,
+    proc: process::Child,
     pub title: Option<String>,
+    pub path: PathBuf,
     ansi: ansi::Processor,
     in_tx: Sender<Input>,
     out_rx: Receiver<Output>,
     cmd: task::JoinHandle<()>,
+    resize_req: Option<Option<[usize; 2]>>,
     bell: bool,
     pub last_switch: Option<SystemTime>,
     pub open_count: usize,
 }
 
 impl Term {
-    pub fn new(path: Option<PathBuf>, state: &mut State) -> Result<Self, Error> {
+    pub fn new(path: PathBuf, state: &mut State) -> Result<Self, Error> {
         let (in_tx, mut in_rx) = mpsc::channel(4096);
         let (out_tx, out_rx) = mpsc::channel(4096);
         let wakeup = state.wakeup.clone();
@@ -62,13 +65,10 @@ impl Term {
         // Spawn TTY and attach shell process to it
         let (pty, pts) = pty_process::open().unwrap();
         let shell = std::env::var("SHELL").map_err(|_| Error::NoShellEnvVar)?;
-        let cmd = pty_process::Command::new(shell);
-        let cmd = if let Some(path) = path {
-            cmd.current_dir(path)
-        } else {
-            cmd
-        };
-        cmd.spawn(pts).map_err(Error::ShellProcessFailed)?;
+        let proc = pty_process::Command::new(shell)
+            .current_dir(&path)
+            .spawn(pts)
+            .map_err(Error::ShellProcessFailed)?;
 
         let cmd = task::spawn({
             let wakeup = wakeup.clone();
@@ -104,12 +104,14 @@ impl Term {
                 &TermSize::new(40, 15),
                 Listener(out_tx.clone()),
             ),
+            proc,
             title: None,
-            resize_req: None,
+            path,
             ansi: Default::default(),
             in_tx,
             out_rx,
             cmd,
+            resize_req: None,
             bell: false,
             last_switch: None,
             open_count: 0,
@@ -121,6 +123,7 @@ impl Term {
     }
 
     pub fn close(mut self, _state: &mut State) {
+        let _ = self.proc.start_kill();
         self.term.exit();
     }
 

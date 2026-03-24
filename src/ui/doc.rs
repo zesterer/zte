@@ -56,15 +56,13 @@ impl Element<()> for Doc {
             .unwrap_or_else(|| std::env::current_dir().expect("no working dir"));
 
         match event.to_action(|e| {
-            e.to_fs(&open_path)
-                .or_else(|| e.to_open_finder(None))
+            e.to_file_op(&open_path, None)
                 .or_else(|| e.to_move())
-                .or_else(|| e.to_path_search())
                 .or_else(|| e.to_close_buffer())
         }) {
-            action @ Some(Action::OpenOpener(_))
-            | action @ Some(Action::OpenSaver(_))
-            | action @ Some(Action::OpenMover(_)) => Ok(Resp::handled(action.map(Into::into))),
+            action @ Some(Action::OpenSaver(_)) | action @ Some(Action::OpenMover(_)) => {
+                Ok(Resp::handled(action.map(Into::into)))
+            }
             Some(Action::OpenFinder(ref query)) => {
                 self.finder = Some(
                     Finder::new(
@@ -78,33 +76,9 @@ impl Element<()> for Doc {
                 );
                 Ok(Resp::handled(None))
             }
-            Some(Action::BeginSearch(needle)) => {
-                let path = buffer
-                    .path()
-                    .cloned()
-                    .unwrap_or_else(|| std::env::current_dir().expect("no cwd"));
-                Ok(Resp::handled(Some(
-                    Action::OpenSearcher(path, needle).into(),
-                )))
-            }
             Some(Action::OpenFile(path, range)) => {
                 Ok(Resp::handled(Some(Action::OpenFile(path, range).into())))
             }
-            // Some(Action::OpenFile(path, range)) => match state.create(path) {
-            //     Ok(buffer_id) => {
-            //         self.switch_buffer(state, buffer_id);
-            //         if let Some(buffer) = state.buffers.get_mut(self.buffer)
-            //             && let Some(range) = range
-            //         {
-            //             buffer.select_cursor(self.cursor, range);
-            //             self.input.refocus(buffer, self.cursor);
-            //         }
-            //         Ok(Resp::handled(None))
-            //     }
-            //     Err(err) => Ok(Resp::handled(Some(
-            //         Action::Show(Some(format!("Could not open file")), format!("{err}")).into(),
-            //     ))),
-            // },
 
             // Save
             Some(Action::SaveFile) => Ok(Resp::handled(if buffer.has_changes() {
@@ -185,12 +159,6 @@ impl Element<()> for Doc {
                 Ok(Resp::end(None))
             }
 
-            Some(Action::NewFile) => Ok(Resp::handled(Some(Action::NewFile.into()))),
-            // Some(Action::NewFile) => {
-            //     let buffer_id = state.new_anonymous();
-            //     self.switch_buffer(state, buffer_id);
-            //     Ok(Resp::handled(None))
-            // }
             Some(Action::Reload) => {
                 buffer.reload();
                 Ok(Resp::handled(None))

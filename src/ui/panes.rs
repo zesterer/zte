@@ -67,22 +67,33 @@ impl Pane {
             doc.close(state);
         }
     }
+
+    fn task_path(&self, state: &mut State) -> PathBuf {
+        let path = match &self.kind {
+            PaneKind::Doc(buffer_id) => {
+                if let Some(buf) = state.buffers.get(*buffer_id)
+                    && let Some(path) = buf.path()
+                {
+                    path.parent().map(ToOwned::to_owned)
+                } else {
+                    None
+                }
+            }
+            PaneKind::Term(term) => Some(state.terms[term.term].path.clone()),
+            PaneKind::Empty => None,
+        };
+        path.unwrap_or_else(|| std::env::current_dir().expect("no cwd"))
+    }
 }
 
 impl Element<()> for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
-        match event.to_action(|e| e.to_open_switcher()) {
+        match event.to_action(|e| {
+            e.to_open_op(&self.task_path(state))
+                .or_else(|| e.to_path_search())
+        }) {
             Some(Action::NewTerm(path)) => {
-                let path = path.or_else(|| {
-                    if let PaneKind::Doc(buffer_id) = &self.kind
-                        && let Some(buf) = state.buffers.get(*buffer_id)
-                        && let Some(path) = buf.path()
-                    {
-                        path.parent().map(ToOwned::to_owned)
-                    } else {
-                        None
-                    }
-                });
+                let path = path.unwrap_or_else(|| self.task_path(state));
                 match Term::new(path, state) {
                     Ok(term) => {
                         let term = state.create_term(term);
@@ -95,6 +106,9 @@ impl Element<()> for Pane {
                     ))),
                 }
             }
+            Some(Action::BeginSearch(needle)) => Ok(Resp::handled(Some(
+                Action::OpenSearcher(self.task_path(state), needle).into(),
+            ))),
             Some(Action::OpenOpener(path)) => {
                 self.task = Some(
                     PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Opener)).into(),

@@ -311,6 +311,7 @@ impl Visual for Switcher {
 
 impl Visual for TaskId {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
+        let path_x = (frame.size()[0] as isize / 2).max(32);
         match self {
             TaskId::Buffer(buffer_id) => {
                 let Some(buffer) = state.buffers.get(*buffer_id) else {
@@ -319,7 +320,6 @@ impl Visual for TaskId {
                 frame
                     .with_theme(state.theme.option_file)
                     .text([0, 0], buffer.name().as_deref().unwrap_or("<unknown>"));
-                let path_x = (frame.size()[0] as isize / 3).max(32);
                 frame.with_theme(state.theme.option_dir).text(
                     [path_x, 0],
                     &buffer
@@ -339,6 +339,9 @@ impl Visual for TaskId {
                         .clone()
                         .unwrap_or_else(|| format!("<terminal #{}>", term_id.data().as_ffi())),
                 );
+                frame
+                    .with_theme(state.theme.option_dir)
+                    .text([path_x, 0], &format!("{}", term.path.display()));
             }
         }
     }

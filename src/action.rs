@@ -377,22 +377,6 @@ impl RawEvent {
         }
     }
 
-    pub fn to_open_switcher(&self) -> Option<Action> {
-        if matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('b'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        ) {
-            Some(Action::OpenSwitcher)
-        } else {
-            None
-        }
-    }
-
     pub fn to_close_buffer(&self) -> Option<Action> {
         if matches!(
             &self.0,
@@ -409,18 +393,8 @@ impl RawEvent {
         }
     }
 
-    pub fn to_fs(&self, path: &PathBuf) -> Option<Action> {
+    pub fn to_file_op(&self, path: &PathBuf, query: Option<&str>) -> Option<Action> {
         if matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('o'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        ) {
-            Some(Action::OpenOpener(path.clone()))
-        } else if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Char('s'),
@@ -453,6 +427,42 @@ impl RawEvent {
         } else if matches!(
             &self.0,
             TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('f'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenFinder(query.map(str::to_string)))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_open_op(&self, path: &PathBuf) -> Option<Action> {
+        if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('b'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenSwitcher)
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('o'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            })
+        ) {
+            Some(Action::OpenOpener(path.clone()))
+        } else if matches!(
+            &self.0,
+            TerminalEvent::Key(KeyEvent {
                 code: KeyCode::Char('n'),
                 modifiers: KeyModifiers::CONTROL,
                 kind: KeyEventKind::Press,
@@ -460,22 +470,6 @@ impl RawEvent {
             })
         ) {
             Some(Action::NewFile)
-        } else {
-            None
-        }
-    }
-
-    pub fn to_open_finder(&self, query: Option<String>) -> Option<Action> {
-        if matches!(
-            &self.0,
-            TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('f'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            })
-        ) {
-            Some(Action::OpenFinder(query))
         } else {
             None
         }
