@@ -10,7 +10,6 @@ pub enum Task {
     Prompt(Prompt),
     Show(Show),
     Confirm(Confirm),
-    Searcher(Searcher),
 }
 
 impl Task {
@@ -19,7 +18,6 @@ impl Task {
             Self::Prompt(p) => p.requested_height(),
             Self::Show(s) => s.requested_height(),
             Self::Confirm(c) => c.requested_height(),
-            Self::Searcher(s) => s.requested_height(),
         }
     }
 }
@@ -67,7 +65,6 @@ impl Element<()> for Root {
                     Task::Prompt(p) => p.handle(state, event),
                     Task::Show(s) => s.handle(state, event),
                     Task::Confirm(c) => c.handle(state, event),
-                    Task::Searcher(s) => s.handle(state, event),
                 };
 
                 match res {
@@ -96,15 +93,6 @@ impl Element<()> for Root {
                     Action::OpenPrompt => {
                         self.tasks.clear(); // Prompt overrides all
                         self.tasks.push(Task::Prompt(Prompt::new("")));
-                        break Ok(Resp::handled(None));
-                    }
-                    Action::OpenSearcher(path, needle) => {
-                        self.tasks.clear(); // Overrides all
-                        self.tasks.push(Task::Searcher(Searcher::new(
-                            &path,
-                            needle.clone(),
-                            state.wakeup.clone(),
-                        )));
                         break Ok(Resp::handled(None));
                     }
                     Action::CommandStart(cmd) => {
@@ -196,7 +184,6 @@ impl Visual for Root {
                     Task::Prompt(p) => p.render(state, frame),
                     Task::Show(s) => s.render(state, frame),
                     Task::Confirm(c) => c.render(state, frame),
-                    Task::Searcher(s) => s.render(state, frame),
                 });
         }
 

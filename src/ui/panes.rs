@@ -14,6 +14,7 @@ pub enum PaneKind {
 enum PaneTask {
     FileBrowser(FileBrowser),
     Switcher(Switcher),
+    Searcher(Searcher),
 }
 
 // Keep types small to save memory!
@@ -136,6 +137,13 @@ impl Element<()> for Pane {
                     Ok(Resp::handled(None))
                 }
             }
+            Some(Action::OpenSearcher(path, needle)) => {
+                self.task = Some(
+                    PaneTask::Searcher(Searcher::new(&path, needle.clone(), state.wakeup.clone()))
+                        .into(),
+                );
+                Ok(Resp::handled(None))
+            }
             Some(Action::NewFile) => {
                 let buffer_id = state.new_anonymous();
                 self.switch_task(state, TaskId::Buffer(buffer_id));
@@ -165,6 +173,7 @@ impl Element<()> for Pane {
                     let resp = match task {
                         PaneTask::FileBrowser(browser) => browser.handle(state, event),
                         PaneTask::Switcher(switcher) => switcher.handle(state, event),
+                        PaneTask::Searcher(searcher) => searcher.handle(state, event),
                     };
                     match resp {
                         Ok(resp) => {
@@ -228,6 +237,10 @@ impl Visual for Pane {
                     &mut frame.rect([0, frame.size()[1] - switcher_h], [!0, !0]),
                 );
                 Some(([0, 0], [!0, frame.size()[1] - switcher_h]))
+            }
+            Some(PaneTask::Searcher(searcher)) => {
+                searcher.render(state, frame);
+                None
             }
             None => Some(([0, 0], [!0, !0])),
         };
