@@ -1,6 +1,6 @@
 # ZTE
 
-<img src="misc/demo.svg" alt="ZTE in action"/>
+<img src="misc/demo.gif" alt="ZTE in action" width=100%/>
 
 ## About
 
