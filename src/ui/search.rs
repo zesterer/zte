@@ -83,61 +83,25 @@ impl Searcher {
                 })
                 .is_ok()
             {
-                let rdir = format!(
-                    "./{}",
+                // Behind a closure to avoid hot path alloc
+                let rpath = || {
                     path.parent()
                         .and_then(|p| p.strip_prefix(search_path).ok()?.to_str())
                         .unwrap_or("unknown")
-                );
+                        .to_string()
+                };
+
+                // Search for matches
                 if let Some(needle) = needle {
-                    let mut file_matches = 0;
-                    for matching in needle.find_nonoverlapping_matches(&buf) {
-                        // Find the line_idx, line_pos, and line_text of the match
-                        let (mut line_idx, mut line_pos, mut line_text) = (0, 0, String::new());
-                        for line in buf.split_inclusive('\n') {
-                            if line_pos + line.len() > matching.start {
-                                line_text = buf[line_pos..][..line.len()].to_string();
-                                break;
-                            } else {
-                                line_idx += 1;
-                                line_pos += line.len();
-                            }
-                        }
-
-                        let make_preview = {
-                            let path = path.to_path_buf();
-                            move || {
-                                // Construct a single-line preview of the result
-                                let mut line_buffer = Buffer::file(false, &line_text, path);
-                                let cursor_id = line_buffer.start_session();
-                                let mut line_input = Input::search_result(line_idx);
-
-                                // Focus the input properly
-                                line_input.focus(
-                                    line_buffer
-                                        .text
-                                        .to_coord(line_text.len() - line_text.trim_start().len()),
-                                );
-                                let line_matching = matching.start.saturating_sub(line_pos)
-                                    ..matching.end.saturating_sub(line_pos);
-                                line_buffer.select_cursor(cursor_id, line_matching);
-                                (line_input, cursor_id, line_buffer)
-                            }
-                        };
-
+                    for matching in needle.find_nonoverlapping_matches(&buf).take(150) {
                         results.push(SearchResult {
                             loc: SearchLoc {
                                 path: path.to_path_buf(),
-                                span: Some((line_idx, matching)),
+                                span: Some(matching),
                             },
-                            rdir: rdir.clone(),
-                            line: Some(Err(Box::new(make_preview))),
+                            rpath: rpath(),
+                            preview: None,
                         });
-
-                        file_matches += 1;
-                        if file_matches >= 150 {
-                            break;
-                        }
                     }
                 } else {
                     results.push(SearchResult {
@@ -145,8 +109,8 @@ impl Searcher {
                             path: path.to_path_buf(),
                             span: None,
                         },
-                        rdir,
-                        line: None,
+                        rpath: rpath(),
+                        preview: None,
                     });
                 }
             } else if let Ok(entries) = fs::read_dir(path) {
@@ -292,7 +256,7 @@ impl Element<()> for Searcher {
                 // Selecting a directory enters the directory
                 Ok(Some(result)) => Ok(Resp::end(Some(Event::Action(Action::OpenFile(
                     result.loc.path,
-                    result.loc.span.clone().map(|(_, span)| span),
+                    result.loc.span.clone(),
                 ))))),
                 Ok(None) => Ok(Resp::handled(None)),
                 Err(event) => {
@@ -332,22 +296,52 @@ impl Element<()> for Searcher {
 #[derive(Clone, PartialEq)]
 struct SearchLoc {
     path: PathBuf,
-    // (line_idx, span)
-    span: Option<(usize, Range<usize>)>,
+    span: Option<Range<usize>>,
 }
 
 struct SearchResult {
     loc: SearchLoc,
-    rdir: String,
-    line: Option<
-        Result<
-            (Input, CursorId, Buffer),
-            Box<dyn FnOnce() -> (Input, CursorId, Buffer) + Send + Sync>,
-        >,
-    >,
+    rpath: String,
+    preview: Option<Box<(Input, CursorId, Buffer)>>,
 }
 
-const _: () = assert!(core::mem::size_of::<SearchResult>() < 1024);
+const _: () = assert!(core::mem::size_of::<SearchResult>() < 750);
+
+impl SearchResult {
+    pub fn fetch_preview(&mut self) -> Option<&mut (Input, CursorId, Buffer)> {
+        let span = self.loc.span.clone()?;
+        Some(self.preview.get_or_insert_with(|| {
+            // Find the line_idx, line_pos, and line_text of the match
+            let buf = fs::read_to_string(&self.loc.path).unwrap_or_default();
+            let (mut line_idx, mut line_pos, mut line_text) = (0, 0, String::new());
+            for line in buf.split_inclusive('\n') {
+                if line_pos + line.len() > span.start {
+                    line_text = buf[line_pos..][..line.len()].to_string();
+                    break;
+                } else {
+                    line_idx += 1;
+                    line_pos += line.len();
+                }
+            }
+
+            // Construct a single-line preview of the result
+            let mut line_buffer = Buffer::file(false, &line_text, self.loc.path.clone());
+            let cursor_id = line_buffer.start_session();
+            let mut line_input = Input::search_result(line_idx);
+
+            // Focus the input properly
+            line_input.focus(
+                line_buffer
+                    .text
+                    .to_coord(line_text.len() - line_text.trim_start().len()),
+            );
+            let line_matching =
+                span.start.saturating_sub(line_pos)..span.end.saturating_sub(line_pos);
+            line_buffer.select_cursor(cursor_id, line_matching);
+            Box::new((line_input, cursor_id, line_buffer))
+        }))
+    }
+}
 
 impl Visual for SearchResult {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
@@ -366,15 +360,9 @@ impl Visual for SearchResult {
         frame
             .rect([col_a, 0], [col_b, !0])
             .with_theme(state.theme.option_dir)
-            .text([0, 0], &self.rdir);
+            .text([0, 0], &self.rpath);
         // Resolve the search result preview
-        self.line = match self.line.take() {
-            Some(Err(f)) => Some(Ok(f())),
-            l => l,
-        };
-        if let Some(line) = &mut self.line
-            && let Ok((input, cursor_id, buffer)) = line
-        {
+        if let Some((input, cursor_id, buffer)) = self.fetch_preview() {
             input.render(
                 &state.theme,
                 None,
@@ -427,10 +415,10 @@ impl Visual for Searcher {
                     let mut buffer = Buffer::open(result.loc.path.clone()).ok()?;
                     let cursor_id = buffer.start_session();
                     let mut input = Input::default();
-                    if let Some((line_idx, range)) = result.loc.span.clone() {
-                        buffer.goto_cursor(cursor_id, [0, line_idx as isize], true);
+                    if let Some(span) = result.loc.span.clone() {
+                        buffer.goto_cursor(cursor_id, buffer.text.to_coord(span.start), true);
                         input.refocus(&mut buffer, cursor_id);
-                        buffer.select_cursor(cursor_id, range);
+                        buffer.select_cursor(cursor_id, span);
                     }
                     Some((buffer, cursor_id, input, result.loc.clone()))
                 })
