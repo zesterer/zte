@@ -2,7 +2,7 @@ use super::*;
 use crate::state::{Buffer, CursorId, TaskId};
 use chrono::{DateTime, Local};
 use slotmap::Key;
-use std::{fs, path::PathBuf, rc::Rc};
+use std::{fs, path::PathBuf, sync::Arc};
 
 pub struct Prompt {
     buffer: Buffer,
@@ -62,7 +62,7 @@ impl Prompt {
                     .filter(|n| !n.is_empty())
                     .map(|n| regex::CompiledPattern::create_search(&n))
                     .transpose()?
-                    .map(Rc::new);
+                    .map(Arc::new);
                 Ok(Action::BeginSearch(needle))
             }
             Some("reload") => Ok(Action::Reload),

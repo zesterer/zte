@@ -145,13 +145,19 @@ impl<T> Options<T> {
         self.apply_scoring(f);
     }
 
+    // Does *not* update scoring!
+    pub fn add_options(&mut self, options: impl IntoIterator<Item = T>) {
+        self.options.extend(options);
+    }
+
     pub fn apply_scoring<F: FnMut(&T) -> Option<S>, S: Ord + Clone>(&mut self, mut f: F) {
-        let mut ranking = self
-            .options
-            .iter()
-            .enumerate()
-            .filter_map(|(i, o)| Some((i, f(o)?)))
-            .collect::<Vec<_>>();
+        let mut ranking = Vec::with_capacity(self.options.len());
+        ranking.extend(
+            self.options
+                .iter()
+                .enumerate()
+                .filter_map(|(i, o)| Some((i, f(o)?))),
+        );
         ranking.sort_by_key(|(_, score)| score.clone());
         self.ranking = ranking.into_iter().map(|(i, _)| i).collect();
         self.selected = 0;

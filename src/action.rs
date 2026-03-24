@@ -3,7 +3,7 @@ use crate::{state::TaskId, terminal::TerminalEvent};
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
-use std::{ops::Range, path::PathBuf, rc::Rc};
+use std::{ops::Range, path::PathBuf, sync::Arc};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Dir {
@@ -84,9 +84,9 @@ pub enum Action {
     // Move a single line up or down
     LineMove(Dir),
     // Request to begin a search with the given needle. `None` implies file path search.
-    BeginSearch(Option<Rc<regex::CompiledPattern>>),
+    BeginSearch(Option<Arc<regex::CompiledPattern>>),
     // Start a project-wide search with the given location and needle. `None` implies file path search.
-    OpenSearcher(PathBuf, Option<Rc<regex::CompiledPattern>>),
+    OpenSearcher(PathBuf, Option<Arc<regex::CompiledPattern>>),
     // Fully select the block under the cursor
     SelectBlock,
     // Fully select the entire input

@@ -6,8 +6,9 @@ use std::{
     ops::Range,
     path::Path,
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
+        mpsc,
     },
     thread,
 };
@@ -21,10 +22,15 @@ pub struct Searcher {
     cursor_id: CursorId,
     input: Input,
     preview: Option<(Buffer, CursorId, Input, SearchLoc)>,
+    rx: Option<mpsc::Receiver<Vec<SearchResult>>>,
 }
 
 impl Searcher {
-    pub fn new(path: PathBuf, needle: Option<&regex::CompiledPattern>) -> Self {
+    pub fn new(
+        path: PathBuf,
+        needle: Option<Arc<regex::CompiledPattern>>,
+        wakeup: Arc<tokio::sync::Notify>,
+    ) -> Self {
         let search_path = util::workspace_dir(path.clone());
         let search_path = search_path.canonicalize().unwrap_or_else(|_| search_path);
 
@@ -32,11 +38,11 @@ impl Searcher {
             search_path: &Path,
             path: &Path,
             needle: Option<&regex::CompiledPattern>,
-            results: &mut Vec<SearchResult>,
             // Extra paths that need searching
             to_search: &mut Vec<PathBuf>,
             // Can be anything, will be cleared anyway: only exists to reuse the allocation!
             buf: &mut String,
+            results: &mut Vec<SearchResult>,
         ) {
             // Skip hidden files
             if path
@@ -127,6 +133,7 @@ impl Searcher {
                             rdir: rdir.clone(),
                             line: Some(Err(Box::new(make_preview))),
                         });
+
                         file_matches += 1;
                         if file_matches >= 150 {
                             break;
@@ -159,66 +166,71 @@ impl Searcher {
             }
         }
 
-        let results = Mutex::new(Vec::new());
-        let to_search = Mutex::new(vec![search_path.clone()]);
-        let par = thread::available_parallelism().map_or(1, |p| p.get());
-        let waiting = AtomicUsize::new(0);
-        thread::scope(|s| {
-            for _ in 0..par {
-                s.spawn(|| {
-                    let mut buf = String::new();
-                    loop {
-                        // Search the next path
-                        if let Some(next) = { to_search.lock().unwrap().pop() } {
-                            // Stop looking for results if we hit our quota
-                            if { results.lock().unwrap().len() } >= 10_000 {
-                                break;
-                            } else {
-                                let mut results_new = Vec::new();
-                                let mut to_search_new = Vec::new();
-                                search_in(
-                                    &search_path,
-                                    &next,
-                                    needle,
-                                    &mut results_new,
-                                    &mut to_search_new,
-                                    &mut buf,
-                                );
-                                // Only add the results of the search to the working data if we found anything
-                                if !results_new.is_empty() {
-                                    results.lock().unwrap().append(&mut results_new)
-                                }
-                                if !to_search_new.is_empty() {
-                                    to_search.lock().unwrap().append(&mut to_search_new)
+        let (tx, rx) = mpsc::channel();
+        // No particular reason to use a top-level thread, it just gives us a shared thread scope to keep stuff on the stack
+        thread::spawn({
+            let search_path = search_path.clone();
+            move || {
+                let to_search = Mutex::new(vec![search_path.clone()]);
+                let par = thread::available_parallelism().map_or(1, |p| p.get());
+                let waiting = AtomicUsize::new(0);
+                thread::scope(|s| {
+                    for _ in 0..par {
+                        s.spawn(|| {
+                            let mut buf = String::new();
+                            loop {
+                                // Search the next path
+                                if let Some(next) = { to_search.lock().unwrap().pop() } {
+                                    let mut to_search_new = Vec::new();
+                                    let mut results_new = Vec::new();
+                                    search_in(
+                                        &search_path,
+                                        &next,
+                                        needle.as_deref(),
+                                        &mut to_search_new,
+                                        &mut buf,
+                                        &mut results_new,
+                                    );
+                                    // Only add the sub-searches of the search to the working data if we found anything
+                                    if !to_search_new.is_empty() {
+                                        to_search.lock().unwrap().append(&mut to_search_new);
+                                    }
+                                    if !results_new.is_empty() {
+                                        if tx.send(results_new).is_err() {
+                                            waiting.fetch_add(1, Ordering::Relaxed);
+                                            break;
+                                        }
+                                        wakeup.notify_one();
+                                    }
+                                } else {
+                                    // Wait until every thread is waiting, which would imply that there's no more work to be done
+                                    if waiting.fetch_add(1, Ordering::Relaxed) + 1 >= par {
+                                        break;
+                                    } else {
+                                        // Wait for a while in the hope that more work will become available
+                                        thread::sleep(Duration::from_micros(10));
+                                        waiting.fetch_sub(1, Ordering::Relaxed);
+                                    }
                                 }
                             }
-                        } else {
-                            // Wait until every thread is waiting, which would imply that there's no more work to be done
-                            if waiting.fetch_add(1, Ordering::Relaxed) + 1 >= par {
-                                break;
-                            } else {
-                                // Wait for a while in the hope that more work will become available
-                                thread::sleep(Duration::from_micros(10));
-                                waiting.fetch_sub(1, Ordering::Relaxed);
-                            }
-                        }
+                        });
                     }
                 });
             }
         });
-        let results = results.into_inner().unwrap();
 
         let mut buffer = Buffer::default();
         let cursor_id = buffer.start_session();
 
         let mut this = Self {
-            options: Options::new(results),
+            options: Options::new(Vec::new()),
             path,
             search_path,
             cursor_id,
             buffer,
             input: Input::filter(),
             preview: None,
+            rx: Some(rx),
         };
         this.update_completions();
         this
@@ -244,12 +256,15 @@ impl Searcher {
                 .path
                 .parent()
                 .and_then(|f| Some(f.to_str()?.to_lowercase()));
-            let unshared_components = e
+            let unshared_components = -(e
                 .loc
                 .path
-                .ancestors()
-                .map(|a| if self.path.starts_with(a) { -1 } else { 1 })
-                .sum::<i32>();
+                .as_os_str()
+                .as_encoded_bytes()
+                .iter()
+                .zip(self.path.as_os_str().as_encoded_bytes())
+                .take_while(|(a, b)| a == b)
+                .count() as i32);
             if name == filter {
                 Some((0, unshared_components))
             } else if name.starts_with(&filter) {
@@ -332,6 +347,8 @@ struct SearchResult {
     >,
 }
 
+const _: () = assert!(core::mem::size_of::<SearchResult>() < 1024);
+
 impl Visual for SearchResult {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
         let name = match self.loc.path.file_name().and_then(|n| n.to_str()) {
@@ -370,8 +387,29 @@ impl Visual for SearchResult {
     }
 }
 
+const RESULT_LIMIT: usize = 100_000;
+
 impl Visual for Searcher {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
+        // Receive search results from the worker threads
+        if let Some(rx) = &mut self.rx {
+            let mut options_changes = false;
+            while let Ok(results) = rx.try_recv() {
+                // Result limit
+                if self.options.options.len() > RESULT_LIMIT {
+                    // Stop receiving results if there are too many. This will terminate the worker threads.
+                    self.rx = None;
+                    break;
+                } else {
+                    self.options.add_options(results);
+                }
+                options_changes = true;
+            }
+            if options_changes {
+                self.update_completions();
+            }
+        }
+
         let path_input_sz = 3;
         let remaining_sz = frame.size()[1].saturating_sub(path_input_sz);
         let (preview_sz, options_sz) = if remaining_sz > 12 {
@@ -426,7 +464,11 @@ impl Visual for Searcher {
                     format!(
                         "{} of {}",
                         self.options.selected + 1,
-                        self.options.ranking.len()
+                        if self.options.ranking.len() > RESULT_LIMIT {
+                            format!(">{}", RESULT_LIMIT)
+                        } else {
+                            self.options.ranking.len().to_string()
+                        },
                     )
                 };
                 let title = format!("{} results in {}/", num_results, self.search_path.display());
