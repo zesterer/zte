@@ -215,30 +215,34 @@ impl Searcher {
                 .and_then(|f| f.to_str())
                 .unwrap_or("<unknown>")
                 .to_lowercase();
-            let parent = e
+            let e_parent = e
                 .loc
                 .path
                 .parent()
-                .and_then(|f| Some(f.to_str()?.to_lowercase()));
-            let unshared_components = -(e
+                .unwrap_or(e.loc.path.as_path())
+                .as_os_str()
+                .as_encoded_bytes();
+            let path_bytes = self.path.as_os_str().as_encoded_bytes();
+            let path_diff = e_parent.len()
+                - e_parent
+                    .iter()
+                    .zip(path_bytes)
+                    .take_while(|(a, b)| a == b)
+                    .count();
+            if name == filter {
+                Some((0, path_diff))
+            } else if name.starts_with(&filter) {
+                Some((1, path_diff))
+            } else if name.contains(&filter) {
+                Some((2, path_diff))
+            } else if let Some(parent) = e
                 .loc
                 .path
-                .as_os_str()
-                .as_encoded_bytes()
-                .iter()
-                .zip(self.path.as_os_str().as_encoded_bytes())
-                .take_while(|(a, b)| a == b)
-                .count() as i32);
-            if name == filter {
-                Some((0, unshared_components))
-            } else if name.starts_with(&filter) {
-                Some((1, unshared_components))
-            } else if name.contains(&filter) {
-                Some((2, unshared_components))
-            } else if let Some(parent) = parent
+                .parent()
+                .and_then(|f| Some(f.to_str()?.to_lowercase()))
                 && parent.contains(&filter)
             {
-                Some((3, unshared_components))
+                Some((3, path_diff))
             } else {
                 None
             }
