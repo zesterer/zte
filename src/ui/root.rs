@@ -101,7 +101,7 @@ impl Element<()> for Root {
                     Action::OpenSearcher(path, needle) => {
                         self.tasks.clear(); // Overrides all
                         self.tasks.push(Task::Searcher(Searcher::new(
-                            path,
+                            &path,
                             needle.clone(),
                             state.wakeup.clone(),
                         )));

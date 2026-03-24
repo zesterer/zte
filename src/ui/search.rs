@@ -27,11 +27,11 @@ pub struct Searcher {
 
 impl Searcher {
     pub fn new(
-        path: PathBuf,
+        dir: &Path,
         needle: Option<Arc<regex::CompiledPattern>>,
         wakeup: Arc<tokio::sync::Notify>,
     ) -> Self {
-        let search_path = util::workspace_dir(path.clone());
+        let search_path = util::workspace_dir(dir).to_path_buf();
         let search_path = search_path.canonicalize().unwrap_or_else(|_| search_path);
 
         fn search_in(
@@ -188,7 +188,7 @@ impl Searcher {
 
         let mut this = Self {
             options: Options::new(Vec::new()),
-            path,
+            path: dir.to_path_buf(),
             search_path,
             cursor_id,
             buffer,
@@ -407,35 +407,46 @@ impl Visual for Searcher {
             (0, remaining_sz)
         };
 
-        self.preview = self.options.selected().and_then(|result| {
-            self.preview
-                .take()
-                .filter(|(_, _, _, loc)| loc == &result.loc)
-                .or_else(|| {
-                    let mut buffer = Buffer::open(result.loc.path.clone()).ok()?;
-                    let cursor_id = buffer.start_session();
-                    let mut input = Input::default();
-                    if let Some(span) = result.loc.span.clone() {
-                        buffer.goto_cursor(cursor_id, buffer.text.to_coord(span.start), true);
-                        input.refocus(&mut buffer, cursor_id);
-                        buffer.select_cursor(cursor_id, span);
-                    }
-                    Some((buffer, cursor_id, input, result.loc.clone()))
-                })
-        });
+        frame
+            .rect([0, 0], [frame.size()[0], preview_sz])
+            .with(|frame| {
+                self.preview = self.options.selected().and_then(|result| {
+                    self.preview
+                        .take()
+                        .filter(|(_, _, _, loc)| loc == &result.loc)
+                        .or_else(|| {
+                            let mut buffer = Buffer::open(result.loc.path.clone()).ok()?;
+                            let cursor_id = buffer.start_session();
+                            let mut input = Input::default();
+                            if let Some(span) = result.loc.span.clone() {
+                                buffer.select_cursor(cursor_id, span);
+                                // HACK: Do one early render so the input knows what size it is. This is required for the refocus to
+                                // work properly
+                                input.render(
+                                    &state.theme,
+                                    buffer.name().as_deref(),
+                                    &mut buffer,
+                                    cursor_id,
+                                    None,
+                                    frame,
+                                );
+                                input.refocus(&mut buffer, cursor_id);
+                            }
+                            Some((buffer, cursor_id, input, result.loc.clone()))
+                        })
+                });
 
-        if let Some((buffer, cursor_id, input, _)) = &mut self.preview {
-            frame.rect([0, 0], [frame.size()[0], preview_sz]).with(|f| {
-                input.render(
-                    &state.theme,
-                    buffer.name().as_deref(),
-                    buffer,
-                    *cursor_id,
-                    None,
-                    f,
-                )
+                if let Some((buffer, cursor_id, input, _)) = &mut self.preview {
+                    input.render(
+                        &state.theme,
+                        buffer.name().as_deref(),
+                        buffer,
+                        *cursor_id,
+                        None,
+                        frame,
+                    );
+                }
             });
-        }
 
         frame
             .rect([0, preview_sz], [frame.size()[0], options_sz])

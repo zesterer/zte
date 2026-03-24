@@ -68,7 +68,7 @@ impl Pane {
         }
     }
 
-    fn task_path(&self, state: &mut State) -> PathBuf {
+    fn task_dir(&self, state: &mut State) -> PathBuf {
         let path = match &self.kind {
             PaneKind::Doc(buffer_id) => {
                 if let Some(buf) = state.buffers.get(*buffer_id)
@@ -89,11 +89,11 @@ impl Pane {
 impl Element<()> for Pane {
     fn handle(&mut self, state: &mut State, event: Event) -> Result<Resp<()>, Event> {
         match event.to_action(|e| {
-            e.to_open_op(&self.task_path(state))
+            e.to_open_op(&self.task_dir(state))
                 .or_else(|| e.to_path_search())
         }) {
             Some(Action::NewTerm(path)) => {
-                let path = path.unwrap_or_else(|| self.task_path(state));
+                let path = path.unwrap_or_else(|| self.task_dir(state));
                 match Term::new(path, state) {
                     Ok(term) => {
                         let term = state.create_term(term);
@@ -107,7 +107,7 @@ impl Element<()> for Pane {
                 }
             }
             Some(Action::BeginSearch(needle)) => Ok(Resp::handled(Some(
-                Action::OpenSearcher(self.task_path(state), needle).into(),
+                Action::OpenSearcher(self.task_dir(state), needle).into(),
             ))),
             Some(Action::OpenOpener(path)) => {
                 self.task = Some(
@@ -411,8 +411,9 @@ impl Element for Panes {
                 if let PaneKind::Doc(buffer_id) = &pane.kind
                     && let Some(buffer) = state.buffers.get(*buffer_id)
                     && let Some(path) = buffer.path()
+                    && let Some(dir) = path.parent()
                 {
-                    Some(format!("{}", util::workspace_dir(path.clone()).display()))
+                    Some(format!("{}", util::workspace_dir(dir).display()))
                 } else if let PaneKind::Term(term) = &pane.kind {
                     state.terms[term.term].title.clone()
                 } else {

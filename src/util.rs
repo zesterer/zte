@@ -1,16 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::Path};
 
-pub fn workspace_dir(path: PathBuf) -> PathBuf {
-    let current_dir;
-    let mut dir = match path.parent() {
-        Some(dir) => dir,
-        None => {
-            current_dir = std::env::current_dir().expect("No cwd");
-            current_dir.as_path()
-        }
-    };
-
-    for p in path.ancestors() {
+pub fn workspace_dir(mut dir: &Path) -> &Path {
+    for p in dir.ancestors() {
         if let Ok(mut entries) = fs::read_dir(&p)
             && entries.any(|e| {
                 e.map_or(false, |e| {
@@ -25,6 +16,5 @@ pub fn workspace_dir(path: PathBuf) -> PathBuf {
             dir = p;
         }
     }
-
-    dir.to_path_buf()
+    dir
 }
