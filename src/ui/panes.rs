@@ -12,27 +12,37 @@ trait PaneContainer: Element<()> + Visual + From<Pane> {
     fn selected_pane(&self) -> Option<&Pane>;
 }
 
-#[derive(Default)]
-pub enum PaneKind {
-    #[default]
-    Empty,
+pub enum PaneTask {
     Doc(BufferId),
     Term(TermWindow),
 }
 
-enum PaneTask {
+impl PaneTask {
+    pub fn fallback(state: &mut State) -> Self {
+        let task = TaskId::fallback(state);
+        Self::new(task, state)
+    }
+
+    pub fn new(task: TaskId, state: &mut State) -> Self {
+        match task {
+            TaskId::Buffer(buffer_id) => Self::Doc(buffer_id),
+            TaskId::Term(term_id) => Self::Term(state.switch_term(term_id)),
+        }
+    }
+}
+
+enum PaneOverlay {
     FileBrowser(FileBrowser),
     Switcher(Switcher),
     Searcher(Searcher),
 }
 
 // Keep types small to save memory!
-const _: () = assert!(core::mem::size_of::<PaneKind>() < 128);
+const _: () = assert!(core::mem::size_of::<PaneTask>() < 128);
 
-#[derive(Default)]
 pub struct Pane {
-    kind: PaneKind,
-    task: Option<Box<PaneTask>>,
+    task: PaneTask,
+    overlay: Option<Box<PaneOverlay>>,
     // Remember the cursor we use for each buffer
     docs: HashMap<BufferId, Doc>,
     last_area: Area,
@@ -40,16 +50,16 @@ pub struct Pane {
 
 impl PaneContainer for Pane {
     fn should_close(&mut self, state: &mut State) -> bool {
-        match &self.kind {
-            PaneKind::Empty | PaneKind::Doc(_) => false,
-            PaneKind::Term(term) => term.should_close(state),
+        match &self.task {
+            PaneTask::Doc(_) => false,
+            PaneTask::Term(term) => term.should_close(state),
         }
     }
 
     fn close(self, state: &mut State) {
-        match self.kind {
-            PaneKind::Doc(_) | PaneKind::Empty => {}
-            PaneKind::Term(term) => term.close(state),
+        match self.task {
+            PaneTask::Doc(_) => {}
+            PaneTask::Term(term) => term.close(state),
         }
         for doc in self.docs.into_values() {
             doc.close(state);
@@ -75,19 +85,15 @@ impl Pane {
     fn switch_task(&mut self, state: &mut State, task: TaskId) {
         state.set_most_recent(task);
         // Close existing task
-        match core::mem::replace(&mut self.kind, PaneKind::Empty) {
-            PaneKind::Doc(_) | PaneKind::Empty => {}
-            PaneKind::Term(term) => term.close(state),
+        match core::mem::replace(&mut self.task, PaneTask::new(task, state)) {
+            PaneTask::Doc(_) => {}
+            PaneTask::Term(term) => term.close(state),
         }
-        self.kind = match task {
-            TaskId::Buffer(buffer_id) => PaneKind::Doc(buffer_id),
-            TaskId::Term(term_id) => PaneKind::Term(state.switch_term(term_id)),
-        };
     }
 
     fn task_dir(&self, state: &mut State) -> PathBuf {
-        let path = match &self.kind {
-            PaneKind::Doc(buffer_id) => {
+        let path = match &self.task {
+            PaneTask::Doc(buffer_id) => {
                 if let Some(buf) = state.buffers.get(*buffer_id)
                     && let Some(path) = buf.path()
                 {
@@ -96,8 +102,7 @@ impl Pane {
                     None
                 }
             }
-            PaneKind::Term(term) => Some(state.terms[term.term].path.clone()),
-            PaneKind::Empty => None,
+            PaneTask::Term(term) => Some(state.terms[term.term].path.clone()),
         };
         path.unwrap_or_else(|| std::env::current_dir().expect("no cwd"))
     }
@@ -129,20 +134,21 @@ impl Element<()> for Pane {
                 Action::OpenSearcher(self.task_dir(state), needle).into(),
             ))),
             Some(Action::OpenOpener(path)) => {
-                self.task = Some(
-                    PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Opener)).into(),
+                self.overlay = Some(
+                    PaneOverlay::FileBrowser(FileBrowser::new(path, FileBrowserMode::Opener))
+                        .into(),
                 );
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenSaver(path)) => {
-                self.task = Some(
-                    PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Save)).into(),
+                self.overlay = Some(
+                    PaneOverlay::FileBrowser(FileBrowser::new(path, FileBrowserMode::Save)).into(),
                 );
                 Ok(Resp::handled(None))
             }
             Some(Action::OpenMover(path)) => {
-                self.task = Some(
-                    PaneTask::FileBrowser(FileBrowser::new(path, FileBrowserMode::Move)).into(),
+                self.overlay = Some(
+                    PaneOverlay::FileBrowser(FileBrowser::new(path, FileBrowserMode::Move)).into(),
                 );
                 Ok(Resp::handled(None))
             }
@@ -151,14 +157,18 @@ impl Element<()> for Pane {
                 if most_recent.is_empty() {
                     Err(event)
                 } else {
-                    self.task = Some(PaneTask::Switcher(Switcher::new(most_recent)).into());
+                    self.overlay = Some(PaneOverlay::Switcher(Switcher::new(most_recent)).into());
                     Ok(Resp::handled(None))
                 }
             }
             Some(Action::OpenSearcher(path, needle)) => {
-                self.task = Some(
-                    PaneTask::Searcher(Searcher::new(&path, needle.clone(), state.wakeup.clone()))
-                        .into(),
+                self.overlay = Some(
+                    PaneOverlay::Searcher(Searcher::new(
+                        &path,
+                        needle.clone(),
+                        state.wakeup.clone(),
+                    ))
+                    .into(),
                 );
                 Ok(Resp::handled(None))
             }
@@ -187,16 +197,16 @@ impl Element<()> for Pane {
                 Ok(Resp::handled(None))
             }
             _ => {
-                let event = if let Some(task) = self.task.as_deref_mut() {
-                    let resp = match task {
-                        PaneTask::FileBrowser(browser) => browser.handle(state, event),
-                        PaneTask::Switcher(switcher) => switcher.handle(state, event),
-                        PaneTask::Searcher(searcher) => searcher.handle(state, event),
+                let event = if let Some(overlay) = self.overlay.as_deref_mut() {
+                    let resp = match overlay {
+                        PaneOverlay::FileBrowser(browser) => browser.handle(state, event),
+                        PaneOverlay::Switcher(switcher) => switcher.handle(state, event),
+                        PaneOverlay::Searcher(searcher) => searcher.handle(state, event),
                     };
                     match resp {
                         Ok(resp) => {
                             if resp.is_end() {
-                                self.task = None;
+                                self.overlay = None;
                             }
                             return Ok(Resp::handled(resp.event));
                         }
@@ -206,33 +216,27 @@ impl Element<()> for Pane {
                     event
                 };
 
-                let resp = match &mut self.kind {
-                    PaneKind::Empty => return Err(event),
-                    PaneKind::Doc(buffer_id) => {
+                let resp = match &mut self.task {
+                    PaneTask::Doc(buffer_id) => {
                         let buffer_id = *buffer_id;
                         self.doc_mut(state, buffer_id).handle(state, event)?
                     }
-                    PaneKind::Term(term) => term.handle(state, event)?,
+                    PaneTask::Term(term) => term.handle(state, event)?,
                 };
 
                 if resp.is_end() {
                     // Close the current pane task if it asked to be ended
-                    match core::mem::replace(&mut self.kind, PaneKind::Empty) {
-                        PaneKind::Empty => {}
-                        PaneKind::Doc(buffer_id) => {
+                    match core::mem::replace(&mut self.task, PaneTask::fallback(state)) {
+                        PaneTask::Doc(buffer_id) => {
                             self.docs.remove(&buffer_id).map(|d| d.close(state));
                         }
-                        PaneKind::Term(term) => term.close(state),
+                        PaneTask::Term(term) => term.close(state),
                     }
 
-                    // Switch to another buffer, or not
-                    if let Some(new_buffer) = state.most_recent().first() {
-                        self.switch_task(state, TaskId::Buffer(*new_buffer));
-                        Ok(Resp::handled(None))
-                    } else {
-                        self.kind = PaneKind::Empty;
-                        Ok(Resp::end(None))
-                    }
+                    // Switch to a fallback task
+                    let task = TaskId::fallback(state);
+                    self.switch_task(state, task);
+                    Ok(Resp::end(None))
                 } else {
                     Ok(resp)
                 }
@@ -243,12 +247,12 @@ impl Element<()> for Pane {
 
 impl Visual for Pane {
     fn render(&mut self, state: &mut State, frame: &mut Rect) {
-        let remaining_space = match self.task.as_deref_mut() {
-            Some(PaneTask::FileBrowser(browser)) => {
+        let remaining_space = match self.overlay.as_deref_mut() {
+            Some(PaneOverlay::FileBrowser(browser)) => {
                 browser.render(state, frame);
                 None
             }
-            Some(PaneTask::Switcher(switcher)) => {
+            Some(PaneOverlay::Switcher(switcher)) => {
                 let switcher_h = switcher.requested_height();
                 switcher.render(
                     state,
@@ -256,7 +260,7 @@ impl Visual for Pane {
                 );
                 Some(([0, 0], [!0, frame.size()[1] - switcher_h]))
             }
-            Some(PaneTask::Searcher(searcher)) => {
+            Some(PaneOverlay::Searcher(searcher)) => {
                 searcher.render(state, frame);
                 None
             }
@@ -264,17 +268,16 @@ impl Visual for Pane {
         };
 
         if let Some((pos, sz)) = remaining_space {
-            match &mut self.kind {
-                PaneKind::Empty => {}
-                PaneKind::Doc(buffer_id) => {
+            match &mut self.task {
+                PaneTask::Doc(buffer_id) => {
                     let buffer_id = *buffer_id;
-                    let is_focus = self.task.is_none();
+                    let is_focus = self.overlay.is_none();
                     self.doc_mut(state, buffer_id)
                         .render(state, &mut frame.with_focus(is_focus).rect(pos, sz))
                 }
-                PaneKind::Term(term) => term.render(
+                PaneTask::Term(term) => term.render(
                     state,
-                    &mut frame.with_focus(self.task.is_none()).rect(pos, sz),
+                    &mut frame.with_focus(self.overlay.is_none()).rect(pos, sz),
                 ),
             }
         }
@@ -312,13 +315,10 @@ impl<T: From<Pane>, const IS_VERTICAL: bool> Panes<T, IS_VERTICAL> {
             self.selected,
             Child {
                 child: T::from(Pane {
-                    kind: match state.buffers.keys().next() {
-                        Some(b) => PaneKind::Doc(b),
-                        None => PaneKind::Empty,
-                    },
+                    task: PaneTask::fallback(state),
+                    overlay: None,
                     last_area: Area::default(),
                     docs: HashMap::default(),
-                    task: None,
                 }),
                 size_weight,
             },
@@ -508,11 +508,11 @@ impl Tabs {
                     None
                 })
                 .filter_map(|path| {
-                    let (buffer_id, task) = if let Some(path) = path {
+                    let (buffer_id, overlay) = if let Some(path) = path {
                         if path.is_dir() {
                             (
                                 state.new_anonymous(),
-                                Some(PaneTask::FileBrowser(FileBrowser::new(
+                                Some(PaneOverlay::FileBrowser(FileBrowser::new(
                                     path.clone(),
                                     FileBrowserMode::Opener,
                                 ))),
@@ -525,8 +525,8 @@ impl Tabs {
                     };
                     Some((
                         Panes::from(Pane {
-                            kind: PaneKind::Doc(buffer_id),
-                            task: task.map(Into::into),
+                            task: PaneTask::Doc(buffer_id),
+                            overlay: overlay.map(Into::into),
                             docs: HashMap::default(),
                             last_area: Area::default(),
                         }),
@@ -557,13 +557,13 @@ impl Element<()> for Tabs {
         if let Event::Tick = &event {
             for (tab, name) in &mut self.tabs {
                 let new_name = tab.selected_pane().and_then(|pane| {
-                    if let PaneKind::Doc(buffer_id) = &pane.kind
+                    if let PaneTask::Doc(buffer_id) = &pane.task
                         && let Some(buffer) = state.buffers.get(*buffer_id)
                         && let Some(path) = buffer.path()
                         && let Some(dir) = path.parent()
                     {
                         Some(format!("{}", util::workspace_dir(dir).display()))
-                    } else if let PaneKind::Term(term) = &pane.kind {
+                    } else if let PaneTask::Term(term) = &pane.task {
                         state.terms[term.term].title.clone()
                     } else {
                         None
@@ -592,29 +592,24 @@ impl Element<()> for Tabs {
                 Ok(Resp::handled(None))
             }
             Some(Action::TabOpen(dir @ (Dir::Up | Dir::Down))) => {
-                let new_idx = match dir {
+                self.selected = match dir {
                     Dir::Up => self.selected.clamp(0, self.tabs.len()),
                     Dir::Down => (self.selected + 1).min(self.tabs.len()),
                     _ => unreachable!(),
                 };
-                let kind = match state.buffers.keys().next() {
-                    Some(b) => PaneKind::Doc(b),
-                    None => PaneKind::Empty,
-                };
                 self.tabs.insert(
-                    new_idx,
+                    self.selected,
                     (
                         Panes::from(Pane {
-                            kind,
+                            task: PaneTask::fallback(state),
+                            overlay: None,
                             last_area: Area::default(),
                             docs: HashMap::default(),
-                            task: None,
                         }),
                         None,
                     ),
                 );
                 self.reset_tab_timeout();
-                self.selected = new_idx;
                 Ok(Resp::handled(None))
             }
             // Pass anything else through to the active pane

@@ -1566,3 +1566,15 @@ pub enum TaskId {
     Buffer(BufferId),
     Term(TermId),
 }
+
+impl TaskId {
+    pub fn fallback(state: &mut State) -> Self {
+        // Switch to another buffer, or not
+        if let Some(new_buffer) = state.most_recent().first() {
+            TaskId::Buffer(*new_buffer)
+        } else {
+            let buffer_id = state.new_anonymous();
+            TaskId::Buffer(buffer_id)
+        }
+    }
+}
