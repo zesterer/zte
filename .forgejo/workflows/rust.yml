@@ -1,0 +1,14 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  loc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that there are no more than 10,000 lines of code
+        run: if [[ $(find . -name '*.rs' | xargs cat | wc -l) -gt 10000 ]]; then false; fi
