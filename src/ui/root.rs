@@ -139,11 +139,7 @@ impl Element<()> for Root {
                         break Ok(Resp::handled(None));
                     }
                     Action::Quit => break Ok(Resp::end(None)),
-                    action => match self
-                        .tabs
-                        .handle(state, Event::Action(action))
-                        .map(|r| r.into_can_end::<()>())
-                    {
+                    action => match self.tabs.handle(state, Event::Action(action)) {
                         Ok(resp) if resp.is_end() => return Ok(resp),
                         Ok(resp) => {
                             if let Some(new_event) = resp.event {

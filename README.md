@@ -115,8 +115,10 @@ Alt + Shift + PageDown = Create tab below
 
 Alt + q = Close current pane
 
-Alt + Equals = Grow current pane vertically
-Alt + Subtract = Shrink current pane vertically
+Alt + i = Grow current pane vertically
+Alt + k = Shrink current pane vertically
+Alt + l = Grow current pane horizontally
+Alt + j = Shrink current pane horizontally
 ```
 
 ## Editing

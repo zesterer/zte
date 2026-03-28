@@ -102,7 +102,8 @@ pub enum Action {
     Duplicate,
     Comment,
     // Resize the current pane
-    PaneResize(i32),
+    PaneGrowH(i32),
+    PaneGrowV(i32),
     // A terminal bell ring
     Bell,
 }
@@ -584,17 +585,29 @@ impl RawEvent {
     pub fn to_pane_resize(&self) -> Option<Action> {
         match &self.0 {
             TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('='),
+                code: KeyCode::Char('l'),
                 modifiers: KeyModifiers::ALT,
                 kind: KeyEventKind::Press,
                 ..
-            }) => Some(Action::PaneResize(1)),
+            }) => Some(Action::PaneGrowH(1)),
             TerminalEvent::Key(KeyEvent {
-                code: KeyCode::Char('-'),
+                code: KeyCode::Char('j'),
                 modifiers: KeyModifiers::ALT,
                 kind: KeyEventKind::Press,
                 ..
-            }) => Some(Action::PaneResize(-1)),
+            }) => Some(Action::PaneGrowH(-1)),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('i'),
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::PaneGrowV(1)),
+            TerminalEvent::Key(KeyEvent {
+                code: KeyCode::Char('k'),
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                ..
+            }) => Some(Action::PaneGrowV(-1)),
             _ => None,
         }
     }
